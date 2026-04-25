@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import Connection
 
-from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.config import get_database_url
 from megaraid_dashboard.db import Base
 
 config = context.config
@@ -16,7 +16,7 @@ def _database_url() -> str:
     configured_url = config.get_main_option("sqlalchemy.url")
     if configured_url:
         return configured_url
-    return get_settings().database_url
+    return get_database_url()
 
 
 def run_migrations_offline() -> None:

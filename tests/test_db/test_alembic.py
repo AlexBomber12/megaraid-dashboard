@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect
@@ -37,6 +38,39 @@ def test_alembic_upgrade_downgrade_upgrade_is_idempotent() -> None:
 
             command.upgrade(config, "head")
             assert set(inspect(connection).get_table_names()) >= EXPECTED_TABLES
+    finally:
+        engine.dispose()
+
+
+def test_alembic_uses_database_url_without_full_runtime_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_url = f"sqlite:///{tmp_path / 'alembic.db'}"
+    for name in (
+        "ALERT_SMTP_HOST",
+        "ALERT_SMTP_PORT",
+        "ALERT_SMTP_USER",
+        "ALERT_SMTP_PASSWORD",
+        "ALERT_FROM",
+        "ALERT_TO",
+        "ADMIN_USERNAME",
+        "ADMIN_PASSWORD_HASH",
+        "STORCLI_PATH",
+        "METRICS_INTERVAL_SECONDS",
+        "LOG_LEVEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(PROJECT_ROOT / "migrations"))
+
+    command.upgrade(config, "head")
+
+    engine = get_engine(database_url)
+    try:
+        assert set(inspect(engine).get_table_names()) >= EXPECTED_TABLES
     finally:
         engine.dispose()
 
