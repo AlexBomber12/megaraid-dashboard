@@ -24,11 +24,29 @@ class Settings(BaseSettings):
     storcli_path: str = Field(...)
     storcli_use_sudo: bool = False
     metrics_interval_seconds: int = Field(...)
-    database_url: str = Field(...)
+    metrics_raw_retention_days: int = 30
+    metrics_hourly_retention_days: int = 365
+    store_raw_snapshot_payload: bool = False
+    database_url: str = "sqlite:///./megaraid.db"
     log_level: str = Field(...)
+
+
+class DatabaseSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        case_sensitive=False,
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    database_url: str = "sqlite:///./megaraid.db"
 
 
 @lru_cache
 def get_settings() -> Settings:
     # BaseSettings reads required fields from environment sources at runtime.
     return Settings()  # type: ignore[call-arg]
+
+
+def get_database_url() -> str:
+    return DatabaseSettings().database_url

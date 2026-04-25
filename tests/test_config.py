@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from megaraid_dashboard.config import Settings
+from megaraid_dashboard.config import Settings, get_database_url
 
 REQUIRED_ENV = {
     "ALERT_SMTP_HOST": "smtp.example.test",
@@ -58,3 +58,15 @@ def test_smtp_credentials_are_required(
         Settings()
 
     assert {"alert_smtp_user", "alert_smtp_password"} <= missing_fields(exc_info.value)
+
+
+def test_database_url_loads_without_full_runtime_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    for name in REQUIRED_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///custom.db")
+
+    assert get_database_url() == "sqlite:///custom.db"
