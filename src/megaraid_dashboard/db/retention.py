@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.db.models import (
@@ -160,16 +160,14 @@ def prune_raw_snapshots(
 ) -> int:
     now = _require_aware_utc(now_utc)
     cutoff = _hour_bucket(now - timedelta(days=retention_days))
-    snapshot_ids = list(
-        session.scalars(
-            select(ControllerSnapshot.id).where(ControllerSnapshot.captured_at < cutoff)
-        )
+    snapshot_count = session.scalar(
+        select(func.count(ControllerSnapshot.id)).where(ControllerSnapshot.captured_at < cutoff)
     )
-    if not snapshot_ids:
+    if not snapshot_count:
         return 0
-    session.execute(delete(ControllerSnapshot).where(ControllerSnapshot.id.in_(snapshot_ids)))
+    session.execute(delete(ControllerSnapshot).where(ControllerSnapshot.captured_at < cutoff))
     session.flush()
-    return len(snapshot_ids)
+    return snapshot_count
 
 
 def prune_hourly_metrics(
@@ -180,20 +178,18 @@ def prune_hourly_metrics(
 ) -> int:
     now = _require_aware_utc(now_utc)
     cutoff = _day_bucket(now - timedelta(days=retention_days))
-    metric_ids = list(
-        session.scalars(
-            select(PhysicalDriveMetricsHourly.id).where(
-                PhysicalDriveMetricsHourly.bucket_start < cutoff
-            )
+    metric_count = session.scalar(
+        select(func.count(PhysicalDriveMetricsHourly.id)).where(
+            PhysicalDriveMetricsHourly.bucket_start < cutoff
         )
     )
-    if not metric_ids:
+    if not metric_count:
         return 0
     session.execute(
-        delete(PhysicalDriveMetricsHourly).where(PhysicalDriveMetricsHourly.id.in_(metric_ids))
+        delete(PhysicalDriveMetricsHourly).where(PhysicalDriveMetricsHourly.bucket_start < cutoff)
     )
     session.flush()
-    return len(metric_ids)
+    return metric_count
 
 
 def _upsert_hourly(session: Session, accumulator: _RawMetricsAccumulator) -> None:
