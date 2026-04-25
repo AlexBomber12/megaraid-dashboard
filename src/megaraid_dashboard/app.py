@@ -49,7 +49,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def _upgrade_database(database_url: str) -> None:
     alembic_config = _alembic_config()
-    alembic_config.set_main_option("sqlalchemy.url", database_url)
+    alembic_config.set_main_option("sqlalchemy.url", _configparser_value(database_url))
     try:
         command.upgrade(alembic_config, "head")
     except Exception as exc:
@@ -88,3 +88,7 @@ def _redacted_database_url(database_url: str) -> str:
         return make_url(database_url).render_as_string(hide_password=True)
     except ArgumentError:
         return "<invalid database url>"
+
+
+def _configparser_value(value: str) -> str:
+    return value.replace("%", "%%")

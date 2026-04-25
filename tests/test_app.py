@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
 
 from megaraid_dashboard import app
 
@@ -32,3 +33,12 @@ def test_redacted_database_url_hides_password() -> None:
 
     assert "secret" not in redacted_url
     assert redacted_url == "postgresql://user:***@example.test/db"
+
+
+def test_configparser_value_escapes_percent_for_alembic() -> None:
+    database_url = "postgresql://user:p%40ss@example.test/db"
+    config = Config()
+
+    config.set_main_option("sqlalchemy.url", app._configparser_value(database_url))
+
+    assert config.get_main_option("sqlalchemy.url") == database_url
