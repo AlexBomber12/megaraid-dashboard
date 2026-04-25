@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     storcli_path: str = Field(...)
     storcli_use_sudo: bool = False
     metrics_interval_seconds: int = Field(...)
-    database_url: str = Field(...)
+    metrics_raw_retention_days: int = 30
+    metrics_hourly_retention_days: int = 365
+    store_raw_snapshot_payload: bool = False
+    database_url: str = "sqlite:///./megaraid.db"
     log_level: str = Field(...)
 
 

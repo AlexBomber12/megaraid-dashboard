@@ -82,6 +82,21 @@ def _parse_temperature(value: Any) -> int | None:
     return int(float(celsius_text))
 
 
+def _parse_percent(value: Any) -> int | None:
+    if value in (None, "", "N/A", "-"):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if not isinstance(value, str):
+        msg = f"expected percent string, got {type(value).__name__}"
+        raise TypeError(msg)
+
+    percent_text = value.partition("%")[0].strip()
+    return int(float(percent_text))
+
+
 def _yes_no_to_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -231,6 +246,7 @@ class CacheVault(StorcliModel):
     state: str = Field(alias="State")
     temperature_celsius: int | None = Field(alias="Temperature")
     pack_energy: str | None = Field(default=None, alias="Pack Energy")
+    capacitance_percent: int | None = Field(default=None, alias="Capacitance")
     replacement_required: bool = Field(alias="Replacement required")
     next_learn_cycle: datetime | None = Field(default=None, alias="Next Learn time")
 
@@ -238,6 +254,11 @@ class CacheVault(StorcliModel):
     @classmethod
     def parse_temperature(cls, value: Any) -> int | None:
         return _parse_temperature(value)
+
+    @field_validator("capacitance_percent", mode="before")
+    @classmethod
+    def parse_capacitance_percent(cls, value: Any) -> int | None:
+        return _parse_percent(value)
 
     @field_validator("replacement_required", mode="before")
     @classmethod

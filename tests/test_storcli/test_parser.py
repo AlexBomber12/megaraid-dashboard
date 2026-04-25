@@ -63,6 +63,7 @@ def test_parse_cachevault_success() -> None:
 
     assert cachevault is not None
     assert cachevault.state
+    assert cachevault.capacitance_percent == 89
 
 
 def test_parse_cachevault_from_bbu_failure_returns_none() -> None:

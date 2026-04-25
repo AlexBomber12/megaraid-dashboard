@@ -38,6 +38,13 @@ mypy src
 pytest
 ```
 
+## Database
+
+SQLite stores controller, virtual drive, physical drive, and cache vault snapshots. Physical
+drive snapshots are retained at full 5-minute resolution for 30 days, then downsampled into
+`pd_metrics_hourly` for 1 year, then into `pd_metrics_daily` indefinitely. Events and audit
+logs are retained forever.
+
 ## Project Layout
 
 ```text
@@ -45,12 +52,23 @@ pytest
 |-- .github/
 |   `-- workflows/
 |       `-- ci.yml
+|-- migrations/
+|   |-- env.py
+|   `-- versions/
+|       `-- 0001_initial.py
 |-- src/
 |   `-- megaraid_dashboard/
 |       |-- __init__.py
 |       |-- __main__.py
 |       |-- app.py
 |       |-- config.py
+|       |-- db/
+|       |   |-- __init__.py
+|       |   |-- base.py
+|       |   |-- dao.py
+|       |   |-- engine.py
+|       |   |-- models.py
+|       |   `-- retention.py
 |       `-- storcli/
 |           |-- __init__.py
 |           |-- exceptions.py
@@ -67,17 +85,25 @@ pytest
 |   |           |-- cv_show_all.json
 |   |           |-- eall_sall_show_all.json
 |   |           `-- vall_show_all.json
+|   |-- test_db/
+|   |   |-- __init__.py
+|   |   |-- test_alembic.py
+|   |   |-- test_dao.py
+|   |   |-- test_models.py
+|   |   `-- test_retention.py
 |   |-- test_storcli/
 |   |   |-- __init__.py
 |   |   |-- test_parser.py
 |   |   |-- test_redactor.py
 |   |   `-- test_runner.py
 |   |-- __init__.py
+|   |-- conftest.py
 |   |-- test_config.py
 |   `-- test_smoke.py
 |-- .env.example
 |-- .gitignore
 |-- AGENTS.md
+|-- alembic.ini
 |-- CLAUDE.md
 |-- LICENSE
 |-- README.md
@@ -87,8 +113,8 @@ pytest
 ## Roadmap
 
 1. [x] Skeleton and CI.
-2. [ ] `storcli` wrapper with JSON parsing and pydantic models. (in progress)
-3. SQLite schema and migrations.
+2. [x] `storcli` wrapper with JSON parsing and pydantic models.
+3. [x] SQLite schema and migrations.
 4. Background metrics collector.
 5. Read-only web dashboard.
 6. Email alerts via SMTP.

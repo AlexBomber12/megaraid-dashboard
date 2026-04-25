@@ -22,7 +22,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "test-bcrypt-hash")
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///./megaraid.db")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     get_settings.cache_clear()
     yield
