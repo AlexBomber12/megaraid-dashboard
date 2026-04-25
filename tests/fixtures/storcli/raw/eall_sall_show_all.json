@@ -1,0 +1,655 @@
+{
+"Controllers":[
+{
+	"Command Status" : {
+		"CLI Version" : "007.3703.0000.0000 Jan 16, 2026",
+		"Operating system" : "Linux 6.8.0-110-generic",
+		"Controller" : 0,
+		"Status" : "Success",
+		"Description" : "Show Drive Information Succeeded."
+	},
+	"Response Data" : {
+		"Drive /c0/e252/s0" : [
+			{
+				"EID:Slt" : "252:0",
+				"DID" : 14,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s0 - Detailed Information" : {
+			"Drive /c0/e252/s0 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 61C (141.80 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s0 Device attributes" : {
+				"SN" : "        WCA275678S3D",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68EUZN0",
+				"NAND Vendor" : "NA",
+				"WWN" : "5000CCA22CD8EC84",
+				"Firmware Revision" : "MF8OA8B0",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "512B",
+				"Connector Name" : "Port 0 - 3 x1"
+			},
+			"Drive /c0/e252/s0 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:4",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "3(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221103000000"
+					}
+				]
+			},
+			"Inquiry Data" : "5a 04 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 20 20 20 20 43 57 32 41 35 37 37 36 53 38 44 33 03 00 00 00 38 00 46 4d 4f 38 38 41 30 42 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 45 38 5a 55 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 40 00 2f 00 40 00 02 00 02 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s1" : [
+			{
+				"EID:Slt" : "252:1",
+				"DID" : 13,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s1 - Detailed Information" : {
+			"Drive /c0/e252/s1 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 58C (136.40 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s1 Device attributes" : {
+				"SN" : "     WD-WMC4N1046779",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68EUZN0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE6AEA3A296",
+				"Firmware Revision" : "80.00A80",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 0 - 3 x1"
+			},
+			"Drive /c0/e252/s1 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:5",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "2(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221102000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 4d 57 34 43 31 4e 34 30 37 36 39 37 00 00 00 00 00 00 30 38 30 2e 41 30 30 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 45 38 5a 55 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 40 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s2" : [
+			{
+				"EID:Slt" : "252:2",
+				"DID" : 12,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68AX9N0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s2 - Detailed Information" : {
+			"Drive /c0/e252/s2 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 58C (136.40 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s2 Device attributes" : {
+				"SN" : "     WD-WCC1T0552834",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68AX9N0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE20822DD4F",
+				"Firmware Revision" : "80.00A80",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 0 - 3 x1"
+			},
+			"Drive /c0/e252/s2 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:6",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "1(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221101000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 43 57 31 43 30 54 35 35 38 32 34 33 00 00 00 00 00 00 30 38 30 2e 41 30 30 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 41 38 39 58 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 00 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s3" : [
+			{
+				"EID:Slt" : "252:3",
+				"DID" : 11,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68AX9N0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s3 - Detailed Information" : {
+			"Drive /c0/e252/s3 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 50C (122.00 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s3 Device attributes" : {
+				"SN" : "     WD-WCC1T0552848",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68AX9N0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE2B2CDA0AE",
+				"Firmware Revision" : "80.00A80",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 0 - 3 x1"
+			},
+			"Drive /c0/e252/s3 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:7",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "0(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221100000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 43 57 31 43 30 54 35 35 38 32 38 34 00 00 00 00 00 00 30 38 30 2e 41 30 30 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 41 38 39 58 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 00 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s4" : [
+			{
+				"EID:Slt" : "252:4",
+				"DID" : 18,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s4 - Detailed Information" : {
+			"Drive /c0/e252/s4 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 52C (125.60 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s4 Device attributes" : {
+				"SN" : "     WD-WCC4N3ZCEU59",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68EUZN0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE21265E9CB",
+				"Firmware Revision" : "82.00A82",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 4 - 7 x1"
+			},
+			"Drive /c0/e252/s4 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:3",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "7(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221107000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 43 57 34 43 33 4e 43 5a 55 45 39 35 00 00 00 00 00 00 32 38 30 2e 41 30 32 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 45 38 5a 55 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 40 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s5" : [
+			{
+				"EID:Slt" : "252:5",
+				"DID" : 17,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s5 - Detailed Information" : {
+			"Drive /c0/e252/s5 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 56C (132.80 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s5 Device attributes" : {
+				"SN" : "     WD-WMB2G9256926",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68EUZN0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE265B8CD85",
+				"Firmware Revision" : "80.00A80",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 4 - 7 x1"
+			},
+			"Drive /c0/e252/s5 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:2",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "6(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221106000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 4d 57 32 42 39 47 35 32 39 36 36 32 00 00 00 00 00 00 30 38 30 2e 41 30 30 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 45 38 5a 55 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 40 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s6" : [
+			{
+				"EID:Slt" : "252:6",
+				"DID" : 16,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s6 - Detailed Information" : {
+			"Drive /c0/e252/s6 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 58C (136.40 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s6 Device attributes" : {
+				"SN" : "     WD-WMC4N1607698",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68EUZN0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE0590BF704",
+				"Firmware Revision" : "80.00A80",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 4 - 7 x1"
+			},
+			"Drive /c0/e252/s6 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:1",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "5(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221105000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 4d 57 34 43 31 4e 30 36 36 37 38 39 00 00 00 00 00 00 30 38 30 2e 41 30 30 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 45 38 5a 55 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 40 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		},
+		"Drive /c0/e252/s7" : [
+			{
+				"EID:Slt" : "252:7",
+				"DID" : 15,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"Drive /c0/e252/s7 - Detailed Information" : {
+			"Drive /c0/e252/s7 State" : {
+				"Shield Counter" : 0,
+				"Media Error Count" : 0,
+				"Other Error Count" : 0,
+				"BBM Error Count" : 0,
+				"Drive Temperature" : " 59C (138.20 F)",
+				"Predictive Failure Count" : 0,
+				"S.M.A.R.T alert flagged by drive" : "No"
+			},
+			"Drive /c0/e252/s7 Device attributes" : {
+				"SN" : "     WD-WCC4N5JAU3NU",
+				"Manufacturer Id" : "ATA     ",
+				"Model Number" : "WDC WD30EFRX-68EUZN0",
+				"NAND Vendor" : "NA",
+				"WWN" : "50014EE266A8C757",
+				"Firmware Revision" : "82.00A82",
+				"Raw size" : "2.729 TB [0x15d50a3b0 Sectors]",
+				"Coerced size" : "2.728 TB [0x15d400000 Sectors]",
+				"Non Coerced size" : "2.728 TB [0x15d40a3b0 Sectors]",
+				"Device Speed" : "6.0Gb/s",
+				"Link Speed" : "6.0Gb/s",
+				"NCQ setting" : "Enabled",
+				"Write Cache" : "N/A",
+				"Logical Sector Size" : "512B",
+				"Physical Sector Size" : "4 KB",
+				"Connector Name" : "Port 4 - 7 x1"
+			},
+			"Drive /c0/e252/s7 Policies/Settings" : {
+				"Drive position" : "DriveGroup:0, Span:0, Row:0",
+				"Enclosure position" : "1",
+				"Connected Port Number" : "4(path0) ",
+				"Sequence Number" : 2,
+				"Commissioned Spare" : "No",
+				"Emergency Spare" : "No",
+				"Last Predictive Failure Event Sequence Number" : 0,
+				"Successful diagnostics completion on" : "N/A",
+				"FDE Type" : "None",
+				"SED Capable" : "No",
+				"SED Enabled" : "No",
+				"Secured" : "No",
+				"Cryptographic Erase Capable" : "No",
+				"Sanitize Support" : "Not supported",
+				"Locked" : "No",
+				"Needs EKM Attention" : "No",
+				"PI Eligible" : "No",
+				"Drive is formatted for PI" : "No",
+				"PI type" : "No PI",
+				"Number of bytes of user data in LBA" : "0 KB",
+				"Certified" : "No",
+				"Wide Port Capable" : "No",
+				"Multipath" : "No",
+				"Port Information" : [
+					{
+						"Port" : 0,
+						"Status" : "Active",
+						"Linkspeed" : "6.0Gb/s",
+						"SAS address" : "0x4433221104000000"
+					}
+				]
+			},
+			"Inquiry Data" : "7a 42 ff 3f 37 c8 10 00 00 00 00 00 3f 00 00 00 00 00 00 00 20 20 20 20 57 20 2d 44 43 57 34 43 35 4e 41 4a 33 55 55 4e 00 00 00 00 00 00 32 38 30 2e 41 30 32 38 44 57 20 43 44 57 30 33 46 45 58 52 36 2d 45 38 5a 55 30 4e 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 20 10 80 00 40 00 2f 01 40 00 00 00 00 07 00 ff 3f 10 00 3f 00 10 fc fb 00 00 01 ff ff ff 0f 00 00 07 00 "
+		}
+	}
+}
+]
+}

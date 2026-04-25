@@ -1,0 +1,171 @@
+{
+"Controllers":[
+{
+	"Command Status" : {
+		"CLI Version" : "007.3703.0000.0000 Jan 16, 2026",
+		"Operating system" : "Linux 6.8.0-110-generic",
+		"Controller" : 0,
+		"Status" : "Success",
+		"Description" : "None"
+	},
+	"Response Data" : {
+		"/c0/v0" : [
+			{
+				"DG/VD" : "0/0",
+				"TYPE" : "RAID5",
+				"State" : "Optl",
+				"Access" : "RW",
+				"Consist" : "Yes",
+				"Cache" : "RWBD",
+				"Cac" : "-",
+				"sCC" : "ON",
+				"Size" : "19.099 TB",
+				"Name" : ""
+			}
+		],
+		"PDs for VD 0" : [
+			{
+				"EID:Slt" : "252:7",
+				"DID" : 15,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:6",
+				"DID" : 16,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:5",
+				"DID" : 17,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:4",
+				"DID" : 18,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:0",
+				"DID" : 14,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:1",
+				"DID" : 13,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68EUZN0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:2",
+				"DID" : 12,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68AX9N0",
+				"Sp" : "U",
+				"Type" : "-"
+			},
+			{
+				"EID:Slt" : "252:3",
+				"DID" : 11,
+				"State" : "Onln",
+				"DG" : 0,
+				"Size" : "2.728 TB",
+				"Intf" : "SATA",
+				"Med" : "HDD",
+				"SED" : "N",
+				"PI" : "N",
+				"SeSz" : "512B",
+				"Model" : "WDC WD30EFRX-68AX9N0",
+				"Sp" : "U",
+				"Type" : "-"
+			}
+		],
+		"VD0 Properties" : {
+			"Strip Size" : "256 KB",
+			"Number of Blocks" : 41016098816,
+			"VD has Emulated PD" : "Yes",
+			"Span Depth" : 1,
+			"Number of Drives Per Span" : 8,
+			"Write Cache(initial setting)" : "WriteBack",
+			"Disk Cache Policy" : "Disabled",
+			"Encryption" : "None",
+			"Data Protection" : "Disabled",
+			"Active Operations" : "Consistency Check (36%)",
+			"Exposed to OS" : "Yes",
+			"OS Drive Name" : "/dev/sda",
+			"Creation Date" : "02-06-2022",
+			"Creation Time" : "01:14:46 PM",
+			"Emulation type" : "None",
+			"Is LD Ready for OS Requests" : "Yes",
+			"SCSI NAA Id" : "600605b005e31b302a2b74460514d19c",
+			"Unmap Enabled" : "N/A"
+		}
+	}
+}
+]
+}
