@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     admin_username: str = Field(...)
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
+    storcli_use_sudo: bool = False
     metrics_interval_seconds: int = Field(...)
     database_url: str = Field(...)
     log_level: str = Field(...)
