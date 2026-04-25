@@ -66,6 +66,36 @@ def test_downsample_to_hourly_uses_configurable_retention(session: Session) -> N
     assert metrics[0].bucket_start == cutoff_hour - timedelta(hours=1)
 
 
+def test_downsample_to_hourly_partitions_same_slot_by_serial(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    bucket_start = (now - timedelta(days=31)).replace(minute=0, second=0, microsecond=0)
+    _seed_pd_snapshot(
+        session,
+        bucket_start + timedelta(minutes=5),
+        serial_number="SN-OLD",
+        temperature=30,
+    )
+    _seed_pd_snapshot(
+        session,
+        bucket_start + timedelta(minutes=25),
+        serial_number="SN-NEW",
+        temperature=45,
+    )
+    session.commit()
+
+    written = downsample_to_hourly(session, now_utc=now)
+    session.commit()
+
+    metrics = session.scalars(select(PhysicalDriveMetricsHourly)).all()
+    metrics_by_serial = {metrics_row.serial_number: metrics_row for metrics_row in metrics}
+    assert written == 2
+    assert len(metrics) == 2
+    assert metrics_by_serial["SN-OLD"].bucket_start == bucket_start
+    assert metrics_by_serial["SN-OLD"].temperature_celsius_avg == 30
+    assert metrics_by_serial["SN-NEW"].bucket_start == bucket_start
+    assert metrics_by_serial["SN-NEW"].temperature_celsius_avg == 45
+
+
 def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
     target_day = (now - timedelta(days=365)).replace(
@@ -136,6 +166,45 @@ def test_downsample_to_daily_uses_configurable_retention(session: Session) -> No
     assert metrics[0].bucket_start == cutoff_day - timedelta(days=1)
 
 
+def test_downsample_to_daily_partitions_same_slot_by_serial(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    day_start = (now - timedelta(days=366)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    session.add_all(
+        [
+            _hourly_metric(
+                day_start + timedelta(hours=1),
+                30.0,
+                sample_count=1,
+                serial_number="SN-OLD",
+            ),
+            _hourly_metric(
+                day_start + timedelta(hours=2),
+                45.0,
+                sample_count=1,
+                serial_number="SN-NEW",
+            ),
+        ]
+    )
+    session.commit()
+
+    written = downsample_to_daily(session, now_utc=now)
+    session.commit()
+
+    metrics = session.scalars(select(PhysicalDriveMetricsDaily)).all()
+    metrics_by_serial = {metrics_row.serial_number: metrics_row for metrics_row in metrics}
+    assert written == 2
+    assert len(metrics) == 2
+    assert metrics_by_serial["SN-OLD"].bucket_start == day_start
+    assert metrics_by_serial["SN-OLD"].temperature_celsius_avg == 30
+    assert metrics_by_serial["SN-NEW"].bucket_start == day_start
+    assert metrics_by_serial["SN-NEW"].temperature_celsius_avg == 45
+
+
 def test_prune_raw_snapshots_deletes_only_old_rows_and_cascades(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
     cutoff_hour = (now - timedelta(days=30)).replace(minute=0, second=0, microsecond=0)
@@ -181,6 +250,7 @@ def _seed_pd_snapshot(
     captured_at: datetime,
     *,
     temperature: int | None,
+    serial_number: str = "SN0001",
 ) -> None:
     snapshot = ControllerSnapshot(
         captured_at=captured_at,
@@ -199,7 +269,7 @@ def _seed_pd_snapshot(
             slot_id=4,
             device_id=32,
             model="ST4000NM000",
-            serial_number="SN0001",
+            serial_number=serial_number,
             firmware_version="SN04",
             size_bytes=4_000_000_000_000,
             interface="SAS",
@@ -222,6 +292,7 @@ def _hourly_metric(
     *,
     sample_count: int,
     temperature_sample_count: int | None = None,
+    serial_number: str = "SN0001",
 ) -> PhysicalDriveMetricsHourly:
     resolved_temperature_sample_count = (
         sample_count if temperature_sample_count is None else temperature_sample_count
@@ -230,7 +301,7 @@ def _hourly_metric(
         bucket_start=bucket_start.replace(minute=0, second=0, microsecond=0),
         enclosure_id=252,
         slot_id=4,
-        serial_number="SN0001",
+        serial_number=serial_number,
         temperature_celsius_min=int(temperature_avg),
         temperature_celsius_max=int(temperature_avg),
         temperature_celsius_avg=temperature_avg,

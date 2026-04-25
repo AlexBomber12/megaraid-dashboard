@@ -88,7 +88,7 @@ def downsample_to_hourly(
 ) -> int:
     now = _require_aware_utc(now_utc)
     window_end = _hour_bucket(now - timedelta(days=retention_days))
-    buckets: dict[tuple[datetime, int, int], _RawMetricsAccumulator] = {}
+    buckets: dict[tuple[datetime, int, int, str], _RawMetricsAccumulator] = {}
 
     rows = session.execute(
         select(PhysicalDriveSnapshot, ControllerSnapshot.captured_at)
@@ -97,7 +97,7 @@ def downsample_to_hourly(
     )
     for drive, captured_at in rows:
         bucket_start = _hour_bucket(captured_at)
-        key = (bucket_start, drive.enclosure_id, drive.slot_id)
+        key = (bucket_start, drive.enclosure_id, drive.slot_id, drive.serial_number)
         accumulator = buckets.setdefault(
             key,
             _RawMetricsAccumulator(
@@ -124,7 +124,7 @@ def downsample_to_daily(
 ) -> int:
     now = _require_aware_utc(now_utc)
     window_end = _day_bucket(now - timedelta(days=retention_days))
-    buckets: dict[tuple[datetime, int, int], _HourlyMetricsAccumulator] = {}
+    buckets: dict[tuple[datetime, int, int, str], _HourlyMetricsAccumulator] = {}
 
     rows = session.scalars(
         select(PhysicalDriveMetricsHourly).where(
@@ -133,7 +133,7 @@ def downsample_to_daily(
     )
     for metrics in rows:
         bucket_start = _day_bucket(metrics.bucket_start)
-        key = (bucket_start, metrics.enclosure_id, metrics.slot_id)
+        key = (bucket_start, metrics.enclosure_id, metrics.slot_id, metrics.serial_number)
         accumulator = buckets.setdefault(
             key,
             _HourlyMetricsAccumulator(
@@ -202,6 +202,7 @@ def _upsert_hourly(session: Session, accumulator: _RawMetricsAccumulator) -> Non
         .where(PhysicalDriveMetricsHourly.bucket_start == accumulator.bucket_start)
         .where(PhysicalDriveMetricsHourly.enclosure_id == accumulator.enclosure_id)
         .where(PhysicalDriveMetricsHourly.slot_id == accumulator.slot_id)
+        .where(PhysicalDriveMetricsHourly.serial_number == accumulator.serial_number)
     ).one_or_none()
     temperature_min, temperature_max, temperature_avg = _temperature_summary(
         accumulator.temperatures
@@ -242,6 +243,7 @@ def _upsert_daily(session: Session, accumulator: _HourlyMetricsAccumulator) -> N
         .where(PhysicalDriveMetricsDaily.bucket_start == accumulator.bucket_start)
         .where(PhysicalDriveMetricsDaily.enclosure_id == accumulator.enclosure_id)
         .where(PhysicalDriveMetricsDaily.slot_id == accumulator.slot_id)
+        .where(PhysicalDriveMetricsDaily.serial_number == accumulator.serial_number)
     ).one_or_none()
     temperature_avg = (
         accumulator.temperature_weighted_sum / accumulator.temperature_sample_count

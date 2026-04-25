@@ -169,6 +169,7 @@ def upgrade() -> None:
             "bucket_start",
             "enclosure_id",
             "slot_id",
+            "serial_number",
             name=op.f("uq_pd_metrics_hourly_bucket_start"),
         ),
     )
@@ -204,6 +205,7 @@ def upgrade() -> None:
             "bucket_start",
             "enclosure_id",
             "slot_id",
+            "serial_number",
             name=op.f("uq_pd_metrics_daily_bucket_start"),
         ),
     )

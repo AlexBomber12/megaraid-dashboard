@@ -132,7 +132,7 @@ class CacheVaultSnapshot(TimestampedMixin, Base):
 
 class PhysicalDriveMetricsHourly(TimestampedMixin, Base):
     __tablename__ = "pd_metrics_hourly"
-    __table_args__ = (UniqueConstraint("bucket_start", "enclosure_id", "slot_id"),)
+    __table_args__ = (UniqueConstraint("bucket_start", "enclosure_id", "slot_id", "serial_number"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     bucket_start: Mapped[datetime] = mapped_column(UTCDateTime(), index=True, nullable=False)
@@ -151,7 +151,7 @@ class PhysicalDriveMetricsHourly(TimestampedMixin, Base):
 
 class PhysicalDriveMetricsDaily(TimestampedMixin, Base):
     __tablename__ = "pd_metrics_daily"
-    __table_args__ = (UniqueConstraint("bucket_start", "enclosure_id", "slot_id"),)
+    __table_args__ = (UniqueConstraint("bucket_start", "enclosure_id", "slot_id", "serial_number"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     bucket_start: Mapped[datetime] = mapped_column(UTCDateTime(), index=True, nullable=False)
