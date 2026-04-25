@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.db.models import (
@@ -166,33 +167,39 @@ def upsert_alert_sent(
     smtp_message_id: str | None = None,
     suppressed_until: datetime | None = None,
 ) -> AlertSent:
-    alert = get_alert_by_fingerprint(session, fingerprint)
     sent_at = datetime.now(UTC)
     normalized_suppressed_until = (
         _require_aware_utc(suppressed_until) if suppressed_until is not None else None
     )
-    if alert is None:
-        alert = AlertSent(
-            sent_at=sent_at,
-            severity=severity,
-            category=category,
-            subject=subject,
-            fingerprint=fingerprint,
-            recipient=recipient,
-            smtp_message_id=smtp_message_id,
-            suppressed_until=normalized_suppressed_until,
-        )
-        session.add(alert)
-    else:
-        alert.sent_at = sent_at
-        alert.severity = severity
-        alert.category = category
-        alert.subject = subject
-        alert.recipient = recipient
-        alert.smtp_message_id = smtp_message_id
-        alert.suppressed_until = normalized_suppressed_until
+    values = {
+        "sent_at": sent_at,
+        "severity": severity,
+        "category": category,
+        "subject": subject,
+        "fingerprint": fingerprint,
+        "recipient": recipient,
+        "smtp_message_id": smtp_message_id,
+        "suppressed_until": normalized_suppressed_until,
+    }
+    insert_statement = sqlite_insert(AlertSent).values(**values)
+    upsert_statement = insert_statement.on_conflict_do_update(
+        index_elements=[AlertSent.fingerprint],
+        set_={
+            "sent_at": insert_statement.excluded.sent_at,
+            "severity": insert_statement.excluded.severity,
+            "category": insert_statement.excluded.category,
+            "subject": insert_statement.excluded.subject,
+            "recipient": insert_statement.excluded.recipient,
+            "smtp_message_id": insert_statement.excluded.smtp_message_id,
+            "suppressed_until": insert_statement.excluded.suppressed_until,
+        },
+    ).returning(AlertSent.id)
 
-    session.flush()
+    alert_id = session.execute(upsert_statement).scalar_one()
+    alert = session.get(AlertSent, alert_id, populate_existing=True)
+    if alert is None:
+        msg = "alert upsert did not return a persisted row"
+        raise RuntimeError(msg)
     return alert
 
 

@@ -15,6 +15,7 @@ from megaraid_dashboard.db import (
     ControllerSnapshot,
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
+    get_sessionmaker,
     upsert_alert_sent,
 )
 
@@ -138,6 +139,46 @@ def test_alert_upsert_reuses_unique_fingerprint(session: Session) -> None:
     assert second.id == first.id
     assert second.smtp_message_id == "message-2"
     assert session.scalar(select(func.count()).select_from(AlertSent)) == 1
+
+
+def test_alert_upsert_handles_conflict_across_sessions(engine: Engine) -> None:
+    Base.metadata.create_all(engine)
+    session_factory = get_sessionmaker(engine)
+    suppressed_until = datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+    try:
+        with session_factory() as first_session:
+            upsert_alert_sent(
+                first_session,
+                severity="warning",
+                category="temperature",
+                subject="PD e252:s4",
+                fingerprint="fingerprint-2",
+                recipient="ops@example.test",
+            )
+            first_session.commit()
+
+        with session_factory() as second_session:
+            alert = upsert_alert_sent(
+                second_session,
+                severity="critical",
+                category="smart_alert",
+                subject="PD e252:s4",
+                fingerprint="fingerprint-2",
+                recipient="oncall@example.test",
+                smtp_message_id="message-2",
+                suppressed_until=suppressed_until,
+            )
+            second_session.commit()
+
+            assert alert.severity == "critical"
+            assert alert.recipient == "oncall@example.test"
+            assert alert.smtp_message_id == "message-2"
+            assert alert.suppressed_until == suppressed_until
+
+        with session_factory() as verification_session:
+            assert verification_session.scalar(select(func.count()).select_from(AlertSent)) == 1
+    finally:
+        Base.metadata.drop_all(engine)
 
 
 def test_naive_datetimes_are_rejected_at_insert_time(session: Session) -> None:
