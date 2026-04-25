@@ -46,7 +46,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _upgrade_database(database_url: str) -> None:
-    alembic_config = Config(str(_project_root() / "alembic.ini"))
+    alembic_config = _alembic_config()
     alembic_config.set_main_option("sqlalchemy.url", database_url)
     try:
         command.upgrade(alembic_config, "head")
@@ -54,6 +54,24 @@ def _upgrade_database(database_url: str) -> None:
         LOGGER.exception("database_migration_failed", database_url=database_url)
         msg = "database migration failed"
         raise RuntimeError(msg) from exc
+
+
+def _alembic_config() -> Config:
+    config_path, script_location = _alembic_paths()
+    alembic_config = Config(str(config_path))
+    alembic_config.set_main_option("script_location", str(script_location))
+    return alembic_config
+
+
+def _alembic_paths() -> tuple[Path, Path]:
+    source_root = _project_root()
+    source_config = source_root / "alembic.ini"
+    source_migrations = source_root / "migrations"
+    if source_config.exists() and source_migrations.exists():
+        return source_config, source_migrations
+
+    package_root = Path(__file__).resolve().parent
+    return package_root / "alembic.ini", package_root / "migrations"
 
 
 def _project_root() -> Path:

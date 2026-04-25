@@ -36,6 +36,10 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/megaraid_dashboard"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"alembic.ini" = "megaraid_dashboard/alembic.ini"
+"migrations" = "megaraid_dashboard/migrations"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

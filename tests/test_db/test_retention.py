@@ -16,10 +16,15 @@ from megaraid_dashboard.db.retention import (
 
 
 def test_downsample_to_hourly_writes_target_window_and_is_idempotent(session: Session) -> None:
-    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
-    target_bucket = now - timedelta(days=30, hours=2)
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    target_bucket = (now - timedelta(days=30)).replace(
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) - timedelta(hours=2)
     _seed_pd_snapshot(session, target_bucket.replace(minute=5), temperature=30)
     _seed_pd_snapshot(session, target_bucket.replace(minute=25), temperature=40)
+    _seed_pd_snapshot(session, now - timedelta(days=30), temperature=60)
     _seed_pd_snapshot(session, now - timedelta(days=29), temperature=50)
     _seed_pd_snapshot(session, now - timedelta(days=40), temperature=20)
     session.commit()
@@ -40,11 +45,17 @@ def test_downsample_to_hourly_writes_target_window_and_is_idempotent(session: Se
 
 def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
-    target_day = now - timedelta(days=365, hours=2)
+    target_day = (now - timedelta(days=365)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) - timedelta(days=1)
     session.add_all(
         [
             _hourly_metric(target_day.replace(hour=1), 30.0, sample_count=2),
             _hourly_metric(target_day.replace(hour=2), 40.0, sample_count=2),
+            _hourly_metric(now - timedelta(days=365), 60.0, sample_count=1),
             _hourly_metric(now - timedelta(days=364), 50.0, sample_count=1),
             _hourly_metric(now - timedelta(days=390), 20.0, sample_count=1),
         ]
