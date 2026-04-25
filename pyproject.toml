@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.24,<2.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "megaraid-dashboard"
+version = "0.1.0"
+description = "Web dashboard and email alerter for LSI MegaRAID controllers."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [{name = "Aleksei Ratnikov"}]
+dependencies = [
+  "fastapi>=0.110,<1.0",
+  "uvicorn[standard]>=0.27,<1.0",
+  "apscheduler>=3.10,<4.0",
+  "pydantic>=2.6,<3.0",
+  "pydantic-settings>=2.2,<3.0",
+  "jinja2>=3.1,<4.0",
+  "sqlalchemy>=2.0,<3.0",
+  "alembic>=1.13,<2.0",
+  "python-multipart>=0.0.9,<1.0",
+  "httpx>=0.27,<1.0",
+  "structlog>=24.1,<26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9.0",
+  "pytest-asyncio>=0.23,<2.0",
+  "pytest-cov>=5.0,<8.0",
+  "ruff>=0.4,<1.0",
+  "mypy>=1.9,<2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/megaraid_dashboard"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=src/megaraid_dashboard --cov-report=term-missing"
