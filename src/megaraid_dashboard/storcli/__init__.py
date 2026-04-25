@@ -5,6 +5,7 @@ from megaraid_dashboard.storcli.exceptions import (
     StorcliParseError,
 )
 from megaraid_dashboard.storcli.models import (
+    BbuInfo,
     CacheVault,
     ControllerInfo,
     PhysicalDrive,
@@ -22,6 +23,7 @@ from megaraid_dashboard.storcli.parser import (
 from megaraid_dashboard.storcli.runner import run_storcli
 
 __all__ = [
+    "BbuInfo",
     "CacheVault",
     "ControllerInfo",
     "PhysicalDrive",

@@ -250,6 +250,10 @@ class CacheVault(StorcliModel):
         return _parse_optional_datetime(value)
 
 
+class BbuInfo(StorcliModel):
+    response_data: dict[str, Any] = Field(alias="Response Data")
+
+
 class StorcliSnapshot(StorcliModel):
     controller: ControllerInfo
     virtual_drives: list[VirtualDrive]

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from megaraid_dashboard.storcli import (
+    BbuInfo,
     StorcliCommandFailed,
+    StorcliParseError,
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
@@ -88,9 +91,47 @@ def test_parse_bbu_failure_returns_none() -> None:
     assert parse_bbu(load_fixture("bbu_show_all.json")) is None
 
 
+def test_parse_bbu_success_validates_response_data() -> None:
+    bbu = parse_bbu(success_payload({"BBU_Info": [{"State": "Optimal"}]}))
+
+    assert isinstance(bbu, BbuInfo)
+    assert bbu.response_data == {"BBU_Info": [{"State": "Optimal"}]}
+
+
 def test_parse_bbu_raises_on_unexpected_failure() -> None:
     with pytest.raises(StorcliCommandFailed, match="controller busy"):
         parse_bbu(unexpected_failure_payload("controller busy"))
+
+
+@pytest.mark.parametrize(
+    "parser",
+    [
+        parse_controller_show_all,
+        parse_virtual_drives,
+        parse_physical_drives,
+        parse_cachevault,
+        parse_bbu,
+    ],
+)
+def test_successful_parsers_wrap_malformed_response_data(
+    parser: Callable[[dict[str, Any]], object],
+) -> None:
+    with pytest.raises(StorcliParseError):
+        parser(success_payload(None))
+
+
+def success_payload(response_data: Any) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Status": "Success",
+                    "Description": "None",
+                },
+                "Response Data": response_data,
+            }
+        ]
+    }
 
 
 def unexpected_failure_payload(err_msg: str) -> dict[str, Any]:

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from megaraid_dashboard.storcli.exceptions import StorcliCommandFailed, StorcliParseError
 from megaraid_dashboard.storcli.models import (
+    BbuInfo,
     CacheVault,
     ControllerInfo,
     PhysicalDrive,
@@ -16,9 +17,9 @@ from megaraid_dashboard.storcli.models import (
 
 def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
     controller = _ensure_success(payload)
-    response = _response_data(controller)
 
     try:
+        response = _response_data(controller)
         basics = _mapping(response["Basics"])
         version = _mapping(response["Version"])
         hwcfg = _mapping(response["HwCfg"])
@@ -38,9 +39,9 @@ def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
 
 def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
     controller = _ensure_success(payload)
-    response = _response_data(controller)
 
     try:
+        response = _response_data(controller)
         items = response.get("VD LIST")
         if not isinstance(items, list):
             items = [
@@ -58,9 +59,9 @@ def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
 
 def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:
     controller = _ensure_success(payload)
-    response = _response_data(controller)
 
     try:
+        response = _response_data(controller)
         physical_drives = [
             _parse_physical_drive(response, drive_key, drive_rows[0])
             for drive_key, drive_rows in _drive_rows(response)
@@ -78,8 +79,8 @@ def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
     if not _optional_command_succeeded(controller):
         return None
 
-    response = _response_data(controller)
     try:
+        response = _response_data(controller)
         data = _property_lists_to_mapping(response)
         if not data and isinstance(response.get("Cachevault_Info"), list):
             data = dict(_mapping(response["Cachevault_Info"][0]))
@@ -93,11 +94,16 @@ def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
         raise StorcliParseError("cachevault payload does not match expected schema") from exc
 
 
-def parse_bbu(payload: dict[str, Any]) -> Any | None:
+def parse_bbu(payload: dict[str, Any]) -> BbuInfo | None:
     controller = _first_controller(payload)
     if not _optional_command_succeeded(controller):
         return None
-    return _response_data(controller)
+
+    try:
+        response = _response_data(controller)
+        return BbuInfo.model_validate({"Response Data": response})
+    except (TypeError, ValidationError) as exc:
+        raise StorcliParseError("bbu payload does not match expected schema") from exc
 
 
 def _parse_physical_drive(
