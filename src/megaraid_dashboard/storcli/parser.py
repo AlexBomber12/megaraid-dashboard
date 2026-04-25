@@ -27,7 +27,7 @@ def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
             **version,
             "Alarm": hwcfg["Alarm"],
             "Cachevault_Info": response.get("Cachevault_Info", []),
-            "BBU": "No",
+            "BBU": hwcfg["BBU"],
         }
         return ControllerInfo.model_validate(data)
     except (KeyError, TypeError, ValidationError) as exc:
@@ -75,7 +75,7 @@ def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:
 
 def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
     controller = _first_controller(payload)
-    if _command_failed(controller):
+    if not _optional_command_succeeded(controller):
         return None
 
     response = _response_data(controller)
@@ -95,7 +95,7 @@ def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
 
 def parse_bbu(payload: dict[str, Any]) -> Any | None:
     controller = _first_controller(payload)
-    if _command_failed(controller):
+    if not _optional_command_succeeded(controller):
         return None
     return _response_data(controller)
 
@@ -153,6 +153,31 @@ def _ensure_success(payload: dict[str, Any]) -> Mapping[str, Any]:
         err_msg = _command_err_msg(controller)
         raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
     return controller
+
+
+def _optional_command_succeeded(controller: Mapping[str, Any]) -> bool:
+    if not _command_failed(controller):
+        return True
+
+    err_msg = _command_err_msg(controller)
+    if _is_unsupported_hardware_error(err_msg):
+        return False
+
+    raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
+
+
+def _is_unsupported_hardware_error(err_msg: str) -> bool:
+    normalized = err_msg.casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "use /cx/cv",
+            "use /cx/bbu",
+            "not supported",
+            "not present",
+            "does not exist",
+        )
+    )
 
 
 def _first_controller(payload: dict[str, Any]) -> Mapping[str, Any]:

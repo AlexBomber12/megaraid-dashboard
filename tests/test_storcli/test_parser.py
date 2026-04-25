@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from megaraid_dashboard.storcli import (
+    StorcliCommandFailed,
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
@@ -26,6 +29,7 @@ def test_parse_controller_show_all() -> None:
 
     assert "9270CV" in controller.model_name
     assert controller.serial_number == "SV00000001"
+    assert controller.bbu_present is True
 
 
 def test_parse_virtual_drives() -> None:
@@ -62,5 +66,29 @@ def test_parse_cachevault_from_bbu_failure_returns_none() -> None:
     assert parse_cachevault(load_fixture("bbu_show_all.json")) is None
 
 
+def test_parse_cachevault_raises_on_unexpected_failure() -> None:
+    with pytest.raises(StorcliCommandFailed, match="firmware fault"):
+        parse_cachevault(unexpected_failure_payload("firmware fault"))
+
+
 def test_parse_bbu_failure_returns_none() -> None:
     assert parse_bbu(load_fixture("bbu_show_all.json")) is None
+
+
+def test_parse_bbu_raises_on_unexpected_failure() -> None:
+    with pytest.raises(StorcliCommandFailed, match="controller busy"):
+        parse_bbu(unexpected_failure_payload("controller busy"))
+
+
+def unexpected_failure_payload(err_msg: str) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Status": "Failure",
+                    "Description": "None",
+                    "Detailed Status": [{"ErrMsg": err_msg}],
+                }
+            }
+        ]
+    }
