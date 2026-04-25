@@ -150,7 +150,7 @@ def prune_raw_snapshots(
     retention_days: int = 30,
 ) -> int:
     now = _require_aware_utc(now_utc)
-    cutoff = now - timedelta(days=retention_days)
+    cutoff = _hour_bucket(now - timedelta(days=retention_days))
     snapshot_ids = list(
         session.scalars(
             select(ControllerSnapshot.id).where(ControllerSnapshot.captured_at < cutoff)
@@ -170,7 +170,7 @@ def prune_hourly_metrics(
     retention_days: int = 365,
 ) -> int:
     now = _require_aware_utc(now_utc)
-    cutoff = now - timedelta(days=retention_days)
+    cutoff = _day_bucket(now - timedelta(days=retention_days))
     metric_ids = list(
         session.scalars(
             select(PhysicalDriveMetricsHourly.id).where(

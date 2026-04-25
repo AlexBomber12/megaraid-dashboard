@@ -74,8 +74,10 @@ def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -
 
 
 def test_prune_raw_snapshots_deletes_only_old_rows_and_cascades(session: Session) -> None:
-    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
-    _seed_pd_snapshot(session, now - timedelta(days=31), temperature=30)
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    cutoff_hour = (now - timedelta(days=30)).replace(minute=0, second=0, microsecond=0)
+    _seed_pd_snapshot(session, cutoff_hour - timedelta(minutes=1), temperature=30)
+    _seed_pd_snapshot(session, cutoff_hour + timedelta(minutes=5), temperature=35)
     _seed_pd_snapshot(session, now - timedelta(days=29), temperature=40)
     session.commit()
 
@@ -83,15 +85,22 @@ def test_prune_raw_snapshots_deletes_only_old_rows_and_cascades(session: Session
     session.commit()
 
     assert deleted == 1
-    assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 1
-    assert session.scalar(select(func.count()).select_from(PhysicalDriveSnapshot)) == 1
+    assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 2
+    assert session.scalar(select(func.count()).select_from(PhysicalDriveSnapshot)) == 2
 
 
 def test_prune_hourly_metrics_deletes_only_old_rows(session: Session) -> None:
-    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    cutoff_day = (now - timedelta(days=365)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
     session.add_all(
         [
-            _hourly_metric(now - timedelta(days=366), 30.0, sample_count=1),
+            _hourly_metric(cutoff_day - timedelta(hours=1), 30.0, sample_count=1),
+            _hourly_metric(cutoff_day + timedelta(hours=1), 35.0, sample_count=1),
             _hourly_metric(now - timedelta(days=364), 40.0, sample_count=1),
         ]
     )
@@ -101,7 +110,7 @@ def test_prune_hourly_metrics_deletes_only_old_rows(session: Session) -> None:
     session.commit()
 
     assert deleted == 1
-    assert session.scalar(select(func.count()).select_from(PhysicalDriveMetricsHourly)) == 1
+    assert session.scalar(select(func.count()).select_from(PhysicalDriveMetricsHourly)) == 2
 
 
 def _seed_pd_snapshot(session: Session, captured_at: datetime, *, temperature: int) -> None:
