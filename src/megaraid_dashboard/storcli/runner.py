@@ -53,7 +53,7 @@ async def run_storcli(
         exit_code=process.returncode,
     )
 
-    if _sudo_blocked(stderr_text):
+    if use_sudo and _sudo_blocked(stderr_text):
         raise StorcliNotAvailable(f"storcli sudo access is not available: {_tail(stderr_text)}")
     if process.returncode != 0:
         err_msg = _tail(stderr_text)

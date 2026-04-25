@@ -173,9 +173,6 @@ def _is_unsupported_hardware_error(err_msg: str) -> bool:
         for marker in (
             "use /cx/cv",
             "use /cx/bbu",
-            "not supported",
-            "not present",
-            "does not exist",
         )
     )
 

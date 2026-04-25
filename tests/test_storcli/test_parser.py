@@ -71,6 +71,19 @@ def test_parse_cachevault_raises_on_unexpected_failure() -> None:
         parse_cachevault(unexpected_failure_payload("firmware fault"))
 
 
+@pytest.mark.parametrize(
+    "err_msg",
+    [
+        "cachevault module not present",
+        "cachevault query not supported by firmware",
+        "controller path does not exist",
+    ],
+)
+def test_parse_cachevault_raises_on_generic_failure_markers(err_msg: str) -> None:
+    with pytest.raises(StorcliCommandFailed, match=err_msg):
+        parse_cachevault(unexpected_failure_payload(err_msg))
+
+
 def test_parse_bbu_failure_returns_none() -> None:
     assert parse_bbu(load_fixture("bbu_show_all.json")) is None
 
