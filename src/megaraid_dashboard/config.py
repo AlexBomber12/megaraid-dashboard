@@ -13,18 +13,18 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    alert_smtp_host: str = "smtp.protonmail.ch"
-    alert_smtp_port: int = 587
-    alert_smtp_user: str = "alert@alexbomber.com"
-    alert_smtp_password: str = "changeme-proton-smtp-token"
-    alert_from: str = "alert@alexbomber.com"
-    alert_to: str = "changeme@example.com"
+    alert_smtp_host: str = Field(...)
+    alert_smtp_port: int = Field(...)
+    alert_smtp_user: str = Field(...)
+    alert_smtp_password: str = Field(...)
+    alert_from: str = Field(...)
+    alert_to: str = Field(...)
     admin_username: str = Field(...)
     admin_password_hash: str = Field(...)
-    storcli_path: str = "/usr/local/sbin/storcli64"
-    metrics_interval_seconds: int = 300
-    database_url: str = "sqlite:///./megaraid.db"
-    log_level: str = "INFO"
+    storcli_path: str = Field(...)
+    metrics_interval_seconds: int = Field(...)
+    database_url: str = Field(...)
+    log_level: str = Field(...)
 
 
 @lru_cache

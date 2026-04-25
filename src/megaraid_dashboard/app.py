@@ -4,6 +4,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
 from megaraid_dashboard import __version__
+from megaraid_dashboard.config import get_settings
 
 router = APIRouter()
 
@@ -23,5 +24,6 @@ async def index() -> HTMLResponse:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="MegaRAID Dashboard")
+    app.state.settings = get_settings()
     app.include_router(router)
     return app
