@@ -9,6 +9,8 @@ from alembic import command
 from alembic.config import Config
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 from megaraid_dashboard import __version__
 from megaraid_dashboard.config import get_settings
@@ -51,7 +53,10 @@ def _upgrade_database(database_url: str) -> None:
     try:
         command.upgrade(alembic_config, "head")
     except Exception as exc:
-        LOGGER.exception("database_migration_failed", database_url=database_url)
+        LOGGER.exception(
+            "database_migration_failed",
+            database_url=_redacted_database_url(database_url),
+        )
         msg = "database migration failed"
         raise RuntimeError(msg) from exc
 
@@ -76,3 +81,10 @@ def _alembic_paths() -> tuple[Path, Path]:
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _redacted_database_url(database_url: str) -> str:
+    try:
+        return make_url(database_url).render_as_string(hide_password=True)
+    except ArgumentError:
+        return "<invalid database url>"

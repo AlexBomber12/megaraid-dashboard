@@ -70,17 +70,24 @@ class _HourlyMetricsAccumulator:
             self.temperature_mins.append(metrics.temperature_celsius_min)
         if metrics.temperature_celsius_max is not None:
             self.temperature_maxes.append(metrics.temperature_celsius_max)
-        if metrics.temperature_celsius_avg is not None and metrics.sample_count > 0:
-            self.temperature_weighted_sum += metrics.temperature_celsius_avg * metrics.sample_count
-            self.temperature_sample_count += metrics.sample_count
+        if metrics.temperature_celsius_avg is not None and metrics.temperature_sample_count > 0:
+            self.temperature_weighted_sum += (
+                metrics.temperature_celsius_avg * metrics.temperature_sample_count
+            )
+            self.temperature_sample_count += metrics.temperature_sample_count
         if metrics.bucket_start >= self.latest_seen_at:
             self.latest_seen_at = metrics.bucket_start
             self.serial_number = metrics.serial_number
 
 
-def downsample_to_hourly(session: Session, *, now_utc: datetime) -> int:
+def downsample_to_hourly(
+    session: Session,
+    *,
+    now_utc: datetime,
+    retention_days: int = 30,
+) -> int:
     now = _require_aware_utc(now_utc)
-    window_end = _hour_bucket(now - timedelta(days=30))
+    window_end = _hour_bucket(now - timedelta(days=retention_days))
     buckets: dict[tuple[datetime, int, int], _RawMetricsAccumulator] = {}
 
     rows = session.execute(
@@ -109,9 +116,14 @@ def downsample_to_hourly(session: Session, *, now_utc: datetime) -> int:
     return len(buckets)
 
 
-def downsample_to_daily(session: Session, *, now_utc: datetime) -> int:
+def downsample_to_daily(
+    session: Session,
+    *,
+    now_utc: datetime,
+    retention_days: int = 365,
+) -> int:
     now = _require_aware_utc(now_utc)
-    window_end = _day_bucket(now - timedelta(days=365))
+    window_end = _day_bucket(now - timedelta(days=retention_days))
     buckets: dict[tuple[datetime, int, int], _HourlyMetricsAccumulator] = {}
 
     rows = session.scalars(
@@ -204,6 +216,7 @@ def _upsert_hourly(session: Session, accumulator: _RawMetricsAccumulator) -> Non
             temperature_celsius_min=temperature_min,
             temperature_celsius_max=temperature_max,
             temperature_celsius_avg=temperature_avg,
+            temperature_sample_count=len(accumulator.temperatures),
             media_errors_max=accumulator.media_errors_max,
             other_errors_max=accumulator.other_errors_max,
             predictive_failures_max=accumulator.predictive_failures_max,
@@ -216,6 +229,7 @@ def _upsert_hourly(session: Session, accumulator: _RawMetricsAccumulator) -> Non
     metrics.temperature_celsius_min = temperature_min
     metrics.temperature_celsius_max = temperature_max
     metrics.temperature_celsius_avg = temperature_avg
+    metrics.temperature_sample_count = len(accumulator.temperatures)
     metrics.media_errors_max = accumulator.media_errors_max
     metrics.other_errors_max = accumulator.other_errors_max
     metrics.predictive_failures_max = accumulator.predictive_failures_max
@@ -246,6 +260,7 @@ def _upsert_daily(session: Session, accumulator: _HourlyMetricsAccumulator) -> N
             temperature_celsius_min=temperature_min,
             temperature_celsius_max=temperature_max,
             temperature_celsius_avg=temperature_avg,
+            temperature_sample_count=accumulator.temperature_sample_count,
             media_errors_max=accumulator.media_errors_max,
             other_errors_max=accumulator.other_errors_max,
             predictive_failures_max=accumulator.predictive_failures_max,
@@ -258,6 +273,7 @@ def _upsert_daily(session: Session, accumulator: _HourlyMetricsAccumulator) -> N
     metrics.temperature_celsius_min = temperature_min
     metrics.temperature_celsius_max = temperature_max
     metrics.temperature_celsius_avg = temperature_avg
+    metrics.temperature_sample_count = accumulator.temperature_sample_count
     metrics.media_errors_max = accumulator.media_errors_max
     metrics.other_errors_max = accumulator.other_errors_max
     metrics.predictive_failures_max = accumulator.predictive_failures_max

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,7 @@ def test_downsample_to_hourly_writes_target_window_and_is_idempotent(session: Se
     ) - timedelta(hours=2)
     _seed_pd_snapshot(session, target_bucket.replace(minute=5), temperature=30)
     _seed_pd_snapshot(session, target_bucket.replace(minute=25), temperature=40)
+    _seed_pd_snapshot(session, target_bucket.replace(minute=45), temperature=None)
     _seed_pd_snapshot(session, now - timedelta(days=30), temperature=60)
     _seed_pd_snapshot(session, now - timedelta(days=29), temperature=50)
     _seed_pd_snapshot(session, now - timedelta(days=40), temperature=20)
@@ -41,9 +43,27 @@ def test_downsample_to_hourly_writes_target_window_and_is_idempotent(session: Se
     assert metrics_by_bucket[target_bucket].temperature_celsius_min == 30
     assert metrics_by_bucket[target_bucket].temperature_celsius_max == 40
     assert metrics_by_bucket[target_bucket].temperature_celsius_avg == 35
-    assert metrics_by_bucket[target_bucket].sample_count == 2
+    assert metrics_by_bucket[target_bucket].temperature_sample_count == 2
+    assert metrics_by_bucket[target_bucket].sample_count == 3
     assert metrics_by_bucket[old_bucket].temperature_celsius_avg == 20
+    assert metrics_by_bucket[old_bucket].temperature_sample_count == 1
     assert metrics_by_bucket[old_bucket].sample_count == 1
+
+
+def test_downsample_to_hourly_uses_configurable_retention(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    cutoff_hour = (now - timedelta(days=7)).replace(minute=0, second=0, microsecond=0)
+    _seed_pd_snapshot(session, cutoff_hour - timedelta(minutes=5), temperature=30)
+    _seed_pd_snapshot(session, cutoff_hour + timedelta(minutes=5), temperature=40)
+    session.commit()
+
+    written = downsample_to_hourly(session, now_utc=now, retention_days=7)
+    session.commit()
+
+    metrics = session.scalars(select(PhysicalDriveMetricsHourly)).all()
+    assert written == 1
+    assert len(metrics) == 1
+    assert metrics[0].bucket_start == cutoff_hour - timedelta(hours=1)
 
 
 def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -> None:
@@ -56,8 +76,18 @@ def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -
     ) - timedelta(days=1)
     session.add_all(
         [
-            _hourly_metric(target_day.replace(hour=1), 30.0, sample_count=2),
-            _hourly_metric(target_day.replace(hour=2), 40.0, sample_count=2),
+            _hourly_metric(
+                target_day.replace(hour=1),
+                30.0,
+                sample_count=3,
+                temperature_sample_count=1,
+            ),
+            _hourly_metric(
+                target_day.replace(hour=2),
+                40.0,
+                sample_count=2,
+                temperature_sample_count=2,
+            ),
             _hourly_metric(now - timedelta(days=365), 60.0, sample_count=1),
             _hourly_metric(now - timedelta(days=364), 50.0, sample_count=1),
             _hourly_metric(now - timedelta(days=390), 20.0, sample_count=1),
@@ -73,10 +103,37 @@ def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -
     old_day = (now - timedelta(days=390)).replace(hour=0, minute=0, second=0, microsecond=0)
     assert written == 2
     assert len(metrics) == 2
-    assert metrics_by_bucket[target_day].temperature_celsius_avg == 35
-    assert metrics_by_bucket[target_day].sample_count == 4
+    assert metrics_by_bucket[target_day].temperature_celsius_avg == pytest.approx(110 / 3)
+    assert metrics_by_bucket[target_day].temperature_sample_count == 3
+    assert metrics_by_bucket[target_day].sample_count == 5
     assert metrics_by_bucket[old_day].temperature_celsius_avg == 20
+    assert metrics_by_bucket[old_day].temperature_sample_count == 1
     assert metrics_by_bucket[old_day].sample_count == 1
+
+
+def test_downsample_to_daily_uses_configurable_retention(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 34, tzinfo=UTC)
+    cutoff_day = (now - timedelta(days=7)).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    session.add_all(
+        [
+            _hourly_metric(cutoff_day - timedelta(hours=1), 30.0, sample_count=1),
+            _hourly_metric(cutoff_day + timedelta(hours=1), 40.0, sample_count=1),
+        ]
+    )
+    session.commit()
+
+    written = downsample_to_daily(session, now_utc=now, retention_days=7)
+    session.commit()
+
+    metrics = session.scalars(select(PhysicalDriveMetricsDaily)).all()
+    assert written == 1
+    assert len(metrics) == 1
+    assert metrics[0].bucket_start == cutoff_day - timedelta(days=1)
 
 
 def test_prune_raw_snapshots_deletes_only_old_rows_and_cascades(session: Session) -> None:
@@ -119,7 +176,12 @@ def test_prune_hourly_metrics_deletes_only_old_rows(session: Session) -> None:
     assert session.scalar(select(func.count()).select_from(PhysicalDriveMetricsHourly)) == 2
 
 
-def _seed_pd_snapshot(session: Session, captured_at: datetime, *, temperature: int) -> None:
+def _seed_pd_snapshot(
+    session: Session,
+    captured_at: datetime,
+    *,
+    temperature: int | None,
+) -> None:
     snapshot = ControllerSnapshot(
         captured_at=captured_at,
         model_name="LSI MegaRAID SAS 9270CV-8i",
@@ -159,7 +221,11 @@ def _hourly_metric(
     temperature_avg: float,
     *,
     sample_count: int,
+    temperature_sample_count: int | None = None,
 ) -> PhysicalDriveMetricsHourly:
+    resolved_temperature_sample_count = (
+        sample_count if temperature_sample_count is None else temperature_sample_count
+    )
     return PhysicalDriveMetricsHourly(
         bucket_start=bucket_start.replace(minute=0, second=0, microsecond=0),
         enclosure_id=252,
@@ -168,6 +234,7 @@ def _hourly_metric(
         temperature_celsius_min=int(temperature_avg),
         temperature_celsius_max=int(temperature_avg),
         temperature_celsius_avg=temperature_avg,
+        temperature_sample_count=resolved_temperature_sample_count,
         media_errors_max=1,
         other_errors_max=2,
         predictive_failures_max=3,

@@ -25,3 +25,10 @@ def test_alembic_paths_fall_back_to_packaged_files(monkeypatch: pytest.MonkeyPat
     package_root = Path(app.__file__).resolve().parent
     assert config_path == package_root / "alembic.ini"
     assert script_location == package_root / "migrations"
+
+
+def test_redacted_database_url_hides_password() -> None:
+    redacted_url = app._redacted_database_url("postgresql://user:secret@example.test/db")
+
+    assert "secret" not in redacted_url
+    assert redacted_url == "postgresql://user:***@example.test/db"
