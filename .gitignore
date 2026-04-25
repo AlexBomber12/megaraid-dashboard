@@ -34,3 +34,4 @@ alembic/versions/__pycache__/
 
 .codex/
 .claude/
+tests/fixtures/storcli/raw/

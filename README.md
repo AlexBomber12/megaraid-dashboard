@@ -50,9 +50,30 @@ pytest
 |       |-- __init__.py
 |       |-- __main__.py
 |       |-- app.py
-|       `-- config.py
+|       |-- config.py
+|       `-- storcli/
+|           |-- __init__.py
+|           |-- exceptions.py
+|           |-- models.py
+|           |-- parser.py
+|           `-- runner.py
 |-- tests/
+|   |-- fixtures/
+|   |   `-- storcli/
+|   |       |-- redact.py
+|   |       `-- redacted/
+|   |           |-- bbu_show_all.json
+|   |           |-- c0_show_all.json
+|   |           |-- cv_show_all.json
+|   |           |-- eall_sall_show_all.json
+|   |           `-- vall_show_all.json
+|   |-- test_storcli/
+|   |   |-- __init__.py
+|   |   |-- test_parser.py
+|   |   |-- test_redactor.py
+|   |   `-- test_runner.py
 |   |-- __init__.py
+|   |-- test_config.py
 |   `-- test_smoke.py
 |-- .env.example
 |-- .gitignore
@@ -65,8 +86,8 @@ pytest
 
 ## Roadmap
 
-1. Skeleton and CI.
-2. `storcli` wrapper with JSON parsing and pydantic models.
+1. [x] Skeleton and CI.
+2. [ ] `storcli` wrapper with JSON parsing and pydantic models. (in progress)
 3. SQLite schema and migrations.
 4. Background metrics collector.
 5. Read-only web dashboard.
