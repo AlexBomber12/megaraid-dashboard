@@ -81,14 +81,12 @@ class _HourlyMetricsAccumulator:
 def downsample_to_hourly(session: Session, *, now_utc: datetime) -> int:
     now = _require_aware_utc(now_utc)
     window_end = _hour_bucket(now - timedelta(days=30))
-    window_start = window_end - timedelta(days=1)
     buckets: dict[tuple[datetime, int, int], _RawMetricsAccumulator] = {}
 
     rows = session.execute(
         select(PhysicalDriveSnapshot, ControllerSnapshot.captured_at)
         .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
         .where(ControllerSnapshot.captured_at < window_end)
-        .where(ControllerSnapshot.captured_at >= window_start)
     )
     for drive, captured_at in rows:
         bucket_start = _hour_bucket(captured_at)
@@ -114,13 +112,12 @@ def downsample_to_hourly(session: Session, *, now_utc: datetime) -> int:
 def downsample_to_daily(session: Session, *, now_utc: datetime) -> int:
     now = _require_aware_utc(now_utc)
     window_end = _day_bucket(now - timedelta(days=365))
-    window_start = window_end - timedelta(days=1)
     buckets: dict[tuple[datetime, int, int], _HourlyMetricsAccumulator] = {}
 
     rows = session.scalars(
-        select(PhysicalDriveMetricsHourly)
-        .where(PhysicalDriveMetricsHourly.bucket_start < window_end)
-        .where(PhysicalDriveMetricsHourly.bucket_start >= window_start)
+        select(PhysicalDriveMetricsHourly).where(
+            PhysicalDriveMetricsHourly.bucket_start < window_end
+        )
     )
     for metrics in rows:
         bucket_start = _day_bucket(metrics.bucket_start)

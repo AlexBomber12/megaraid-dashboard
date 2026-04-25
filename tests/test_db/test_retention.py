@@ -34,13 +34,16 @@ def test_downsample_to_hourly_writes_target_window_and_is_idempotent(session: Se
     session.commit()
 
     metrics = session.scalars(select(PhysicalDriveMetricsHourly)).all()
-    assert written == 1
-    assert len(metrics) == 1
-    assert metrics[0].bucket_start == target_bucket.replace(minute=0, second=0, microsecond=0)
-    assert metrics[0].temperature_celsius_min == 30
-    assert metrics[0].temperature_celsius_max == 40
-    assert metrics[0].temperature_celsius_avg == 35
-    assert metrics[0].sample_count == 2
+    metrics_by_bucket = {metrics_row.bucket_start: metrics_row for metrics_row in metrics}
+    old_bucket = (now - timedelta(days=40)).replace(minute=0, second=0, microsecond=0)
+    assert written == 2
+    assert len(metrics) == 2
+    assert metrics_by_bucket[target_bucket].temperature_celsius_min == 30
+    assert metrics_by_bucket[target_bucket].temperature_celsius_max == 40
+    assert metrics_by_bucket[target_bucket].temperature_celsius_avg == 35
+    assert metrics_by_bucket[target_bucket].sample_count == 2
+    assert metrics_by_bucket[old_bucket].temperature_celsius_avg == 20
+    assert metrics_by_bucket[old_bucket].sample_count == 1
 
 
 def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -> None:
@@ -66,11 +69,14 @@ def test_downsample_to_daily_writes_days_older_than_one_year(session: Session) -
     session.commit()
 
     metrics = session.scalars(select(PhysicalDriveMetricsDaily)).all()
-    assert written == 1
-    assert len(metrics) == 1
-    assert metrics[0].bucket_start == target_day.replace(hour=0, minute=0, second=0, microsecond=0)
-    assert metrics[0].temperature_celsius_avg == 35
-    assert metrics[0].sample_count == 4
+    metrics_by_bucket = {metrics_row.bucket_start: metrics_row for metrics_row in metrics}
+    old_day = (now - timedelta(days=390)).replace(hour=0, minute=0, second=0, microsecond=0)
+    assert written == 2
+    assert len(metrics) == 2
+    assert metrics_by_bucket[target_day].temperature_celsius_avg == 35
+    assert metrics_by_bucket[target_day].sample_count == 4
+    assert metrics_by_bucket[old_day].temperature_celsius_avg == 20
+    assert metrics_by_bucket[old_day].sample_count == 1
 
 
 def test_prune_raw_snapshots_deletes_only_old_rows_and_cascades(session: Session) -> None:
