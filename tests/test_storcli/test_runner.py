@@ -95,6 +95,22 @@ async def test_sudo_permission_denied_raises_not_available(
 
 
 @pytest.mark.asyncio
+async def test_sudo_storcli_permission_denied_raises_command_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_create_subprocess_exec(
+        *_argv: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        return FakeProcess(b"", b"storcli: permission denied by device", 1)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    with pytest.raises(StorcliCommandFailed, match="permission denied by device"):
+        await run_storcli(["/c0", "show"], use_sudo=True, binary_path="storcli64")
+
+
+@pytest.mark.asyncio
 async def test_invalid_json_raises_parse_error(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_create_subprocess_exec(
         *_argv: str,

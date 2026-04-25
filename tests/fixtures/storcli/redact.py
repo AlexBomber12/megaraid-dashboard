@@ -98,7 +98,7 @@ def _redact_string(value: str, *, key: str | None) -> str:
 
 
 def _drive_serial_mapping(payloads: list[dict[str, Any]]) -> dict[str, str]:
-    discovered: dict[tuple[int, int], str] = {}
+    discovered: set[tuple[int, int, str]] = set()
     for payload in payloads:
         for response in _responses(payload):
             for drive_key, drive_rows in _drive_rows(response):
@@ -118,13 +118,13 @@ def _drive_serial_mapping(payloads: list[dict[str, Any]]) -> dict[str, str]:
                 if not isinstance(attributes, dict):
                     continue
                 serial = attributes.get("SN")
-                if isinstance(serial, str):
-                    discovered[(enclosure_id, slot_id)] = serial.strip()
+                if isinstance(serial, str) and serial.strip():
+                    discovered.add((enclosure_id, slot_id, serial.strip()))
 
-    return {
-        serial: f"WD-WM{index:08d}"
-        for index, (_slot, serial) in enumerate(sorted(discovered.items()), start=1)
-    }
+    redacted_serials: dict[str, str] = {}
+    for index, (_enclosure_id, _slot_id, serial) in enumerate(sorted(discovered), start=1):
+        redacted_serials.setdefault(serial, f"WD-WM{index:08d}")
+    return redacted_serials
 
 
 def _sas_address_mapping(payloads: list[dict[str, Any]]) -> dict[str, str]:

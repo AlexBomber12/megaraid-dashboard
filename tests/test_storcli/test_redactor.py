@@ -71,3 +71,31 @@ def test_redactor_replaces_known_sensitive_shapes(tmp_path: Path) -> None:
     assert "192.168.50.2" not in redacted
     assert "storage-host" not in redacted
     assert "2.05.00.00-0010" in redacted
+
+
+def test_redactor_keeps_all_serials_seen_for_same_slot(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    output_dir = tmp_path / "output"
+    source_dir.mkdir()
+    for index, serial in enumerate(("WD-OLD-SERIAL", "WD-NEW-SERIAL"), start=1):
+        payload = {
+            "Controllers": [
+                {
+                    "Response Data": {
+                        "Drive /c0/e252/s0": [{"EID:Slt": "252:0"}],
+                        "Drive /c0/e252/s0 - Detailed Information": {
+                            "Drive /c0/e252/s0 Device attributes": {"SN": serial}
+                        },
+                    }
+                }
+            ]
+        }
+        (source_dir / f"snapshot_{index}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    redact.redact_directory(source_dir, output_dir)
+
+    redacted = "\n".join(path.read_text(encoding="utf-8") for path in output_dir.glob("*.json"))
+    assert "WD-WM00000001" in redacted
+    assert "WD-WM00000002" in redacted
+    assert "WD-OLD-SERIAL" not in redacted
+    assert "WD-NEW-SERIAL" not in redacted

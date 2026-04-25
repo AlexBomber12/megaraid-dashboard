@@ -81,7 +81,6 @@ def _sudo_blocked(stderr_text: str) -> bool:
             "a password is required",
             "a terminal is required",
             "not in the sudoers",
-            "permission denied",
         )
     )
 
