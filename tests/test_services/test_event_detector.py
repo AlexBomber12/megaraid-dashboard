@@ -253,6 +253,29 @@ def test_replacement_drive_failed_state_still_emits_critical_event() -> None:
     ]
 
 
+def test_replacement_drive_state_change_emits_baseline_counter_events() -> None:
+    events = _detector().detect(
+        _previous(serial_number="OLD-SN", pd_state="Failed"),
+        _current(
+            serial_number="NEW-SN",
+            pd_state="Onln",
+            media_errors=5,
+            predictive_failures=1,
+        ),
+    )
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("info", "pd_state", "Drive replaced: OLD-SN -> NEW-SN"),
+        ("info", "pd_state", "PD e252:s4 state changed from Failed to Onln"),
+        ("critical", "media_errors", "Media error count is 5"),
+        ("critical", "predictive_failures", "Predictive failure count is 1"),
+    ]
+    assert events[2].before is None
+    assert events[2].after == {"media_errors": 5}
+    assert events[3].before is None
+    assert events[3].after == {"predictive_failures": 1}
+
+
 def test_slot_disappearance_clears_temperature_state(session: Session) -> None:
     upsert_temp_state(
         session,

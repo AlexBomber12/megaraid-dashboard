@@ -242,6 +242,7 @@ class EventDetector:
             if slot_key in replaced_slots:
                 if previous_drive.state != current_drive.state:
                     events.append(_physical_drive_state_event(previous_drive, current_drive))
+                    events.extend(_new_counter_events(current_drive))
                     if current_drive.smart_alert:
                         events.append(_smart_alert_event(None, current_drive))
                 else:
