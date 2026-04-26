@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -49,6 +50,9 @@ class CollectorService:
         self.session_factory = session_factory
         self.event_detector = event_detector
         self.clock = clock
+        self._active_jobs: set[asyncio.Task[Any]] = set()
+        self._active_jobs_idle = asyncio.Event()
+        self._active_jobs_idle.set()
 
     async def run_once(self) -> None:
         try:
@@ -154,7 +158,7 @@ class CollectorService:
     async def start(self) -> AsyncIOScheduler:
         scheduler = AsyncIOScheduler(timezone=UTC)
         scheduler.add_job(
-            self.run_once,
+            self._run_once_job,
             "interval",
             seconds=self.settings.metrics_interval_seconds,
             id="metrics_collector",
@@ -164,7 +168,7 @@ class CollectorService:
             max_instances=1,
         )
         scheduler.add_job(
-            self.run_retention_once,
+            self._run_retention_job,
             "cron",
             hour=3,
             minute=30,
@@ -179,8 +183,39 @@ class CollectorService:
         return scheduler
 
     async def shutdown(self, scheduler: AsyncIOScheduler) -> None:
+        if scheduler.running:
+            scheduler.pause()
+            await asyncio.sleep(0)
+        await self._wait_for_active_jobs()
+        if not scheduler.running:
+            return
         scheduler.shutdown(wait=False)
         await asyncio.sleep(0)
+
+    async def _run_once_job(self) -> None:
+        await self._run_tracked_job(self.run_once)
+
+    async def _run_retention_job(self) -> None:
+        await self._run_tracked_job(self.run_retention_once)
+
+    async def _run_tracked_job(self, job: Callable[[], Awaitable[None]]) -> None:
+        task = asyncio.current_task()
+        if task is None:
+            await job()
+            return
+
+        self._active_jobs_idle.clear()
+        self._active_jobs.add(task)
+        try:
+            await job()
+        finally:
+            self._active_jobs.discard(task)
+            if not self._active_jobs:
+                self._active_jobs_idle.set()
+
+    async def _wait_for_active_jobs(self) -> None:
+        while self._active_jobs:
+            await self._active_jobs_idle.wait()
 
     def _record_collection_failure(self, exc: BaseException) -> None:
         try:

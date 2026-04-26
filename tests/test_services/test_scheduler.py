@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -173,6 +174,38 @@ async def test_start_registers_jobs_and_shutdown_stops_scheduler(
     finally:
         await service.shutdown(scheduler)
 
+    assert scheduler.running is False
+
+
+async def test_shutdown_waits_for_running_jobs(
+    service_session_factory: sessionmaker[Session],
+) -> None:
+    service = _service(service_session_factory)
+    scheduler = await service.start()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    finished = False
+
+    async def slow_job() -> None:
+        nonlocal finished
+        started.set()
+        await release.wait()
+        finished = True
+
+    tracked_job = asyncio.create_task(service._run_tracked_job(slow_job))
+    await started.wait()
+
+    shutdown = asyncio.create_task(service.shutdown(scheduler))
+    await asyncio.sleep(0)
+
+    assert shutdown.done() is False
+    assert finished is False
+
+    release.set()
+    await shutdown
+    await tracked_job
+
+    assert finished is True
     assert scheduler.running is False
 
 
