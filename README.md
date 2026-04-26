@@ -29,6 +29,8 @@ pip install -e ".[dev]"
 python -m megaraid_dashboard
 ```
 
+The local development UI is served at <http://127.0.0.1:8090/>.
+
 ## Development
 
 ```bash
@@ -62,6 +64,48 @@ Physical drive temperature warning, critical, and hysteresis thresholds default 
 60 C, and 5 C. Configure them with `TEMP_WARNING_CELSIUS`, `TEMP_CRITICAL_CELSIUS`, and
 `TEMP_HYSTERESIS_CELSIUS`.
 
+## Web UI
+
+The read-only server-side rendered UI has no frontend build step and no npm dependency.
+Routes:
+
+- `/` renders the Overview page with the latest controller, virtual drive, CacheVault,
+  and physical drive snapshot.
+- `/partials/overview` renders only the Overview data block used by HTMX refreshes.
+- `/drives` is a placeholder route that currently redirects to `/`.
+- `/events` renders a Coming soon empty state.
+- `/health` returns the health JSON used by smoke checks.
+
+Static assets are mounted separately at `/static` with far-future cache headers:
+
+- `src/megaraid_dashboard/static/css/app.css` contains the vanilla CSS.
+- `src/megaraid_dashboard/static/vendor/htmx.min.js` vendors HTMX 2.0.x from the
+  official release. The file is local, so CDN loading and SRI are deliberately not used.
+
+## Reverse Proxy
+
+The UI supports deployment behind a path prefix such as
+`https://server.alexbomber.com/raid/`. An ASGI middleware reads `X-Forwarded-Prefix`
+and assigns it to `scope["root_path"]` before FastAPI handles the request. Templates
+generate links and static asset paths through `request.url_for`, so they render with
+`/raid` in production and without a prefix locally. FastAPI keeps its default trailing
+slash behavior.
+
+Example nginx location:
+
+```nginx
+location /raid/ {
+    proxy_pass http://127.0.0.1:8090/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Prefix /raid;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+}
+```
+
+The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-supplied
+`X-Forwarded-Prefix` value and sets the trusted prefix server-side.
+
 ## Project Layout
 
 ```text
@@ -91,13 +135,33 @@ Physical drive temperature warning, critical, and hysteresis thresholds default 
 |       |   |-- __init__.py
 |       |   |-- collector.py
 |       |   |-- event_detector.py
+|       |   |-- overview.py
 |       |   `-- scheduler.py
-|       `-- storcli/
+|       |-- static/
+|       |   |-- css/
+|       |   |   `-- app.css
+|       |   `-- vendor/
+|       |       `-- htmx.min.js
+|       |-- storcli/
+|       |   |-- __init__.py
+|       |   |-- exceptions.py
+|       |   |-- models.py
+|       |   |-- parser.py
+|       |   `-- runner.py
+|       |-- templates/
+|       |   |-- layouts/
+|       |   |   `-- base.html
+|       |   |-- pages/
+|       |   |   |-- events.html
+|       |   |   `-- overview.html
+|       |   `-- partials/
+|       |       `-- overview_data.html
+|       `-- web/
 |           |-- __init__.py
-|           |-- exceptions.py
-|           |-- models.py
-|           |-- parser.py
-|           `-- runner.py
+|           |-- middleware.py
+|           |-- routes.py
+|           |-- static.py
+|           `-- templates.py
 |-- tests/
 |   |-- fixtures/
 |   |   `-- storcli/
@@ -118,12 +182,16 @@ Physical drive temperature warning, critical, and hysteresis thresholds default 
 |   |   |-- __init__.py
 |   |   |-- test_collector.py
 |   |   |-- test_event_detector.py
+|   |   |-- test_overview.py
 |   |   `-- test_scheduler.py
 |   |-- test_storcli/
 |   |   |-- __init__.py
 |   |   |-- test_parser.py
 |   |   |-- test_redactor.py
 |   |   `-- test_runner.py
+|   |-- test_web/
+|   |   |-- test_routes.py
+|   |   `-- test_templates.py
 |   |-- __init__.py
 |   |-- conftest.py
 |   |-- test_config.py
