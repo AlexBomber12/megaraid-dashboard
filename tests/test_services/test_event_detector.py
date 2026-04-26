@@ -396,6 +396,41 @@ def test_cachevault_replacement_required_emits_critical_event() -> None:
     ]
 
 
+def test_cachevault_disappearance_emits_critical_event() -> None:
+    current = _current().model_copy(update={"cachevault": None})
+
+    events = _detector().detect(_previous(cv_state="Optimal"), current)
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("critical", "cv_state", "CacheVault no longer detected")
+    ]
+    assert events[0].before == {"present": True, "state": "Optimal"}
+    assert events[0].after == {"present": False}
+
+
+def test_cachevault_appearance_emits_presence_and_baseline_health_events() -> None:
+    previous = _previous()
+    previous.cachevault = None
+
+    events = _detector().detect(
+        previous,
+        _current(
+            cv_state="Degraded",
+            cv_replacement_required=True,
+            cv_capacitance_percent=65,
+        ),
+    )
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("info", "cv_state", "CacheVault detected"),
+        ("critical", "cv_state", "CacheVault state is Degraded"),
+        ("critical", "cv_state", "CacheVault replacement required"),
+        ("warning", "cv_state", "CacheVault capacitance below 70%: 65%"),
+    ]
+    assert events[0].before == {"present": False}
+    assert events[0].after == {"present": True, "state": "Degraded"}
+
+
 def test_cachevault_capacitance_crossing_threshold_warns_once() -> None:
     detector = _detector()
 

@@ -376,37 +376,63 @@ class EventDetector:
         previous: ControllerSnapshot,
         current: StorcliSnapshot,
     ) -> list[DetectedEvent]:
-        if previous.cachevault is None or current.cachevault is None:
-            return []
-
         events: list[DetectedEvent] = []
-        if previous.cachevault.state != current.cachevault.state:
+        previous_cachevault = previous.cachevault
+        current_cachevault = current.cachevault
+        if previous_cachevault is None:
+            if current_cachevault is None:
+                return []
             events.append(
                 DetectedEvent(
-                    severity=_cachevault_state_severity(current.cachevault.state),
+                    severity="info",
+                    category="cv_state",
+                    subject="CacheVault",
+                    summary="CacheVault detected",
+                    before={"present": False},
+                    after={"present": True, "state": current_cachevault.state},
+                )
+            )
+            events.extend(self._new_cachevault_events(current_cachevault))
+            return events
+        if current_cachevault is None:
+            return [
+                DetectedEvent(
+                    severity="critical",
+                    category="cv_state",
+                    subject="CacheVault",
+                    summary="CacheVault no longer detected",
+                    before={"present": True, "state": previous_cachevault.state},
+                    after={"present": False},
+                )
+            ]
+
+        if previous_cachevault.state != current_cachevault.state:
+            events.append(
+                DetectedEvent(
+                    severity=_cachevault_state_severity(current_cachevault.state),
                     category="cv_state",
                     subject="CacheVault",
                     summary=(
                         "CacheVault state changed from "
-                        f"{previous.cachevault.state} to {current.cachevault.state}"
+                        f"{previous_cachevault.state} to {current_cachevault.state}"
                     ),
-                    before={"state": previous.cachevault.state},
-                    after={"state": current.cachevault.state},
+                    before={"state": previous_cachevault.state},
+                    after={"state": current_cachevault.state},
                 )
             )
-        if current.cachevault.replacement_required and not previous.cachevault.replacement_required:
+        if current_cachevault.replacement_required and not previous_cachevault.replacement_required:
             events.append(
                 DetectedEvent(
                     severity="critical",
                     category="cv_state",
                     subject="CacheVault",
                     summary="CacheVault replacement required",
-                    before={"replacement_required": previous.cachevault.replacement_required},
-                    after={"replacement_required": current.cachevault.replacement_required},
+                    before={"replacement_required": previous_cachevault.replacement_required},
+                    after={"replacement_required": current_cachevault.replacement_required},
                 )
             )
-        previous_capacitance = previous.cachevault.capacitance_percent
-        current_capacitance = current.cachevault.capacitance_percent
+        previous_capacitance = previous_cachevault.capacitance_percent
+        current_capacitance = current_cachevault.capacitance_percent
         if (
             current_capacitance is not None
             and current_capacitance < self.cv_capacitance_warning_percent
