@@ -118,6 +118,41 @@ async def test_run_once_records_failure_and_recovery(
     )
 
 
+async def test_run_once_records_persistence_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    async def successful_collect(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
+        del settings
+        return sample_snapshot, {"controller": {"stored": True}}
+
+    def failing_insert_snapshot(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("database write failed")
+
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.scheduler.collect_storcli_snapshot",
+        successful_collect,
+    )
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.scheduler.insert_snapshot",
+        failing_insert_snapshot,
+    )
+    service = _service(service_session_factory)
+
+    await service.run_once()
+
+    with service_session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 0
+        events = list(session.scalars(select(Event).order_by(Event.id)))
+
+    assert len(events) == 1
+    assert events[0].severity == "critical"
+    assert events[0].category == "system"
+    assert events[0].summary.startswith("Collection failed: RuntimeError: database write failed")
+
+
 async def test_run_retention_once_invokes_retention_functions_in_order(
     monkeypatch: pytest.MonkeyPatch,
     service_session_factory: sessionmaker[Session],

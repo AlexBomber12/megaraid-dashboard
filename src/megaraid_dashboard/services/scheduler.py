@@ -117,8 +117,8 @@ class CollectorService:
                     physical_drive_count=len(snapshot.physical_drives),
                     virtual_drive_count=len(snapshot.virtual_drives),
                 )
-        except Exception:
-            LOGGER.exception("collector_run_failed")
+        except Exception as exc:
+            self._record_collection_failure(exc)
 
     async def run_retention_once(self) -> None:
         try:

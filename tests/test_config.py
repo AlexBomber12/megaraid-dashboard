@@ -107,3 +107,22 @@ def test_metrics_interval_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(ValidationError, match="metrics_interval_seconds"):
         Settings()
+
+
+@pytest.mark.parametrize(
+    ("env_name", "error_match"),
+    [
+        ("METRICS_RAW_RETENTION_DAYS", "metrics_raw_retention_days"),
+        ("METRICS_HOURLY_RETENTION_DAYS", "metrics_hourly_retention_days"),
+    ],
+)
+def test_retention_windows_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+    error_match: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv(env_name, "0")
+
+    with pytest.raises(ValidationError, match=error_match):
+        Settings()

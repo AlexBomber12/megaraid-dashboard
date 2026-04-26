@@ -40,6 +40,12 @@ class Settings(BaseSettings):
         if self.metrics_interval_seconds <= 0:
             msg = "metrics_interval_seconds must be positive"
             raise ValueError(msg)
+        if self.metrics_raw_retention_days <= 0:
+            msg = "metrics_raw_retention_days must be positive"
+            raise ValueError(msg)
+        if self.metrics_hourly_retention_days <= 0:
+            msg = "metrics_hourly_retention_days must be positive"
+            raise ValueError(msg)
         if self.temp_critical_celsius <= self.temp_warning_celsius:
             msg = "temp_critical_celsius must be greater than temp_warning_celsius"
             raise ValueError(msg)
