@@ -102,6 +102,16 @@ def test_temperature_hysteresis_must_be_positive(monkeypatch: pytest.MonkeyPatch
         Settings()
 
 
+def test_temperature_hysteresis_must_be_below_warning_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("TEMP_HYSTERESIS_CELSIUS", "55")
+
+    with pytest.raises(ValidationError, match="temp_hysteresis_celsius"):
+        Settings()
+
+
 def test_metrics_interval_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
     set_required_env(monkeypatch)
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "0")

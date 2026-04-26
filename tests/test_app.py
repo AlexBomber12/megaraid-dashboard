@@ -91,6 +91,18 @@ def test_collector_lock_is_exclusive(tmp_path: Path) -> None:
     app._release_collector_lock(second_lock)
 
 
+def test_collector_lock_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.write_text("preserve", encoding="utf-8")
+    lock_path = tmp_path / "collector.lock"
+    lock_path.symlink_to(target)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        app._try_acquire_collector_lock(str(lock_path))
+
+    assert target.read_text(encoding="utf-8") == "preserve"
+
+
 def test_lifespan_skips_collector_when_lock_is_already_held(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
         if self.temp_hysteresis_celsius < 1:
             msg = "temp_hysteresis_celsius must be at least 1"
             raise ValueError(msg)
+        if self.temp_hysteresis_celsius >= self.temp_warning_celsius:
+            msg = "temp_hysteresis_celsius must be less than temp_warning_celsius"
+            raise ValueError(msg)
         return self
 
 
