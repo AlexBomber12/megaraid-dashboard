@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
-from megaraid_dashboard.storcli import PhysicalDrive, StorcliSnapshot
+from megaraid_dashboard.storcli import CacheVault, PhysicalDrive, StorcliSnapshot
 
 DriveKey = tuple[int, int, str]
 SlotKey = tuple[int, int]
@@ -99,8 +99,43 @@ class EventDetector:
             events.extend(replacement_events)
             events.extend(self._detect_physical_drives(previous, current, replaced_slots))
             events.extend(self._detect_cachevault(previous, current))
+        else:
+            events.extend(self._detect_baseline(current))
 
         events.extend(self._detect_temperatures(current, replaced_slots))
+        return events
+
+    def _detect_baseline(self, current: StorcliSnapshot) -> list[DetectedEvent]:
+        events: list[DetectedEvent] = []
+        if current.controller.alarm_state != "Off":
+            events.append(
+                DetectedEvent(
+                    severity="info",
+                    category="controller",
+                    subject="Controller",
+                    summary=f"Alarm state is {current.controller.alarm_state}",
+                    before=None,
+                    after={"alarm_state": current.controller.alarm_state},
+                )
+            )
+        for virtual_drive in current.virtual_drives:
+            severity = _virtual_drive_state_severity(virtual_drive.state)
+            if severity == "info":
+                continue
+            events.append(
+                DetectedEvent(
+                    severity=severity,
+                    category="vd_state",
+                    subject=f"VD {virtual_drive.vd_id}",
+                    summary=f"VD {virtual_drive.vd_id} state is {virtual_drive.state}",
+                    before=None,
+                    after={"state": virtual_drive.state},
+                )
+            )
+        for physical_drive in current.physical_drives:
+            events.extend(_new_physical_drive_events(physical_drive))
+        if current.cachevault is not None:
+            events.extend(self._new_cachevault_events(current.cachevault))
         return events
 
     def _detect_controller(
@@ -371,6 +406,51 @@ class EventDetector:
             )
         return events
 
+    def _new_cachevault_events(self, cachevault: CacheVault) -> list[DetectedEvent]:
+        events: list[DetectedEvent] = []
+        state_severity = _cachevault_state_severity(cachevault.state)
+        if state_severity != "info":
+            events.append(
+                DetectedEvent(
+                    severity=state_severity,
+                    category="cv_state",
+                    subject="CacheVault",
+                    summary=f"CacheVault state is {cachevault.state}",
+                    before=None,
+                    after={"state": cachevault.state},
+                )
+            )
+        if cachevault.replacement_required:
+            events.append(
+                DetectedEvent(
+                    severity="critical",
+                    category="cv_state",
+                    subject="CacheVault",
+                    summary="CacheVault replacement required",
+                    before=None,
+                    after={"replacement_required": cachevault.replacement_required},
+                )
+            )
+        if (
+            cachevault.capacitance_percent is not None
+            and cachevault.capacitance_percent < self.cv_capacitance_warning_percent
+        ):
+            events.append(
+                DetectedEvent(
+                    severity="warning",
+                    category="cv_state",
+                    subject="CacheVault",
+                    summary=(
+                        "CacheVault capacitance below "
+                        f"{self.cv_capacitance_warning_percent}%: "
+                        f"{cachevault.capacitance_percent}%"
+                    ),
+                    before=None,
+                    after={"capacitance_percent": cachevault.capacitance_percent},
+                )
+            )
+        return events
+
 
 def _virtual_drive_state_severity(state: str) -> str:
     if state in {"Optl", "Optimal"}:
@@ -411,8 +491,37 @@ def _new_physical_drive_events(current: PhysicalDrive) -> list[DetectedEvent]:
                 after={"state": current.state},
             )
         )
+    events.extend(_new_counter_events(current))
     if current.smart_alert:
         events.append(_smart_alert_event(None, current))
+    return events
+
+
+def _new_counter_events(current: PhysicalDrive) -> list[DetectedEvent]:
+    events: list[DetectedEvent] = []
+    for field_name, severity, category, label in (
+        ("media_errors", "critical", "media_errors", "Media error count"),
+        ("other_errors", "warning", "other_errors", "Other error count"),
+        (
+            "predictive_failures",
+            "critical",
+            "predictive_failures",
+            "Predictive failure count",
+        ),
+    ):
+        after_value = getattr(current, field_name)
+        if after_value <= 0:
+            continue
+        events.append(
+            DetectedEvent(
+                severity=severity,
+                category=category,
+                subject=_physical_drive_subject(current),
+                summary=f"{label} is {after_value}",
+                before=None,
+                after={field_name: after_value},
+            )
+        )
     return events
 
 

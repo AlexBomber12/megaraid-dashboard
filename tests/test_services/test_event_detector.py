@@ -110,6 +110,42 @@ def test_smart_alert_transition_to_true_emits_critical_event() -> None:
     ]
 
 
+def test_baseline_healthy_snapshot_emits_no_state_events() -> None:
+    assert _detector().detect(None, _current()) == []
+
+
+def test_baseline_snapshot_emits_existing_fault_events() -> None:
+    events = _detector().detect(
+        None,
+        _current(
+            controller_alarm_state="On",
+            vd_state="Degraded",
+            pd_state="Failed",
+            media_errors=5,
+            other_errors=1,
+            predictive_failures=1,
+            smart_alert=True,
+            cv_state="Degraded",
+            cv_replacement_required=True,
+            cv_capacitance_percent=65,
+        ),
+    )
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("info", "controller", "Alarm state is On"),
+        ("warning", "vd_state", "VD 0 state is Degraded"),
+        ("critical", "pd_state", "PD e252:s4 state is Failed"),
+        ("critical", "media_errors", "Media error count is 5"),
+        ("warning", "other_errors", "Other error count is 1"),
+        ("critical", "predictive_failures", "Predictive failure count is 1"),
+        ("critical", "smart_alert", "SMART alert flagged by drive"),
+        ("critical", "cv_state", "CacheVault state is Degraded"),
+        ("critical", "cv_state", "CacheVault replacement required"),
+        ("warning", "cv_state", "CacheVault capacitance below 70%: 65%"),
+    ]
+    assert all(event.before is None for event in events)
+
+
 def test_temperature_state_machine_uses_hysteresis(session: Session) -> None:
     detector = _detector()
 
