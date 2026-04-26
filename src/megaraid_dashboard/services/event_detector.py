@@ -375,7 +375,7 @@ class EventDetector:
 def _virtual_drive_state_severity(state: str) -> str:
     if state in {"Optl", "Optimal"}:
         return "info"
-    if state in {"Failed", "Offline", "Partially Degraded"}:
+    if state in {"Failed", "Offline", "Offln", "Partially Degraded", "Pdgd"}:
         return "critical"
     return "warning"
 
@@ -432,7 +432,7 @@ def _smart_alert_event(
 
 
 def _physical_drive_state_severity(previous_state: str, current_state: str) -> str:
-    if current_state in {"Failed", "Missing", "Offline"}:
+    if current_state in {"Failed", "Missing", "Msng", "Offline", "Offln"}:
         return "critical"
     if current_state in {"JBOD", "UGood", "UBad"}:
         return "warning"

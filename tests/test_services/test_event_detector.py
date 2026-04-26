@@ -40,6 +40,8 @@ def test_alarm_state_change_emits_controller_event() -> None:
     [
         ("Optl", "Degraded", "warning"),
         ("Degraded", "Failed", "critical"),
+        ("Optl", "Offln", "critical"),
+        ("Optl", "Pdgd", "critical"),
         ("Failed", "Optl", "info"),
     ],
 )
@@ -64,6 +66,8 @@ def test_virtual_drive_state_changes_emit_expected_severity(
         ("Onln", "Rebld", "info"),
         ("Rebld", "Onln", "info"),
         ("Onln", "Failed", "critical"),
+        ("Onln", "Offln", "critical"),
+        ("Onln", "Msng", "critical"),
     ],
 )
 def test_physical_drive_state_changes_emit_expected_severity(
