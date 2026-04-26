@@ -36,7 +36,10 @@ class Settings(BaseSettings):
     log_level: str = Field(...)
 
     @model_validator(mode="after")
-    def validate_thresholds(self) -> Settings:
+    def validate_runtime_values(self) -> Settings:
+        if self.metrics_interval_seconds <= 0:
+            msg = "metrics_interval_seconds must be positive"
+            raise ValueError(msg)
         if self.temp_critical_celsius <= self.temp_warning_celsius:
             msg = "temp_critical_celsius must be greater than temp_warning_celsius"
             raise ValueError(msg)
