@@ -122,38 +122,47 @@ class CollectorService:
 
     async def run_retention_once(self) -> None:
         try:
-            with self.session_factory() as session:
-                now = _require_aware_utc(self.clock())
-                hourly_count = downsample_to_hourly(
-                    session,
-                    now_utc=now,
-                    retention_days=self.settings.metrics_raw_retention_days,
-                )
-                daily_count = downsample_to_daily(
-                    session,
-                    now_utc=now,
-                    retention_days=self.settings.metrics_hourly_retention_days,
-                )
-                raw_pruned_count = prune_raw_snapshots(
-                    session,
-                    now_utc=now,
-                    retention_days=self.settings.metrics_raw_retention_days,
-                )
-                hourly_pruned_count = prune_hourly_metrics(
-                    session,
-                    now_utc=now,
-                    retention_days=self.settings.metrics_hourly_retention_days,
-                )
-                session.commit()
-                LOGGER.info(
-                    "retention_run_completed",
-                    hourly_count=hourly_count,
-                    daily_count=daily_count,
-                    raw_pruned_count=raw_pruned_count,
-                    hourly_pruned_count=hourly_pruned_count,
-                )
+            (
+                hourly_count,
+                daily_count,
+                raw_pruned_count,
+                hourly_pruned_count,
+            ) = await asyncio.to_thread(self._run_retention_transaction)
+            LOGGER.info(
+                "retention_run_completed",
+                hourly_count=hourly_count,
+                daily_count=daily_count,
+                raw_pruned_count=raw_pruned_count,
+                hourly_pruned_count=hourly_pruned_count,
+            )
         except Exception:
             LOGGER.exception("retention_run_failed")
+
+    def _run_retention_transaction(self) -> tuple[int, int, int, int]:
+        with self.session_factory() as session:
+            now = _require_aware_utc(self.clock())
+            hourly_count = downsample_to_hourly(
+                session,
+                now_utc=now,
+                retention_days=self.settings.metrics_raw_retention_days,
+            )
+            daily_count = downsample_to_daily(
+                session,
+                now_utc=now,
+                retention_days=self.settings.metrics_hourly_retention_days,
+            )
+            raw_pruned_count = prune_raw_snapshots(
+                session,
+                now_utc=now,
+                retention_days=self.settings.metrics_raw_retention_days,
+            )
+            hourly_pruned_count = prune_hourly_metrics(
+                session,
+                now_utc=now,
+                retention_days=self.settings.metrics_hourly_retention_days,
+            )
+            session.commit()
+            return hourly_count, daily_count, raw_pruned_count, hourly_pruned_count
 
     async def start(self) -> AsyncIOScheduler:
         scheduler = AsyncIOScheduler(timezone=UTC)

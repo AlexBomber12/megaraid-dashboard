@@ -168,6 +168,18 @@ def test_drive_replacement_emits_event_and_clears_old_temperature_state(
     assert _stored_temp_state(session, serial_number="NEW-SN") == "ok"
 
 
+def test_replacement_drive_failed_state_still_emits_critical_event() -> None:
+    events = _detector().detect(
+        _previous(serial_number="OLD-SN", pd_state="Onln"),
+        _current(serial_number="NEW-SN", pd_state="Failed"),
+    )
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("info", "pd_state", "Drive replaced: OLD-SN -> NEW-SN"),
+        ("critical", "pd_state", "PD e252:s4 state changed from Onln to Failed"),
+    ]
+
+
 def test_slot_disappearance_clears_temperature_state(session: Session) -> None:
     upsert_temp_state(
         session,
@@ -208,6 +220,17 @@ def test_new_drive_after_empty_slot_clears_stale_temperature_state(session: Sess
     assert events == []
     assert _stored_temp_state(session, serial_number="OLD-SN") is None
     assert _stored_temp_state(session, serial_number="NEW-SN") == "ok"
+
+
+def test_new_drive_after_empty_slot_failed_state_emits_critical_event() -> None:
+    previous = _previous()
+    previous.physical_drives = []
+
+    events = _detector().detect(previous, _current(serial_number="NEW-SN", pd_state="Failed"))
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("critical", "pd_state", "PD e252:s4 state is Failed")
+    ]
 
 
 def test_cachevault_state_change_emits_critical_event() -> None:

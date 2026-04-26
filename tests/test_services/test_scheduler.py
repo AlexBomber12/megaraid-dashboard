@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -158,11 +159,14 @@ async def test_run_retention_once_invokes_retention_functions_in_order(
     service_session_factory: sessionmaker[Session],
 ) -> None:
     calls: list[str] = []
+    call_thread_ids: list[int] = []
+    event_loop_thread_id = threading.get_ident()
 
     def spy(name: str, return_value: int) -> Callable[..., int]:
         def _inner(*args: Any, **kwargs: Any) -> int:
             del args, kwargs
             calls.append(name)
+            call_thread_ids.append(threading.get_ident())
             return return_value
 
         return _inner
@@ -193,6 +197,8 @@ async def test_run_retention_once_invokes_retention_functions_in_order(
         "prune_raw_snapshots",
         "prune_hourly_metrics",
     ]
+    assert call_thread_ids
+    assert all(thread_id != event_loop_thread_id for thread_id in call_thread_ids)
 
 
 async def test_start_registers_jobs_and_shutdown_stops_scheduler(

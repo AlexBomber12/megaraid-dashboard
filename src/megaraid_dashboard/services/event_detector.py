@@ -204,22 +204,22 @@ class EventDetector:
         for current_drive in current.physical_drives:
             slot_key = (current_drive.enclosure_id, current_drive.slot_id)
             previous_drive = previous_by_slot.get(slot_key)
-            if previous_drive is None or slot_key in replaced_slots:
+            if previous_drive is None:
+                events.extend(_new_physical_drive_events(current_drive))
+                continue
+            if slot_key in replaced_slots:
+                if previous_drive.state != current_drive.state:
+                    events.append(_physical_drive_state_event(previous_drive, current_drive))
+                    if current_drive.smart_alert:
+                        events.append(_smart_alert_event(None, current_drive))
+                else:
+                    events.extend(_new_physical_drive_events(current_drive))
                 continue
             if previous_drive.state != current_drive.state:
                 events.append(_physical_drive_state_event(previous_drive, current_drive))
             events.extend(_counter_events(previous_drive, current_drive))
             if current_drive.smart_alert and not previous_drive.smart_alert:
-                events.append(
-                    DetectedEvent(
-                        severity="critical",
-                        category="smart_alert",
-                        subject=_physical_drive_subject(current_drive),
-                        summary="SMART alert flagged by drive",
-                        before={"smart_alert": previous_drive.smart_alert},
-                        after={"smart_alert": current_drive.smart_alert},
-                    )
-                )
+                events.append(_smart_alert_event(previous_drive.smart_alert, current_drive))
         return events
 
     def _detect_temperatures(
@@ -394,6 +394,40 @@ def _physical_drive_state_event(
         ),
         before={"state": previous.state},
         after={"state": current.state},
+    )
+
+
+def _new_physical_drive_events(current: PhysicalDrive) -> list[DetectedEvent]:
+    events: list[DetectedEvent] = []
+    state_severity = _physical_drive_state_severity(current.state, current.state)
+    if state_severity != "info":
+        events.append(
+            DetectedEvent(
+                severity=state_severity,
+                category="pd_state",
+                subject=_physical_drive_subject(current),
+                summary=f"{_physical_drive_subject(current)} state is {current.state}",
+                before=None,
+                after={"state": current.state},
+            )
+        )
+    if current.smart_alert:
+        events.append(_smart_alert_event(None, current))
+    return events
+
+
+def _smart_alert_event(
+    previous_smart_alert: bool | None,
+    current: PhysicalDrive,
+) -> DetectedEvent:
+    before = None if previous_smart_alert is None else {"smart_alert": previous_smart_alert}
+    return DetectedEvent(
+        severity="critical",
+        category="smart_alert",
+        subject=_physical_drive_subject(current),
+        summary="SMART alert flagged by drive",
+        before=before,
+        after={"smart_alert": current.smart_alert},
     )
 
 
