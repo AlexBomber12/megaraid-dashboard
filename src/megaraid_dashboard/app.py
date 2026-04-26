@@ -1,23 +1,42 @@
 from __future__ import annotations
 
+import asyncio
+import errno
+import fcntl
+import os
+import stat
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
 from alembic import command
 from alembic.config import Config
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import ArgumentError
+from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard import __version__
-from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.config import Settings, get_settings
+from megaraid_dashboard.db import get_engine, get_sessionmaker
+from megaraid_dashboard.services import CollectorService, EventDetector
 
 LOGGER = structlog.get_logger(__name__)
+_COLLECTOR_LOCK_RETRY_SECONDS = 30.0
 
 router = APIRouter()
+
+
+@dataclass
+class _CollectorRuntime:
+    collector: CollectorService | None = None
+    scheduler: AsyncIOScheduler | None = None
+    lock_fd: int | None = None
+    retry_task: asyncio.Task[None] | None = None
 
 
 @router.get("/health")
@@ -42,14 +61,138 @@ def create_app() -> FastAPI:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    settings = app.state.settings
-    _upgrade_database(settings.database_url)
-    yield
+    settings: Settings = app.state.settings
+    engine = get_engine(settings.database_url)
+    with engine.begin() as connection:
+        _upgrade_database(settings.database_url, connection=connection)
+    session_factory = get_sessionmaker(engine)
+    collector_runtime = _CollectorRuntime()
+    app.state.engine = engine
+    app.state.session_factory = session_factory
+    app.state.collector = None
+    app.state.collector_lock_fd = None
+    app.state.collector_retry_task = None
+    app.state.scheduler = None
+
+    try:
+        if settings.collector_enabled:
+            collector_started = await _start_collector_scheduler(
+                app=app,
+                settings=settings,
+                session_factory=session_factory,
+                runtime=collector_runtime,
+            )
+            if not collector_started:
+                LOGGER.info(
+                    "collector_scheduler_not_started",
+                    reason="collector_lock_held",
+                    lock_path=settings.collector_lock_path,
+                )
+                collector_runtime.retry_task = asyncio.create_task(
+                    _retry_collector_scheduler_start(
+                        app=app,
+                        settings=settings,
+                        session_factory=session_factory,
+                        runtime=collector_runtime,
+                    )
+                )
+                app.state.collector_retry_task = collector_runtime.retry_task
+
+        yield
+    finally:
+        if collector_runtime.retry_task is not None:
+            collector_runtime.retry_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await collector_runtime.retry_task
+        try:
+            if collector_runtime.collector is not None and collector_runtime.scheduler is not None:
+                await collector_runtime.collector.shutdown(collector_runtime.scheduler)
+        finally:
+            if collector_runtime.lock_fd is not None:
+                _release_collector_lock(collector_runtime.lock_fd)
+            engine.dispose()
 
 
-def _upgrade_database(database_url: str) -> None:
+async def _start_collector_scheduler(
+    *,
+    app: FastAPI,
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+    runtime: _CollectorRuntime,
+) -> bool:
+    if runtime.collector is not None:
+        return True
+
+    collector_lock_fd = _try_acquire_collector_lock(settings.collector_lock_path)
+    app.state.collector_lock_fd = collector_lock_fd
+    if collector_lock_fd is None:
+        return False
+
+    try:
+        event_detector = EventDetector(
+            temp_warning=settings.temp_warning_celsius,
+            temp_critical=settings.temp_critical_celsius,
+            temp_hysteresis=settings.temp_hysteresis_celsius,
+            cv_capacitance_warning_percent=settings.cv_capacitance_warning_percent,
+        )
+        collector = CollectorService(
+            settings=settings,
+            session_factory=session_factory,
+            event_detector=event_detector,
+        )
+        scheduler = await collector.start()
+    except asyncio.CancelledError:
+        _release_collector_lock(collector_lock_fd)
+        app.state.collector_lock_fd = None
+        raise
+    except Exception:
+        _release_collector_lock(collector_lock_fd)
+        app.state.collector_lock_fd = None
+        raise
+
+    runtime.collector = collector
+    runtime.scheduler = scheduler
+    runtime.lock_fd = collector_lock_fd
+    app.state.collector = collector
+    app.state.scheduler = scheduler
+    return True
+
+
+async def _retry_collector_scheduler_start(
+    *,
+    app: FastAPI,
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+    runtime: _CollectorRuntime,
+) -> None:
+    while runtime.collector is None:
+        await asyncio.sleep(_COLLECTOR_LOCK_RETRY_SECONDS)
+        try:
+            if await _start_collector_scheduler(
+                app=app,
+                settings=settings,
+                session_factory=session_factory,
+                runtime=runtime,
+            ):
+                LOGGER.info(
+                    "collector_scheduler_started_after_retry",
+                    lock_path=settings.collector_lock_path,
+                )
+                return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            LOGGER.exception(
+                "collector_scheduler_retry_failed",
+                lock_path=settings.collector_lock_path,
+            )
+
+
+def _upgrade_database(database_url: str, *, connection: Connection | None = None) -> None:
     alembic_config = _alembic_config()
     alembic_config.set_main_option("sqlalchemy.url", _configparser_value(database_url))
+    if connection is not None:
+        alembic_config.attributes["connection"] = connection
     try:
         command.upgrade(alembic_config, "head")
     except Exception as exc:
@@ -59,6 +202,50 @@ def _upgrade_database(database_url: str) -> None:
         )
         msg = "database migration failed"
         raise RuntimeError(msg) from exc
+
+
+def _try_acquire_collector_lock(lock_path: str) -> int | None:
+    flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
+    try:
+        lock_fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            msg = f"collector lock path must not be a symlink: {lock_path}"
+            raise RuntimeError(msg) from exc
+        raise
+    try:
+        _validate_collector_lock_file(lock_fd, lock_path)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock_fd)
+        return None
+    except Exception:
+        os.close(lock_fd)
+        raise
+
+    os.ftruncate(lock_fd, 0)
+    os.write(lock_fd, str(os.getpid()).encode("ascii"))
+    return lock_fd
+
+
+def _validate_collector_lock_file(lock_fd: int, lock_path: str) -> None:
+    lock_stat = os.fstat(lock_fd)
+    if not stat.S_ISREG(lock_stat.st_mode):
+        msg = f"collector lock path must be a regular file: {lock_path}"
+        raise RuntimeError(msg)
+    if lock_stat.st_uid != os.getuid():
+        msg = f"collector lock path must be owned by the current user: {lock_path}"
+        raise RuntimeError(msg)
+    if lock_stat.st_nlink != 1:
+        msg = f"collector lock path must not have hard links: {lock_path}"
+        raise RuntimeError(msg)
+
+
+def _release_collector_lock(lock_fd: int) -> None:
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)
 
 
 def _alembic_config() -> Config:

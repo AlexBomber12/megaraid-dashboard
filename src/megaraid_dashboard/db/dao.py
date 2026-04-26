@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.orm import Session, selectinload
 
 from megaraid_dashboard.db.models import (
     AlertSent,
@@ -14,6 +15,7 @@ from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
     PhysicalDriveSnapshot,
+    PhysicalDriveTempState,
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
@@ -90,7 +92,14 @@ def insert_snapshot(
 
 def get_latest_snapshot(session: Session) -> ControllerSnapshot | None:
     return session.scalars(
-        select(ControllerSnapshot).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
+        select(ControllerSnapshot)
+        .options(
+            selectinload(ControllerSnapshot.virtual_drives),
+            selectinload(ControllerSnapshot.physical_drives),
+            selectinload(ControllerSnapshot.cachevault),
+        )
+        .order_by(ControllerSnapshot.captured_at.desc())
+        .limit(1)
     ).one_or_none()
 
 
@@ -124,6 +133,73 @@ def record_event(
     session.add(event)
     session.flush()
     return event
+
+
+def get_temp_state(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
+) -> PhysicalDriveTempState | None:
+    return session.scalars(
+        select(PhysicalDriveTempState)
+        .where(PhysicalDriveTempState.enclosure_id == enclosure_id)
+        .where(PhysicalDriveTempState.slot_id == slot_id)
+        .where(PhysicalDriveTempState.serial_number == serial_number)
+    ).one_or_none()
+
+
+def upsert_temp_state(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
+    state: str,
+) -> PhysicalDriveTempState:
+    now = datetime.now(UTC)
+    values = {
+        "enclosure_id": enclosure_id,
+        "slot_id": slot_id,
+        "serial_number": serial_number,
+        "state": state,
+        "updated_at": now,
+    }
+    insert_statement = sqlite_insert(PhysicalDriveTempState).values(**values)
+    upsert_statement = insert_statement.on_conflict_do_update(
+        index_elements=[
+            PhysicalDriveTempState.enclosure_id,
+            PhysicalDriveTempState.slot_id,
+            PhysicalDriveTempState.serial_number,
+        ],
+        set_={
+            "state": insert_statement.excluded.state,
+            "updated_at": insert_statement.excluded.updated_at,
+        },
+    ).returning(PhysicalDriveTempState.id)
+
+    state_id = session.execute(upsert_statement).scalar_one()
+    temp_state = session.get(PhysicalDriveTempState, state_id, populate_existing=True)
+    if temp_state is None:
+        msg = "temperature state upsert did not return a persisted row"
+        raise RuntimeError(msg)
+    return temp_state
+
+
+def clear_temp_state_for_slot(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+) -> int:
+    result = session.execute(
+        delete(PhysicalDriveTempState)
+        .where(PhysicalDriveTempState.enclosure_id == enclosure_id)
+        .where(PhysicalDriveTempState.slot_id == slot_id)
+    )
+    session.flush()
+    return int(cast(CursorResult[Any], result).rowcount or 0)
 
 
 def record_audit(
