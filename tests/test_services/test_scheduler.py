@@ -201,6 +201,49 @@ async def test_run_retention_once_invokes_retention_functions_in_order(
     assert all(thread_id != event_loop_thread_id for thread_id in call_thread_ids)
 
 
+async def test_run_once_waits_for_retention_write_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    service = _service(service_session_factory)
+    retention_started = threading.Event()
+    release_retention = threading.Event()
+
+    def slow_retention_transaction() -> tuple[int, int, int, int]:
+        retention_started.set()
+        assert release_retention.wait(timeout=5)
+        return (0, 0, 0, 0)
+
+    async def fake_collect(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
+        del settings
+        return sample_snapshot, {"controller": {"stored": True}}
+
+    monkeypatch.setattr(service, "_run_retention_transaction", slow_retention_transaction)
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.scheduler.collect_storcli_snapshot",
+        fake_collect,
+    )
+
+    retention_task = asyncio.create_task(service.run_retention_once())
+    assert await asyncio.to_thread(retention_started.wait, 5)
+    run_once_task = asyncio.create_task(service.run_once())
+
+    try:
+        await asyncio.sleep(0.05)
+        with service_session_factory() as session:
+            assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 0
+        assert run_once_task.done() is False
+    finally:
+        release_retention.set()
+
+    await retention_task
+    await run_once_task
+
+    with service_session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 1
+
+
 async def test_start_registers_jobs_and_shutdown_stops_scheduler(
     service_session_factory: sessionmaker[Session],
 ) -> None:

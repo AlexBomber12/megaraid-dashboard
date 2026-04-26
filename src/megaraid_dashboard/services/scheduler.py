@@ -53,81 +53,84 @@ class CollectorService:
         self._active_jobs: set[asyncio.Task[Any]] = set()
         self._active_jobs_idle = asyncio.Event()
         self._active_jobs_idle.set()
+        self._write_lock = asyncio.Lock()
 
     async def run_once(self) -> None:
         try:
             snapshot, raw_payload = await collect_storcli_snapshot(settings=self.settings)
         except (StorcliError, OSError, TimeoutError) as exc:
-            self._record_collection_failure(exc)
+            await self._record_collection_failure(exc)
             return
 
         try:
-            with self.session_factory() as session:
-                previous = get_latest_snapshot(session)
-                self.event_detector.set_temperature_states(
-                    self._load_temperature_states(session, snapshot)
-                )
-                insert_snapshot(
-                    session,
-                    snapshot,
-                    store_raw=self.settings.store_raw_snapshot_payload,
-                    raw_payload=raw_payload,
-                )
-                events = self.event_detector.detect(previous, snapshot)
-                if self._latest_system_event_was_collection_failure(session):
-                    events.append(
-                        DetectedEvent(
-                            severity="info",
-                            category="system",
-                            subject="Controller",
-                            summary="Collection recovered",
-                            before=None,
-                            after=None,
+            async with self._write_lock:
+                with self.session_factory() as session:
+                    previous = get_latest_snapshot(session)
+                    self.event_detector.set_temperature_states(
+                        self._load_temperature_states(session, snapshot)
+                    )
+                    insert_snapshot(
+                        session,
+                        snapshot,
+                        store_raw=self.settings.store_raw_snapshot_payload,
+                        raw_payload=raw_payload,
+                    )
+                    events = self.event_detector.detect(previous, snapshot)
+                    if self._latest_system_event_was_collection_failure(session):
+                        events.append(
+                            DetectedEvent(
+                                severity="info",
+                                category="system",
+                                subject="Controller",
+                                summary="Collection recovered",
+                                before=None,
+                                after=None,
+                            )
                         )
+                    for event in events:
+                        record_event(
+                            session,
+                            severity=event.severity,
+                            category=event.category,
+                            subject=event.subject,
+                            summary=event.summary,
+                            before=event.before,
+                            after=event.after,
+                        )
+                    for temp_clear in self.event_detector.temperature_clears:
+                        clear_temp_state_for_slot(
+                            session,
+                            enclosure_id=temp_clear.enclosure_id,
+                            slot_id=temp_clear.slot_id,
+                        )
+                    for temp_update in self.event_detector.temperature_updates:
+                        upsert_temp_state(
+                            session,
+                            enclosure_id=temp_update.enclosure_id,
+                            slot_id=temp_update.slot_id,
+                            serial_number=temp_update.serial_number,
+                            state=temp_update.state,
+                        )
+                    session.commit()
+                    LOGGER.info(
+                        "collector_run_completed",
+                        captured_at=snapshot.captured_at.isoformat(),
+                        event_count=len(events),
+                        physical_drive_count=len(snapshot.physical_drives),
+                        virtual_drive_count=len(snapshot.virtual_drives),
                     )
-                for event in events:
-                    record_event(
-                        session,
-                        severity=event.severity,
-                        category=event.category,
-                        subject=event.subject,
-                        summary=event.summary,
-                        before=event.before,
-                        after=event.after,
-                    )
-                for temp_clear in self.event_detector.temperature_clears:
-                    clear_temp_state_for_slot(
-                        session,
-                        enclosure_id=temp_clear.enclosure_id,
-                        slot_id=temp_clear.slot_id,
-                    )
-                for temp_update in self.event_detector.temperature_updates:
-                    upsert_temp_state(
-                        session,
-                        enclosure_id=temp_update.enclosure_id,
-                        slot_id=temp_update.slot_id,
-                        serial_number=temp_update.serial_number,
-                        state=temp_update.state,
-                    )
-                session.commit()
-                LOGGER.info(
-                    "collector_run_completed",
-                    captured_at=snapshot.captured_at.isoformat(),
-                    event_count=len(events),
-                    physical_drive_count=len(snapshot.physical_drives),
-                    virtual_drive_count=len(snapshot.virtual_drives),
-                )
         except Exception as exc:
-            self._record_collection_failure(exc)
+            await self._record_collection_failure(exc)
 
     async def run_retention_once(self) -> None:
         try:
-            (
-                hourly_count,
-                daily_count,
-                raw_pruned_count,
-                hourly_pruned_count,
-            ) = await asyncio.to_thread(self._run_retention_transaction)
+            async with self._write_lock:
+                (
+                    hourly_count,
+                    daily_count,
+                    raw_pruned_count,
+                    hourly_pruned_count,
+                ) = await asyncio.to_thread(self._run_retention_transaction)
             LOGGER.info(
                 "retention_run_completed",
                 hourly_count=hourly_count,
@@ -226,17 +229,18 @@ class CollectorService:
         while self._active_jobs:
             await self._active_jobs_idle.wait()
 
-    def _record_collection_failure(self, exc: BaseException) -> None:
+    async def _record_collection_failure(self, exc: BaseException) -> None:
         try:
-            with self.session_factory() as session:
-                record_event(
-                    session,
-                    severity="critical",
-                    category="system",
-                    subject="Controller",
-                    summary=f"Collection failed: {type(exc).__name__}: {exc}",
-                )
-                session.commit()
+            async with self._write_lock:
+                with self.session_factory() as session:
+                    record_event(
+                        session,
+                        severity="critical",
+                        category="system",
+                        subject="Controller",
+                        summary=f"Collection failed: {type(exc).__name__}: {exc}",
+                    )
+                    session.commit()
         except Exception:
             LOGGER.exception("collection_failure_event_record_failed")
             return
