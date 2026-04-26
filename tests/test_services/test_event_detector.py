@@ -60,6 +60,39 @@ def test_virtual_drive_state_changes_emit_expected_severity(
     ]
 
 
+def test_newly_discovered_healthy_virtual_drive_emits_no_event() -> None:
+    previous = _previous()
+    previous.virtual_drives = []
+
+    assert _detector().detect(previous, _current()) == []
+
+
+@pytest.mark.parametrize(
+    ("state", "severity"),
+    [
+        ("Degraded", "warning"),
+        ("Failed", "critical"),
+    ],
+)
+def test_newly_discovered_faulty_virtual_drive_emits_event(
+    state: str,
+    severity: str,
+) -> None:
+    previous = _previous()
+    current = _current()
+    current = current.model_copy(
+        update={"virtual_drives": [current.virtual_drives[0], _virtual_drive(1, state)]},
+    )
+
+    events = _detector().detect(previous, current)
+
+    assert [(event.severity, event.category, event.subject, event.summary) for event in events] == [
+        (severity, "vd_state", "VD 1", f"VD 1 state is {state}")
+    ]
+    assert events[0].before is None
+    assert events[0].after == {"state": state}
+
+
 @pytest.mark.parametrize(
     ("before", "after", "severity"),
     [
@@ -511,17 +544,7 @@ def _current(
             cv_present=True,
             bbu_present=False,
         ),
-        virtual_drives=[
-            VirtualDrive(
-                vd_id=0,
-                name="raid5",
-                raid_level="RAID5",
-                size_bytes=1_000_000_000,
-                state=vd_state,
-                access="RW",
-                cache="RWBD",
-            )
-        ],
+        virtual_drives=[_virtual_drive(0, vd_state)],
         physical_drives=[
             PhysicalDrive(
                 enclosure_id=252,
@@ -553,4 +576,16 @@ def _current(
         ),
         bbu=None,
         captured_at=datetime(2026, 4, 25, 12, 5, tzinfo=UTC),
+    )
+
+
+def _virtual_drive(vd_id: int, state: str) -> VirtualDrive:
+    return VirtualDrive(
+        vd_id=vd_id,
+        name=f"raid{vd_id}",
+        raid_level="RAID5",
+        size_bytes=1_000_000_000,
+        state=state,
+        access="RW",
+        cache="RWBD",
     )

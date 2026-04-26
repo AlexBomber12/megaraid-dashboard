@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
-from megaraid_dashboard.storcli import CacheVault, PhysicalDrive, StorcliSnapshot
+from megaraid_dashboard.storcli import CacheVault, PhysicalDrive, StorcliSnapshot, VirtualDrive
 
 DriveKey = tuple[int, int, str]
 SlotKey = tuple[int, int]
@@ -119,19 +119,9 @@ class EventDetector:
                 )
             )
         for virtual_drive in current.virtual_drives:
-            severity = _virtual_drive_state_severity(virtual_drive.state)
-            if severity == "info":
-                continue
-            events.append(
-                DetectedEvent(
-                    severity=severity,
-                    category="vd_state",
-                    subject=f"VD {virtual_drive.vd_id}",
-                    summary=f"VD {virtual_drive.vd_id} state is {virtual_drive.state}",
-                    before=None,
-                    after={"state": virtual_drive.state},
-                )
-            )
+            new_drive_event = _new_virtual_drive_event(virtual_drive)
+            if new_drive_event is not None:
+                events.append(new_drive_event)
         for physical_drive in current.physical_drives:
             events.extend(_new_physical_drive_events(physical_drive))
         if current.cachevault is not None:
@@ -165,6 +155,7 @@ class EventDetector:
         current_by_id = {
             virtual_drive.vd_id: virtual_drive for virtual_drive in current.virtual_drives
         }
+        previous_ids = {virtual_drive.vd_id for virtual_drive in previous.virtual_drives}
         events: list[DetectedEvent] = []
         for previous_drive in previous.virtual_drives:
             current_drive = current_by_id.get(previous_drive.vd_id)
@@ -183,6 +174,12 @@ class EventDetector:
                     after={"state": current_drive.state},
                 )
             )
+        for current_drive in current.virtual_drives:
+            if current_drive.vd_id in previous_ids:
+                continue
+            new_drive_event = _new_virtual_drive_event(current_drive)
+            if new_drive_event is not None:
+                events.append(new_drive_event)
         return events
 
     def _detect_drive_replacements(
@@ -458,6 +455,20 @@ def _virtual_drive_state_severity(state: str) -> str:
     if state in {"Failed", "Offline", "Offln", "Partially Degraded", "Pdgd"}:
         return "critical"
     return "warning"
+
+
+def _new_virtual_drive_event(virtual_drive: VirtualDrive) -> DetectedEvent | None:
+    severity = _virtual_drive_state_severity(virtual_drive.state)
+    if severity == "info":
+        return None
+    return DetectedEvent(
+        severity=severity,
+        category="vd_state",
+        subject=f"VD {virtual_drive.vd_id}",
+        summary=f"VD {virtual_drive.vd_id} state is {virtual_drive.state}",
+        before=None,
+        after={"state": virtual_drive.state},
+    )
 
 
 def _physical_drive_state_event(
