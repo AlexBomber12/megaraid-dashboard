@@ -126,3 +126,15 @@ def test_retention_windows_must_be_positive(
 
     with pytest.raises(ValidationError, match=error_match):
         Settings()
+
+
+@pytest.mark.parametrize("value", ["0", "101"])
+def test_cv_capacitance_warning_percent_must_be_percent_range(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("CV_CAPACITANCE_WARNING_PERCENT", value)
+
+    with pytest.raises(ValidationError, match="cv_capacitance_warning_percent"):
+        Settings()

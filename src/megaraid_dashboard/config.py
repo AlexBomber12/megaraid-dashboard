@@ -46,6 +46,9 @@ class Settings(BaseSettings):
         if self.metrics_hourly_retention_days <= 0:
             msg = "metrics_hourly_retention_days must be positive"
             raise ValueError(msg)
+        if not 1 <= self.cv_capacitance_warning_percent <= 100:
+            msg = "cv_capacitance_warning_percent must be between 1 and 100"
+            raise ValueError(msg)
         if self.temp_critical_celsius <= self.temp_warning_celsius:
             msg = "temp_critical_celsius must be greater than temp_warning_celsius"
             raise ValueError(msg)
