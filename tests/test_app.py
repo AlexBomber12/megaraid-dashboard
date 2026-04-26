@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 from pathlib import Path
 
 import pytest
 from alembic.config import Config
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 
 from megaraid_dashboard import app
 from megaraid_dashboard.config import get_settings
-from megaraid_dashboard.db import get_engine
+from megaraid_dashboard.db import get_engine, get_sessionmaker
 
 
 def _set_required_app_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -179,3 +181,39 @@ def test_lifespan_retries_collector_lock_after_holder_releases(
         get_settings.cache_clear()
 
     assert stopped.wait(timeout=2)
+
+
+async def test_start_collector_scheduler_releases_lock_on_start_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    get_settings.cache_clear()
+    settings = get_settings()
+    engine = get_engine(settings.database_url)
+    session_factory = get_sessionmaker(engine)
+    test_app = FastAPI()
+    runtime = app._CollectorRuntime()
+
+    async def cancel_start(self: object) -> object:
+        del self
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(app.CollectorService, "start", cancel_start)
+
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await app._start_collector_scheduler(
+                app=test_app,
+                settings=settings,
+                session_factory=session_factory,
+                runtime=runtime,
+            )
+
+        assert test_app.state.collector_lock_fd is None
+        reacquired_lock = app._try_acquire_collector_lock(settings.collector_lock_path)
+        assert reacquired_lock is not None
+        app._release_collector_lock(reacquired_lock)
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()

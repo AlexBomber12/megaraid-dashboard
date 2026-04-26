@@ -8,7 +8,7 @@ import pytest
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.services.collector import collect_storcli_snapshot
-from megaraid_dashboard.storcli import StorcliNotAvailable, StorcliSnapshot
+from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliNotAvailable, StorcliSnapshot
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "storcli" / "redacted"
 
@@ -96,6 +96,74 @@ async def test_collect_storcli_snapshot_treats_bbu_storcli_errors_as_optional(
     assert raw_payload["bbu"] is None
 
 
+async def test_collect_storcli_snapshot_treats_cachevault_command_failure_as_optional(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads = {
+        "/c0 show all": _load_fixture("c0_show_all.json"),
+        "/c0/vall show all": _load_fixture("vall_show_all.json"),
+        "/c0/eall/sall show all": _load_fixture("eall_sall_show_all.json"),
+        "/c0/bbu show all": _load_fixture("bbu_show_all.json"),
+    }
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+        timeout_seconds: float = 30.0,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path, timeout_seconds
+        command = " ".join(args)
+        if command == "/c0/cv show all":
+            raise StorcliCommandFailed("cachevault module not present")
+        return payloads[command]
+
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.collector.run_storcli",
+        fake_run_storcli,
+    )
+
+    snapshot, raw_payload = await collect_storcli_snapshot(settings=_settings())
+
+    assert len(snapshot.physical_drives) == 8
+    assert snapshot.cachevault is None
+    assert raw_payload["cachevault"] is None
+
+
+async def test_collect_storcli_snapshot_treats_cachevault_failure_payload_as_optional(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cachevault_payload = _failure_payload("firmware reports no cachevault")
+    payloads = {
+        "/c0 show all": _load_fixture("c0_show_all.json"),
+        "/c0/vall show all": _load_fixture("vall_show_all.json"),
+        "/c0/eall/sall show all": _load_fixture("eall_sall_show_all.json"),
+        "/c0/cv show all": cachevault_payload,
+        "/c0/bbu show all": _load_fixture("bbu_show_all.json"),
+    }
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+        timeout_seconds: float = 30.0,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path, timeout_seconds
+        return payloads[" ".join(args)]
+
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.collector.run_storcli",
+        fake_run_storcli,
+    )
+
+    snapshot, raw_payload = await collect_storcli_snapshot(settings=_settings())
+
+    assert snapshot.cachevault is None
+    assert raw_payload["cachevault"] == cachevault_payload
+
+
 def _settings() -> Settings:
     return Settings(
         alert_smtp_host="smtp.example.test",
@@ -118,3 +186,17 @@ def _load_fixture(name: str) -> dict[str, Any]:
     payload = json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
+
+
+def _failure_payload(err_msg: str) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Status": "Failure",
+                    "Description": "None",
+                    "Detailed Status": [{"ErrMsg": err_msg}],
+                }
+            }
+        ]
+    }

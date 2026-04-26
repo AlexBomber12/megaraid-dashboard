@@ -141,6 +141,10 @@ async def _start_collector_scheduler(
             event_detector=event_detector,
         )
         scheduler = await collector.start()
+    except asyncio.CancelledError:
+        _release_collector_lock(collector_lock_fd)
+        app.state.collector_lock_fd = None
+        raise
     except Exception:
         _release_collector_lock(collector_lock_fd)
         app.state.collector_lock_fd = None

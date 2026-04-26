@@ -4,6 +4,7 @@ from typing import Any
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.storcli import (
+    StorcliCommandFailed,
     StorcliError,
     StorcliSnapshot,
     parse_bbu,
@@ -19,7 +20,14 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
     controller_payload = await _run(settings, "/c0 show all")
     virtual_drives_payload = await _run(settings, "/c0/vall show all")
     physical_drives_payload = await _run(settings, "/c0/eall/sall show all")
-    cachevault_payload = await _run(settings, "/c0/cv show all")
+
+    cachevault_payload: dict[str, Any] | None = None
+    cachevault = None
+    try:
+        cachevault_payload = await _run(settings, "/c0/cv show all")
+        cachevault = parse_cachevault(cachevault_payload)
+    except StorcliCommandFailed:
+        cachevault = None
 
     bbu_payload: dict[str, Any] | None = None
     bbu = None
@@ -33,7 +41,7 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
         controller=parse_controller_show_all(controller_payload),
         virtual_drives=parse_virtual_drives(virtual_drives_payload),
         physical_drives=parse_physical_drives(physical_drives_payload),
-        cachevault=parse_cachevault(cachevault_payload),
+        cachevault=cachevault,
         bbu=bbu,
     )
     raw_payload = {
