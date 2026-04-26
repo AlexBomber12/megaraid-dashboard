@@ -412,6 +412,26 @@ def test_cachevault_capacitance_crossing_threshold_warns_once() -> None:
     assert duplicate_events == []
 
 
+def test_cachevault_capacitance_unknown_to_low_warns_once() -> None:
+    detector = _detector()
+
+    events = detector.detect(
+        _previous(cv_capacitance_percent=None),
+        _current(cv_capacitance_percent=65),
+    )
+    duplicate_events = detector.detect(
+        _previous(cv_capacitance_percent=65),
+        _current(cv_capacitance_percent=55),
+    )
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        ("warning", "cv_state", "CacheVault capacitance dropped below 70%: unknown -> 65%")
+    ]
+    assert events[0].before == {"capacitance_percent": None}
+    assert events[0].after == {"capacitance_percent": 65}
+    assert duplicate_events == []
+
+
 def _detector() -> EventDetector:
     return EventDetector(
         temp_warning=55,

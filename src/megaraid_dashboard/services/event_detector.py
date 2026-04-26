@@ -408,11 +408,16 @@ class EventDetector:
         previous_capacitance = previous.cachevault.capacitance_percent
         current_capacitance = current.cachevault.capacitance_percent
         if (
-            previous_capacitance is not None
-            and current_capacitance is not None
-            and previous_capacitance >= self.cv_capacitance_warning_percent
+            current_capacitance is not None
             and current_capacitance < self.cv_capacitance_warning_percent
+            and (
+                previous_capacitance is None
+                or previous_capacitance >= self.cv_capacitance_warning_percent
+            )
         ):
+            previous_value = (
+                "unknown" if previous_capacitance is None else f"{previous_capacitance}%"
+            )
             events.append(
                 DetectedEvent(
                     severity="warning",
@@ -421,7 +426,7 @@ class EventDetector:
                     summary=(
                         "CacheVault capacitance dropped below "
                         f"{self.cv_capacitance_warning_percent}%: "
-                        f"{previous_capacitance}% -> {current_capacitance}%"
+                        f"{previous_value} -> {current_capacitance}%"
                     ),
                     before={"capacitance_percent": previous_capacitance},
                     after={"capacitance_percent": current_capacitance},
