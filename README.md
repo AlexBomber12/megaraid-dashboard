@@ -53,6 +53,9 @@ virtual drive state changes, physical drive state changes, error counter increas
 alerts, temperature threshold transitions, drive replacement, CacheVault state changes, and
 CacheVault capacitance degradation. Retention runs daily at 03:30 UTC.
 
+FastAPI lifespan uses `COLLECTOR_LOCK_PATH` to acquire a process-wide file lock before
+starting APScheduler, so multi-worker deployments keep a single active collector.
+
 ### Temperature Thresholds
 
 Physical drive temperature warning, critical, and hysteresis thresholds default to 55 C,

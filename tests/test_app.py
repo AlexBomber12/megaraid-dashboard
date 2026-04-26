@@ -4,10 +4,29 @@ from pathlib import Path
 
 import pytest
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 
 from megaraid_dashboard import app
+from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db import get_engine
+
+
+def _set_required_app_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ALERT_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
+    monkeypatch.setenv("ALERT_SMTP_USER", "alert@example.test")
+    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "test-token")
+    monkeypatch.setenv("ALERT_FROM", "alert@example.test")
+    monkeypatch.setenv("ALERT_TO", "ops@example.test")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "test-bcrypt-hash")
+    monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
+    monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
+    monkeypatch.setenv("COLLECTOR_ENABLED", "true")
+    monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
 
 
 def test_alembic_paths_use_source_checkout_when_available() -> None:
@@ -55,3 +74,47 @@ def test_upgrade_database_uses_existing_in_memory_connection() -> None:
         assert "controller_snapshots" in inspect(engine).get_table_names()
     finally:
         engine.dispose()
+
+
+def test_collector_lock_is_exclusive(tmp_path: Path) -> None:
+    lock_path = str(tmp_path / "collector.lock")
+    first_lock = app._try_acquire_collector_lock(lock_path)
+    assert first_lock is not None
+
+    try:
+        assert app._try_acquire_collector_lock(lock_path) is None
+    finally:
+        app._release_collector_lock(first_lock)
+
+    second_lock = app._try_acquire_collector_lock(lock_path)
+    assert second_lock is not None
+    app._release_collector_lock(second_lock)
+
+
+def test_lifespan_skips_collector_when_lock_is_already_held(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    get_settings.cache_clear()
+    lock_path = str(tmp_path / "collector.lock")
+    held_lock = app._try_acquire_collector_lock(lock_path)
+    assert held_lock is not None
+
+    async def fail_start(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("collector scheduler should not start when lock is held")
+
+    monkeypatch.setattr(app.CollectorService, "start", fail_start)
+    test_app = app.create_app()
+
+    try:
+        with TestClient(test_app) as client:
+            response = client.get("/health")
+
+        assert response.status_code == 200
+        assert test_app.state.collector is None
+        assert test_app.state.scheduler is None
+        assert test_app.state.collector_lock_fd is None
+    finally:
+        app._release_collector_lock(held_lock)
+        get_settings.cache_clear()

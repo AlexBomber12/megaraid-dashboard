@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import fcntl
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -50,33 +52,49 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         _upgrade_database(settings.database_url, connection=connection)
     session_factory = get_sessionmaker(engine)
     collector: CollectorService | None = None
+    collector_lock_fd: int | None = None
     scheduler = None
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.collector = None
+    app.state.collector_lock_fd = None
     app.state.scheduler = None
 
-    if settings.collector_enabled:
-        event_detector = EventDetector(
-            temp_warning=settings.temp_warning_celsius,
-            temp_critical=settings.temp_critical_celsius,
-            temp_hysteresis=settings.temp_hysteresis_celsius,
-            cv_capacitance_warning_percent=settings.cv_capacitance_warning_percent,
-        )
-        collector = CollectorService(
-            settings=settings,
-            session_factory=session_factory,
-            event_detector=event_detector,
-        )
-        scheduler = await collector.start()
-        app.state.collector = collector
-        app.state.scheduler = scheduler
-
     try:
+        if settings.collector_enabled:
+            collector_lock_fd = _try_acquire_collector_lock(settings.collector_lock_path)
+            app.state.collector_lock_fd = collector_lock_fd
+            if collector_lock_fd is None:
+                LOGGER.info(
+                    "collector_scheduler_not_started",
+                    reason="collector_lock_held",
+                    lock_path=settings.collector_lock_path,
+                )
+            else:
+                event_detector = EventDetector(
+                    temp_warning=settings.temp_warning_celsius,
+                    temp_critical=settings.temp_critical_celsius,
+                    temp_hysteresis=settings.temp_hysteresis_celsius,
+                    cv_capacitance_warning_percent=settings.cv_capacitance_warning_percent,
+                )
+                collector = CollectorService(
+                    settings=settings,
+                    session_factory=session_factory,
+                    event_detector=event_detector,
+                )
+                scheduler = await collector.start()
+                app.state.collector = collector
+                app.state.scheduler = scheduler
+
         yield
     finally:
-        if collector is not None and scheduler is not None:
-            await collector.shutdown(scheduler)
-        engine.dispose()
+        try:
+            if collector is not None and scheduler is not None:
+                await collector.shutdown(scheduler)
+        finally:
+            if collector_lock_fd is not None:
+                _release_collector_lock(collector_lock_fd)
+            engine.dispose()
 
 
 def _upgrade_database(database_url: str, *, connection: Connection | None = None) -> None:
@@ -93,6 +111,29 @@ def _upgrade_database(database_url: str, *, connection: Connection | None = None
         )
         msg = "database migration failed"
         raise RuntimeError(msg) from exc
+
+
+def _try_acquire_collector_lock(lock_path: str) -> int | None:
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock_fd)
+        return None
+    except OSError:
+        os.close(lock_fd)
+        raise
+
+    os.ftruncate(lock_fd, 0)
+    os.write(lock_fd, str(os.getpid()).encode("ascii"))
+    return lock_fd
+
+
+def _release_collector_lock(lock_fd: int) -> None:
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)
 
 
 def _alembic_config() -> Config:

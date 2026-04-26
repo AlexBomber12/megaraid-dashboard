@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     metrics_hourly_retention_days: int = 365
     store_raw_snapshot_payload: bool = False
     collector_enabled: bool = True
+    collector_lock_path: str = "/tmp/megaraid-dashboard-collector.lock"
     temp_warning_celsius: int = 55
     temp_critical_celsius: int = 60
     temp_hysteresis_celsius: int = 5
@@ -48,6 +49,9 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if not 1 <= self.cv_capacitance_warning_percent <= 100:
             msg = "cv_capacitance_warning_percent must be between 1 and 100"
+            raise ValueError(msg)
+        if not self.collector_lock_path.strip():
+            msg = "collector_lock_path must not be empty"
             raise ValueError(msg)
         if self.temp_critical_celsius <= self.temp_warning_celsius:
             msg = "temp_critical_celsius must be greater than temp_warning_celsius"
