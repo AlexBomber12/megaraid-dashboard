@@ -102,7 +102,7 @@ class EventDetector:
         else:
             events.extend(self._detect_baseline(current))
 
-        events.extend(self._detect_temperatures(current, replaced_slots))
+        events.extend(self._detect_temperatures(previous, current, replaced_slots))
         return events
 
     def _detect_baseline(self, current: StorcliSnapshot) -> list[DetectedEvent]:
@@ -257,10 +257,12 @@ class EventDetector:
 
     def _detect_temperatures(
         self,
+        previous: ControllerSnapshot | None,
         current: StorcliSnapshot,
         replaced_slots: set[SlotKey],
     ) -> list[DetectedEvent]:
         events: list[DetectedEvent] = []
+        previous_states = self._temperature_states_from_previous(previous)
         for drive in current.physical_drives:
             if drive.temperature_celsius is None:
                 continue
@@ -269,12 +271,35 @@ class EventDetector:
             initial_state = (
                 TEMP_STATE_OK
                 if slot_key in replaced_slots
-                else self._temperature_states.get(key, TEMP_STATE_OK)
+                else self._temperature_states.get(key, previous_states.get(key, TEMP_STATE_OK))
             )
             next_events, next_state = self._temperature_transitions(drive, initial_state)
             events.extend(next_events)
             self._temperature_updates[key] = next_state
         return events
+
+    def _temperature_states_from_previous(
+        self,
+        previous: ControllerSnapshot | None,
+    ) -> dict[DriveKey, str]:
+        if previous is None:
+            return {}
+        return {
+            (drive.enclosure_id, drive.slot_id, drive.serial_number): (
+                self._temperature_state_from_reading(drive.temperature_celsius)
+            )
+            for drive in previous.physical_drives
+            if drive.temperature_celsius is not None
+        }
+
+    def _temperature_state_from_reading(self, temperature_celsius: int | None) -> str:
+        if temperature_celsius is None:
+            return TEMP_STATE_OK
+        if temperature_celsius >= self.temp_critical:
+            return TEMP_STATE_CRITICAL
+        if temperature_celsius >= self.temp_warning:
+            return TEMP_STATE_WARNING
+        return TEMP_STATE_OK
 
     def _temperature_transitions(
         self,

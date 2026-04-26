@@ -179,6 +179,40 @@ def test_baseline_snapshot_emits_existing_fault_events() -> None:
     assert all(event.before is None for event in events)
 
 
+@pytest.mark.parametrize(
+    ("previous_temperature", "current_temperature", "expected_summaries", "expected_state"),
+    [
+        (60, 60, [], "critical"),
+        (57, 57, [], "warning"),
+        (
+            54,
+            60,
+            [
+                "Temperature reached warning threshold: 60 C",
+                "Temperature reached critical threshold: 60 C",
+            ],
+            "critical",
+        ),
+    ],
+)
+def test_temperature_state_seeds_from_previous_snapshot_when_db_state_is_missing(
+    previous_temperature: int,
+    current_temperature: int,
+    expected_summaries: list[str],
+    expected_state: str,
+) -> None:
+    detector = _detector()
+    detector.set_temperature_states({})
+
+    events = detector.detect(
+        _previous(temperature_celsius=previous_temperature),
+        _current(temperature_celsius=current_temperature),
+    )
+
+    assert [event.summary for event in events] == expected_summaries
+    assert detector.temperature_updates[0].state == expected_state
+
+
 def test_temperature_state_machine_uses_hysteresis(session: Session) -> None:
     detector = _detector()
 
