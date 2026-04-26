@@ -4,7 +4,7 @@ from typing import Any
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.storcli import (
-    StorcliCommandFailed,
+    StorcliError,
     StorcliSnapshot,
     parse_bbu,
     parse_cachevault,
@@ -26,7 +26,7 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
     try:
         bbu_payload = await _run(settings, "/c0/bbu show all")
         bbu = parse_bbu(bbu_payload)
-    except StorcliCommandFailed:
+    except StorcliError:
         bbu = None
 
     snapshot = StorcliSnapshot(

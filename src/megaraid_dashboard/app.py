@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import ArgumentError
 
 from megaraid_dashboard import __version__
@@ -45,8 +45,9 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = app.state.settings
-    _upgrade_database(settings.database_url)
     engine = get_engine(settings.database_url)
+    with engine.begin() as connection:
+        _upgrade_database(settings.database_url, connection=connection)
     session_factory = get_sessionmaker(engine)
     collector: CollectorService | None = None
     scheduler = None
@@ -78,9 +79,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine.dispose()
 
 
-def _upgrade_database(database_url: str) -> None:
+def _upgrade_database(database_url: str, *, connection: Connection | None = None) -> None:
     alembic_config = _alembic_config()
     alembic_config.set_main_option("sqlalchemy.url", _configparser_value(database_url))
+    if connection is not None:
+        alembic_config.attributes["connection"] = connection
     try:
         command.upgrade(alembic_config, "head")
     except Exception as exc:

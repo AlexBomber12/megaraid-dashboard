@@ -4,8 +4,10 @@ from pathlib import Path
 
 import pytest
 from alembic.config import Config
+from sqlalchemy import inspect
 
 from megaraid_dashboard import app
+from megaraid_dashboard.db import get_engine
 
 
 def test_alembic_paths_use_source_checkout_when_available() -> None:
@@ -42,3 +44,14 @@ def test_configparser_value_escapes_percent_for_alembic() -> None:
     config.set_main_option("sqlalchemy.url", app._configparser_value(database_url))
 
     assert config.get_main_option("sqlalchemy.url") == database_url
+
+
+def test_upgrade_database_uses_existing_in_memory_connection() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            app._upgrade_database("sqlite:///:memory:", connection=connection)
+
+        assert "controller_snapshots" in inspect(engine).get_table_names()
+    finally:
+        engine.dispose()
