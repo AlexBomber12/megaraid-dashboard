@@ -1,12 +1,15 @@
 from megaraid_dashboard.db.base import Base
 from megaraid_dashboard.db.dao import (
+    clear_temp_state_for_slot,
     get_alert_by_fingerprint,
     get_latest_snapshot,
+    get_temp_state,
     insert_snapshot,
     list_recent_snapshots,
     record_audit,
     record_event,
     upsert_alert_sent,
+    upsert_temp_state,
 )
 from megaraid_dashboard.db.engine import get_engine, get_sessionmaker
 from megaraid_dashboard.db.models import (
@@ -18,6 +21,7 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveMetricsDaily,
     PhysicalDriveMetricsHourly,
     PhysicalDriveSnapshot,
+    PhysicalDriveTempState,
     VirtualDriveSnapshot,
 )
 
@@ -31,14 +35,18 @@ __all__ = [
     "PhysicalDriveMetricsDaily",
     "PhysicalDriveMetricsHourly",
     "PhysicalDriveSnapshot",
+    "PhysicalDriveTempState",
     "VirtualDriveSnapshot",
+    "clear_temp_state_for_slot",
     "get_alert_by_fingerprint",
     "get_engine",
     "get_latest_snapshot",
     "get_sessionmaker",
+    "get_temp_state",
     "insert_snapshot",
     "list_recent_snapshots",
     "record_audit",
     "record_event",
     "upsert_alert_sent",
+    "upsert_temp_state",
 ]

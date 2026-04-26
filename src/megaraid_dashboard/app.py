@@ -14,6 +14,8 @@ from sqlalchemy.exc import ArgumentError
 
 from megaraid_dashboard import __version__
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.db import get_engine, get_sessionmaker
+from megaraid_dashboard.services import CollectorService, EventDetector
 
 LOGGER = structlog.get_logger(__name__)
 
@@ -44,7 +46,36 @@ def create_app() -> FastAPI:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = app.state.settings
     _upgrade_database(settings.database_url)
-    yield
+    engine = get_engine(settings.database_url)
+    session_factory = get_sessionmaker(engine)
+    collector: CollectorService | None = None
+    scheduler = None
+    app.state.engine = engine
+    app.state.session_factory = session_factory
+    app.state.scheduler = None
+
+    if settings.collector_enabled:
+        event_detector = EventDetector(
+            temp_warning=settings.temp_warning_celsius,
+            temp_critical=settings.temp_critical_celsius,
+            temp_hysteresis=settings.temp_hysteresis_celsius,
+            cv_capacitance_warning_percent=settings.cv_capacitance_warning_percent,
+        )
+        collector = CollectorService(
+            settings=settings,
+            session_factory=session_factory,
+            event_detector=event_detector,
+        )
+        scheduler = await collector.start()
+        app.state.collector = collector
+        app.state.scheduler = scheduler
+
+    try:
+        yield
+    finally:
+        if collector is not None and scheduler is not None:
+            await collector.shutdown(scheduler)
+        engine.dispose()
 
 
 def _upgrade_database(database_url: str) -> None:

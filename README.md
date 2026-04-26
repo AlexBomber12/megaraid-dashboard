@@ -45,6 +45,20 @@ drive snapshots are retained at full 5-minute resolution for 30 days, then downs
 `pd_metrics_hourly` for 1 year, then into `pd_metrics_daily` indefinitely. Events and audit
 logs are retained forever.
 
+## Background Collector
+
+When enabled, the background collector runs `storcli` every `metrics_interval_seconds`
+(default 300), persists a new snapshot, and emits events for controller alarm changes,
+virtual drive state changes, physical drive state changes, error counter increases, SMART
+alerts, temperature threshold transitions, drive replacement, CacheVault state changes, and
+CacheVault capacitance degradation. Retention runs daily at 03:30 UTC.
+
+### Temperature Thresholds
+
+Physical drive temperature warning, critical, and hysteresis thresholds default to 55 C,
+60 C, and 5 C. Configure them with `TEMP_WARNING_CELSIUS`, `TEMP_CRITICAL_CELSIUS`, and
+`TEMP_HYSTERESIS_CELSIUS`.
+
 ## Project Layout
 
 ```text
@@ -55,7 +69,8 @@ logs are retained forever.
 |-- migrations/
 |   |-- env.py
 |   `-- versions/
-|       `-- 0001_initial.py
+|       |-- 0001_initial.py
+|       `-- 0002_pd_temp_state.py
 |-- src/
 |   `-- megaraid_dashboard/
 |       |-- __init__.py
@@ -69,6 +84,11 @@ logs are retained forever.
 |       |   |-- engine.py
 |       |   |-- models.py
 |       |   `-- retention.py
+|       |-- services/
+|       |   |-- __init__.py
+|       |   |-- collector.py
+|       |   |-- event_detector.py
+|       |   `-- scheduler.py
 |       `-- storcli/
 |           |-- __init__.py
 |           |-- exceptions.py
@@ -91,6 +111,11 @@ logs are retained forever.
 |   |   |-- test_dao.py
 |   |   |-- test_models.py
 |   |   `-- test_retention.py
+|   |-- test_services/
+|   |   |-- __init__.py
+|   |   |-- test_collector.py
+|   |   |-- test_event_detector.py
+|   |   `-- test_scheduler.py
 |   |-- test_storcli/
 |   |   |-- __init__.py
 |   |   |-- test_parser.py
@@ -115,7 +140,7 @@ logs are retained forever.
 1. [x] Skeleton and CI.
 2. [x] `storcli` wrapper with JSON parsing and pydantic models.
 3. [x] SQLite schema and migrations.
-4. Background metrics collector.
+4. [x] Background metrics collector.
 5. Read-only web dashboard.
 6. Email alerts via SMTP.
 7. Basic auth.

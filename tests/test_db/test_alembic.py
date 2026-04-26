@@ -20,6 +20,7 @@ EXPECTED_TABLES = {
     "pd_metrics_daily",
     "pd_metrics_hourly",
     "pd_snapshots",
+    "pd_temp_states",
     "vd_snapshots",
 }
 

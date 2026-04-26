@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Float,
     ForeignKey,
     Index,
@@ -108,6 +109,26 @@ class PhysicalDriveSnapshot(TimestampedMixin, Base):
     sas_address: Mapped[str] = mapped_column(String, nullable=False)
 
     snapshot: Mapped[ControllerSnapshot] = relationship(back_populates="physical_drives")
+
+
+class PhysicalDriveTempState(TimestampedMixin, Base):
+    __tablename__ = "pd_temp_states"
+    __table_args__ = (
+        UniqueConstraint("enclosure_id", "slot_id", "serial_number"),
+        Index("ix_pd_temp_states_enclosure_id_slot_id", "enclosure_id", "slot_id"),
+        CheckConstraint("state in ('ok', 'warning', 'critical')", name="state_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    enclosure_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    slot_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    serial_number: Mapped[str] = mapped_column(String, nullable=False)
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
 
 class CacheVaultSnapshot(TimestampedMixin, Base):

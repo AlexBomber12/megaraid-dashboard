@@ -11,12 +11,16 @@ from megaraid_dashboard.db import (
     ControllerSnapshot,
     Event,
     PhysicalDriveSnapshot,
+    PhysicalDriveTempState,
     VirtualDriveSnapshot,
+    clear_temp_state_for_slot,
     get_latest_snapshot,
+    get_temp_state,
     insert_snapshot,
     list_recent_snapshots,
     record_audit,
     record_event,
+    upsert_temp_state,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
 
@@ -75,6 +79,50 @@ def test_record_event_writes_severity_and_category(session: Session) -> None:
     event = session.scalars(select(Event)).one()
     assert event.severity == "warning"
     assert event.category == "temperature"
+
+
+def test_temperature_state_upsert_and_clear(session: Session) -> None:
+    first = upsert_temp_state(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        serial_number="SN0001",
+        state="warning",
+    )
+    second = upsert_temp_state(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        serial_number="SN0001",
+        state="critical",
+    )
+    session.commit()
+
+    stored = get_temp_state(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        serial_number="SN0001",
+    )
+
+    assert second.id == first.id
+    assert stored is not None
+    assert stored.state == "critical"
+    assert session.scalar(select(func.count()).select_from(PhysicalDriveTempState)) == 1
+
+    deleted = clear_temp_state_for_slot(session, enclosure_id=252, slot_id=4)
+    session.commit()
+
+    assert deleted == 1
+    assert (
+        get_temp_state(
+            session,
+            enclosure_id=252,
+            slot_id=4,
+            serial_number="SN0001",
+        )
+        is None
+    )
 
 
 def test_record_audit_writes_command_argv_list(session: Session) -> None:
