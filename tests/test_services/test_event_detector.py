@@ -168,6 +168,48 @@ def test_drive_replacement_emits_event_and_clears_old_temperature_state(
     assert _stored_temp_state(session, serial_number="NEW-SN") == "ok"
 
 
+def test_slot_disappearance_clears_temperature_state(session: Session) -> None:
+    upsert_temp_state(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        serial_number="SN0001",
+        state="critical",
+    )
+    session.commit()
+    detector = _detector()
+    current = _current().model_copy(update={"physical_drives": []})
+    detector.set_temperature_states({(252, 4, "SN0001"): "critical"})
+
+    events = detector.detect(_previous(), current)
+    _persist_temperature_transitions(session, detector)
+
+    assert events == []
+    assert _stored_temp_state(session) is None
+
+
+def test_new_drive_after_empty_slot_clears_stale_temperature_state(session: Session) -> None:
+    upsert_temp_state(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        serial_number="OLD-SN",
+        state="critical",
+    )
+    session.commit()
+    previous = _previous()
+    previous.physical_drives = []
+    detector = _detector()
+    detector.set_temperature_states({})
+
+    events = detector.detect(previous, _current(serial_number="NEW-SN"))
+    _persist_temperature_transitions(session, detector)
+
+    assert events == []
+    assert _stored_temp_state(session, serial_number="OLD-SN") is None
+    assert _stored_temp_state(session, serial_number="NEW-SN") == "ok"
+
+
 def test_cachevault_state_change_emits_critical_event() -> None:
     events = _detector().detect(
         _previous(cv_state="Optimal"),
@@ -176,6 +218,17 @@ def test_cachevault_state_change_emits_critical_event() -> None:
 
     assert [(event.severity, event.category, event.subject) for event in events] == [
         ("critical", "cv_state", "CacheVault")
+    ]
+
+
+def test_cachevault_recovery_emits_info_event() -> None:
+    events = _detector().detect(
+        _previous(cv_state="Degraded"),
+        _current(cv_state="Optimal"),
+    )
+
+    assert [(event.severity, event.category, event.subject) for event in events] == [
+        ("info", "cv_state", "CacheVault")
     ]
 
 

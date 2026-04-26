@@ -158,15 +158,21 @@ class EventDetector:
         previous_by_slot = {
             (drive.enclosure_id, drive.slot_id): drive for drive in previous.physical_drives
         }
+        current_slots = {(drive.enclosure_id, drive.slot_id) for drive in current.physical_drives}
         events: list[DetectedEvent] = []
         replaced_slots: set[SlotKey] = set()
+        for slot_key in previous_by_slot:
+            if slot_key not in current_slots:
+                self._temperature_clears.add(slot_key)
+
         for current_drive in current.physical_drives:
             slot_key = (current_drive.enclosure_id, current_drive.slot_id)
             previous_drive = previous_by_slot.get(slot_key)
-            if (
-                previous_drive is None
-                or previous_drive.serial_number == current_drive.serial_number
-            ):
+            if previous_drive is None:
+                self._temperature_clears.add(slot_key)
+                replaced_slots.add(slot_key)
+                continue
+            if previous_drive.serial_number == current_drive.serial_number:
                 continue
             replaced_slots.add(slot_key)
             self._temperature_clears.add(slot_key)
@@ -319,7 +325,7 @@ class EventDetector:
         if previous.cachevault.state != current.cachevault.state:
             events.append(
                 DetectedEvent(
-                    severity="critical",
+                    severity=_cachevault_state_severity(current.cachevault.state),
                     category="cv_state",
                     subject="CacheVault",
                     summary=(
@@ -399,6 +405,12 @@ def _physical_drive_state_severity(previous_state: str, current_state: str) -> s
     if previous_state == "Onln" or current_state == "Onln":
         return "info"
     return "info"
+
+
+def _cachevault_state_severity(state: str) -> str:
+    if state in {"Optimal", "Optl"}:
+        return "info"
+    return "critical"
 
 
 def _counter_events(
