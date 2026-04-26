@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -130,3 +131,51 @@ def test_lifespan_skips_collector_when_lock_is_already_held(
     finally:
         app._release_collector_lock(held_lock)
         get_settings.cache_clear()
+
+
+def test_lifespan_retries_collector_lock_after_holder_releases(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(app, "_COLLECTOR_LOCK_RETRY_SECONDS", 0.01)
+    get_settings.cache_clear()
+    lock_path = str(tmp_path / "collector.lock")
+    held_lock: int | None = app._try_acquire_collector_lock(lock_path)
+    assert held_lock is not None
+    started = threading.Event()
+    stopped = threading.Event()
+    scheduler = object()
+
+    async def fake_start(self: object) -> object:
+        del self
+        started.set()
+        return scheduler
+
+    async def fake_shutdown(self: object, scheduler_arg: object) -> None:
+        del self
+        assert scheduler_arg is scheduler
+        stopped.set()
+
+    monkeypatch.setattr(app.CollectorService, "start", fake_start)
+    monkeypatch.setattr(app.CollectorService, "shutdown", fake_shutdown)
+    test_app = app.create_app()
+
+    try:
+        with TestClient(test_app) as client:
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert test_app.state.collector is None
+
+            app._release_collector_lock(held_lock)
+            held_lock = None
+
+            assert started.wait(timeout=2)
+            assert test_app.state.collector is not None
+            assert test_app.state.scheduler is scheduler
+    finally:
+        if held_lock is not None:
+            app._release_collector_lock(held_lock)
+        get_settings.cache_clear()
+
+    assert stopped.wait(timeout=2)
