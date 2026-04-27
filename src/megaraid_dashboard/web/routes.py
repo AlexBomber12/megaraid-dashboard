@@ -26,6 +26,13 @@ from megaraid_dashboard.services.drive_history import (
     load_drive_temperature_series,
 )
 from megaraid_dashboard.services.event_detector import physical_drive_state_severity
+from megaraid_dashboard.services.events import (
+    EVENTS_PAGE_SIZE,
+    EventsFragmentViewModel,
+    EventsPageViewModel,
+    load_events_fragment,
+    load_events_page,
+)
 from megaraid_dashboard.services.overview import (
     DriveListViewModel,
     OverviewViewModel,
@@ -246,15 +253,54 @@ def drive_charts(
 
 @router.get("/events", name="events")
 def events(request: Request) -> Response:
-    return TEMPLATES.TemplateResponse(
+    started_at = perf_counter()
+    view_model = _load_events_page(request)
+    response = TEMPLATES.TemplateResponse(
         request=request,
         name="pages/events.html",
         context={
             "active_nav": "events",
             "current_utc_label": _current_utc_label(),
+            "empty_next_run": _events_empty_next_run_text(request),
             "static_asset_version": _static_asset_version(),
+            "view_model": view_model,
         },
     )
+    _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=False)
+    return response
+
+
+@router.get("/partials/events", name="events_partial")
+def events_partial(
+    request: Request,
+    before_occurred_at: str | None = None,
+    before_id: str | None = None,
+) -> Response:
+    started_at = perf_counter()
+    cursor = _parse_events_cursor(
+        before_occurred_at=before_occurred_at,
+        before_id=before_id,
+    )
+    with _session(request) as session:
+        if cursor is None:
+            view_model = load_events_fragment(session, page_size=EVENTS_PAGE_SIZE)
+            template_name = "partials/events_data.html"
+        else:
+            cursor_occurred_at, cursor_id = cursor
+            view_model = load_events_fragment(
+                session,
+                page_size=EVENTS_PAGE_SIZE,
+                before_occurred_at=cursor_occurred_at,
+                before_id=cursor_id,
+            )
+            template_name = "partials/events_table.html"
+    response = TEMPLATES.TemplateResponse(
+        request=request,
+        name=template_name,
+        context={"view_model": view_model},
+    )
+    _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=True)
+    return response
 
 
 def _session(request: Request) -> Session:
@@ -286,6 +332,66 @@ def _load_drive_list(request: Request) -> DriveListViewModel:
             scheduler=scheduler,
             slot_url_factory=slot_url,
         )
+
+
+def _load_events_page(request: Request) -> EventsPageViewModel:
+    with _session(request) as session:
+        return load_events_page(session, page_size=EVENTS_PAGE_SIZE)
+
+
+def _parse_events_cursor(
+    *,
+    before_occurred_at: str | None,
+    before_id: str | None,
+) -> tuple[datetime, int] | None:
+    if (before_occurred_at is None) != (before_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail="before_occurred_at and before_id must be provided together",
+        )
+    if before_occurred_at is None or before_id is None:
+        return None
+
+    try:
+        parsed_before_occurred_at = datetime.fromisoformat(before_occurred_at)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="before_occurred_at must be a valid ISO 8601 datetime",
+        ) from exc
+    if parsed_before_occurred_at.tzinfo is None or parsed_before_occurred_at.utcoffset() is None:
+        raise HTTPException(
+            status_code=400,
+            detail="before_occurred_at must include a timezone",
+        )
+
+    try:
+        parsed_before_id = int(before_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="before_id must be an integer") from exc
+
+    return parsed_before_occurred_at.astimezone(UTC), parsed_before_id
+
+
+def _events_empty_next_run_text(request: Request) -> str:
+    settings = get_settings()
+    if not settings.collector_enabled:
+        return "Metrics collection is disabled; no collection run is scheduled."
+
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is None:
+        return "No collection run is currently scheduled."
+    metrics_job = scheduler.get_job("metrics_collector")
+    if metrics_job is None or metrics_job.next_run_time is None:
+        return "No collection run is currently scheduled."
+
+    next_run_time = metrics_job.next_run_time
+    if next_run_time.tzinfo is None or next_run_time.utcoffset() is None:
+        next_run_utc = next_run_time.replace(tzinfo=UTC)
+    else:
+        next_run_utc = next_run_time.astimezone(UTC)
+    seconds = max(0, int((next_run_utc - datetime.now(UTC)).total_seconds()))
+    return f"Next scheduled run in {seconds} seconds."
 
 
 def _latest_drive_or_404(
@@ -830,6 +936,21 @@ def _log_overview_rendered(
         captured_at=captured_at,
         elapsed_ms=elapsed_ms,
         partial=partial,
+    )
+
+
+def _log_events_rendered(
+    *,
+    view_model: EventsPageViewModel | EventsFragmentViewModel,
+    elapsed_ms: float,
+    partial: bool,
+) -> None:
+    LOGGER.info(
+        "ui_events_rendered",
+        elapsed_ms=elapsed_ms,
+        partial=partial,
+        event_count=len(view_model.events),
+        has_next_page=view_model.next_cursor is not None,
     )
 
 

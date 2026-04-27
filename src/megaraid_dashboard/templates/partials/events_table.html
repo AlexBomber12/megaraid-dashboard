@@ -1,0 +1,43 @@
+{% if view_model.events %}
+  <div class="table-frame">
+    <table class="drive-table">
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">Severity</th>
+          <th scope="col">Category</th>
+          <th scope="col">Subject</th>
+          <th scope="col">Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in view_model.events %}
+          <tr>
+            <td class="mono">{{ event.occurred_at | utc_to_cest }}</td>
+            <td>
+              <span class="status-badge status-badge--{{ event.severity_status }}">
+                {{ event.severity_label }}
+              </span>
+            </td>
+            <td class="mono">{{ event.category }}</td>
+            <td class="mono">{{ event.subject }}</td>
+            <td>{{ event.summary }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% if view_model.next_cursor is not none %}
+  <div class="load-more-row">
+    <button
+      class="button"
+      type="button"
+      hx-get="{{ request.url_for('events_partial').path }}"
+      hx-vals='{{ {"before_occurred_at": view_model.next_cursor.before_occurred_at_iso, "before_id": view_model.next_cursor.before_id} | tojson }}'
+      hx-target="closest .load-more-row"
+      hx-swap="outerHTML"
+    >Load more</button>
+  </div>
+{% endif %}

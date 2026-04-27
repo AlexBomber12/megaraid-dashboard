@@ -3,8 +3,24 @@
 {% block title %}Events - MegaRAID Dashboard{% endblock %}
 
 {% block content %}
-  <section class="empty-state empty-state--centered">
-    <h1>Coming soon</h1>
-    <p>Event history will appear here in a future read-only UI increment.</p>
-  </section>
+  {% if not view_model.events and view_model.latest_captured_at is none %}
+    <section class="empty-state empty-state--centered">
+      <h1>Waiting for first metrics collection</h1>
+      <p>The collector has not yet completed its first run.</p>
+      <p>{{ empty_next_run }}</p>
+      <p>No events recorded yet.</p>
+    </section>
+  {% else %}
+    <section class="page-title">
+      <h1>Events</h1>
+      <p>
+        {{ view_model.controller_label }}
+        {% if view_model.latest_captured_at is not none %}
+          &middot; Updated: {{ view_model.latest_captured_at | utc_to_cest }}
+        {% endif %}
+      </p>
+    </section>
+
+    {% include "partials/events_data.html" %}
+  {% endif %}
 {% endblock %}
