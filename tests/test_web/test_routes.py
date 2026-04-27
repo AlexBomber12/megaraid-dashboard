@@ -339,6 +339,54 @@ def test_drive_charts_range_changes_dataset_labels(sample_snapshot: StorcliSnaps
     assert "2026-04-10 12:00" in thirty_day_response.text
 
 
+def test_drive_charts_pins_refresh_to_detail_serial_and_captured_at(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    old_drive = next(
+        drive
+        for drive in sample_snapshot.physical_drives
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+    )
+    assert old_drive.temperature_celsius is not None
+    replaced_drives = [
+        drive.model_copy(
+            update={
+                "serial_number": "NEW-SLOT-4",
+                "temperature_celsius": 99,
+                "media_errors": 99,
+            }
+        )
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    replaced_snapshot = sample_snapshot.model_copy(
+        update={
+            "captured_at": datetime(2026, 4, 25, 12, 10, tzinfo=UTC),
+            "physical_drives": replaced_drives,
+        }
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_app_snapshot(test_app, replaced_snapshot)
+
+        response = client.get(
+            "/drives/252/4/charts",
+            params={
+                "range_days": 7,
+                "serial_number": old_drive.serial_number,
+                "captured_at": sample_snapshot.captured_at.isoformat(),
+            },
+        )
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["labels"] == ["2026-04-25 12:00"]
+    assert temperature_payload["datasets"][0]["data"] == [float(old_drive.temperature_celsius)]
+    assert temperature_payload["replacementMarkers"] == []
+
+
 def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -548,6 +596,10 @@ def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapsho
 
     assert response.status_code == 200
     assert 'hx-get="/raid/drives/252/4/charts"' in response.text
+    assert (
+        'hx-vals=\'{"range_days": 7, "serial_number": "WD-WM00000005", '
+        '"captured_at": "2026-04-25T12:00:00+00:00"}\''
+    ) in response.text
 
 
 def test_static_asset_version_includes_chartjs_bytes(

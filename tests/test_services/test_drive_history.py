@@ -88,6 +88,25 @@ def test_load_drive_temperature_series_marks_replacement_and_falls_back_to_slot_
     assert series.replacement_markers[0].current_serial_number == "SN-NEW"
 
 
+def test_load_drive_temperature_series_uses_now_as_upper_bound(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _seed_raw(session, now, temperature=40)
+    _seed_raw(session, datetime(2026, 4, 25, 13, 0, tzinfo=UTC), temperature=99)
+    session.commit()
+
+    series = load_drive_temperature_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN0001",
+        range_days=7,
+        now_utc=now,
+    )
+
+    assert series.timestamps == (now,)
+    assert series.average_celsius == (40.0,)
+
+
 def test_load_drive_temperature_series_uses_hourly_when_raw_temperature_is_missing(
     session: Session,
 ) -> None:

@@ -37,7 +37,7 @@
           role="tab"
           aria-selected="{{ 'true' if tab.active else 'false' }}"
           hx-get="{{ tab.hx_get }}"
-          hx-vals='{"range_days": {{ tab.range_days }}}'
+          hx-vals='{"range_days": {{ tab.range_days }}, "serial_number": {{ view_model.serial_number | tojson }}, "captured_at": {{ view_model.captured_at_iso | tojson }}}'
           hx-target="#chart-area"
           hx-swap="outerHTML"
         >{{ tab.label }}</button>

@@ -9,7 +9,7 @@ from time import perf_counter
 from typing import Any, cast
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -97,7 +97,9 @@ class DriveDetailViewModel:
     slot_id: int
     title: str
     model: str
+    serial_number: str
     captured_at: datetime
+    captured_at_iso: str
     attributes: tuple[DriveAttribute, ...]
     range_tabs: tuple[RangeTab, ...]
     charts: DriveChartsViewModel
@@ -203,20 +205,27 @@ def drive_charts(
     request: Request,
     enclosure_id: int,
     slot_id: int,
-    range_days: int = Query(_DEFAULT_CHART_RANGE_DAYS),
+    range_days: int = _DEFAULT_CHART_RANGE_DAYS,
+    serial_number: str | None = None,
+    captured_at: datetime | None = None,
 ) -> Response:
     started_at = perf_counter()
     resolved_range_days = _validate_range_days(range_days)
     with _session(request) as session:
-        _, drive = _latest_drive_or_404(
+        chart_serial_number, chart_captured_at = _chart_identity_or_404(
             session,
             enclosure_id=enclosure_id,
             slot_id=slot_id,
+            serial_number=serial_number,
+            captured_at=captured_at,
         )
         view_model = _drive_charts_view_model(
             session=session,
-            drive=drive,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=chart_serial_number,
             range_days=resolved_range_days,
+            now_utc=chart_captured_at,
         )
     _log_drive_detail_rendered(
         enclosure_id=enclosure_id,
@@ -284,13 +293,50 @@ def _latest_drive_or_404(
     enclosure_id: int,
     slot_id: int,
 ) -> tuple[ControllerSnapshot, PhysicalDriveSnapshot]:
-    snapshot = get_latest_snapshot(session)
-    if snapshot is None:
-        raise HTTPException(status_code=404, detail="No controller snapshot exists")
+    snapshot = _latest_snapshot_or_404(session)
     drive = _find_physical_drive(snapshot, enclosure_id=enclosure_id, slot_id=slot_id)
     if drive is None:
         raise HTTPException(status_code=404, detail="Physical drive not found in latest snapshot")
     return snapshot, drive
+
+
+def _latest_snapshot_or_404(session: Session) -> ControllerSnapshot:
+    snapshot = get_latest_snapshot(session)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="No controller snapshot exists")
+    return snapshot
+
+
+def _chart_identity_or_404(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str | None,
+    captured_at: datetime | None,
+) -> tuple[str, datetime]:
+    if serial_number is None and captured_at is None:
+        snapshot, drive = _latest_drive_or_404(
+            session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+        return drive.serial_number, snapshot.captured_at
+    if serial_number is None or captured_at is None:
+        raise HTTPException(
+            status_code=400,
+            detail="serial_number and captured_at must be provided together",
+        )
+    if not serial_number:
+        raise HTTPException(status_code=400, detail="serial_number must not be empty")
+    _latest_snapshot_or_404(session)
+    return serial_number, _require_aware_utc_query(captured_at)
+
+
+def _require_aware_utc_query(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise HTTPException(status_code=400, detail="captured_at must include a timezone")
+    return value.astimezone(UTC)
 
 
 def _find_physical_drive(
@@ -326,14 +372,23 @@ def _drive_detail_view_model(
         slot_id=drive.slot_id,
         title=f"Drive {drive.enclosure_id}:{drive.slot_id}",
         model=drive.model,
+        serial_number=drive.serial_number,
         captured_at=snapshot.captured_at,
+        captured_at_iso=snapshot.captured_at.isoformat(),
         attributes=_drive_attributes(
             drive,
             temp_warning=settings.temp_warning_celsius,
             temp_critical=settings.temp_critical_celsius,
         ),
         range_tabs=_range_tabs(active_range_days=range_days, chart_url=chart_url),
-        charts=_drive_charts_view_model(session=session, drive=drive, range_days=range_days),
+        charts=_drive_charts_view_model(
+            session=session,
+            enclosure_id=drive.enclosure_id,
+            slot_id=drive.slot_id,
+            serial_number=drive.serial_number,
+            range_days=range_days,
+            now_utc=snapshot.captured_at,
+        ),
     )
 
 
@@ -387,24 +442,29 @@ def _range_tabs(*, active_range_days: int, chart_url: str) -> tuple[RangeTab, ..
 def _drive_charts_view_model(
     *,
     session: Session,
-    drive: PhysicalDriveSnapshot,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
     range_days: int,
+    now_utc: datetime | None,
 ) -> DriveChartsViewModel:
     settings = get_settings()
     resolved_range_days = _validate_range_days(range_days)
     temperature_series = load_drive_temperature_series(
         session,
-        enclosure_id=drive.enclosure_id,
-        slot_id=drive.slot_id,
-        current_serial_number=drive.serial_number,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        current_serial_number=serial_number,
         range_days=resolved_range_days,
+        now_utc=now_utc,
     )
     error_series = load_drive_error_series(
         session,
-        enclosure_id=drive.enclosure_id,
-        slot_id=drive.slot_id,
-        current_serial_number=drive.serial_number,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        current_serial_number=serial_number,
         range_days=resolved_range_days,
+        now_utc=now_utc,
     )
     temperature_keys = _chart_point_keys(
         temperature_series.timestamps,
@@ -456,8 +516,8 @@ def _drive_charts_view_model(
         replacement_markers=replacement_markers,
     )
     return DriveChartsViewModel(
-        enclosure_id=drive.enclosure_id,
-        slot_id=drive.slot_id,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
         active_range_days=resolved_range_days,
         temperature_chart=temperature_chart,
         error_chart=error_chart,

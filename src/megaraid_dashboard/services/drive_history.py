@@ -232,18 +232,21 @@ def _load_selected_history_rows(
         enclosure_id=enclosure_id,
         slot_id=slot_id,
         cutoff=cutoff,
+        until=now,
     )
     hourly_rows = _load_hourly_points(
         session,
         enclosure_id=enclosure_id,
         slot_id=slot_id,
         cutoff=cutoff,
+        until=now,
     )
     daily_rows = _load_daily_points(
         session,
         enclosure_id=enclosure_id,
         slot_id=slot_id,
         cutoff=cutoff,
+        until=now,
     )
 
     selected_raw, selected_hourly, selected_daily = _select_rows_for_serial_window(
@@ -343,6 +346,7 @@ def _load_raw_points(
     enclosure_id: int,
     slot_id: int,
     cutoff: datetime,
+    until: datetime,
 ) -> tuple[_RawPoint, ...]:
     rows = session.execute(
         select(PhysicalDriveSnapshot, ControllerSnapshot.captured_at)
@@ -350,6 +354,7 @@ def _load_raw_points(
         .where(PhysicalDriveSnapshot.enclosure_id == enclosure_id)
         .where(PhysicalDriveSnapshot.slot_id == slot_id)
         .where(ControllerSnapshot.captured_at >= cutoff)
+        .where(ControllerSnapshot.captured_at <= until)
         .order_by(ControllerSnapshot.captured_at)
     )
     return tuple(
@@ -371,12 +376,14 @@ def _load_hourly_points(
     enclosure_id: int,
     slot_id: int,
     cutoff: datetime,
+    until: datetime,
 ) -> tuple[_AggregatePoint, ...]:
     rows = session.scalars(
         select(PhysicalDriveMetricsHourly)
         .where(PhysicalDriveMetricsHourly.enclosure_id == enclosure_id)
         .where(PhysicalDriveMetricsHourly.slot_id == slot_id)
         .where(PhysicalDriveMetricsHourly.bucket_start >= cutoff)
+        .where(PhysicalDriveMetricsHourly.bucket_start <= until)
         .order_by(PhysicalDriveMetricsHourly.bucket_start)
     )
     return tuple(
@@ -400,12 +407,14 @@ def _load_daily_points(
     enclosure_id: int,
     slot_id: int,
     cutoff: datetime,
+    until: datetime,
 ) -> tuple[_AggregatePoint, ...]:
     rows = session.scalars(
         select(PhysicalDriveMetricsDaily)
         .where(PhysicalDriveMetricsDaily.enclosure_id == enclosure_id)
         .where(PhysicalDriveMetricsDaily.slot_id == slot_id)
         .where(PhysicalDriveMetricsDaily.bucket_start >= cutoff)
+        .where(PhysicalDriveMetricsDaily.bucket_start <= until)
         .order_by(PhysicalDriveMetricsDaily.bucket_start)
     )
     return tuple(
