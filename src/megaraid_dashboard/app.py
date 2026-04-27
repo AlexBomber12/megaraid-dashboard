@@ -14,21 +14,22 @@ import structlog
 from alembic import command
 from alembic.config import Config
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
-from fastapi import APIRouter, FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session, sessionmaker
 
-from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db import get_engine, get_sessionmaker
 from megaraid_dashboard.services import CollectorService, EventDetector
+from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
+from megaraid_dashboard.web.routes import router
+from megaraid_dashboard.web.static import CacheControlStaticFiles
 
 LOGGER = structlog.get_logger(__name__)
 _COLLECTOR_LOCK_RETRY_SECONDS = 30.0
-
-router = APIRouter()
+_PACKAGE_ROOT = Path(__file__).resolve().parent
+_STATIC_DIR = _PACKAGE_ROOT / "static"
 
 
 @dataclass
@@ -39,22 +40,15 @@ class _CollectorRuntime:
     retry_task: asyncio.Task[None] | None = None
 
 
-@router.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", "version": __version__}
-
-
-@router.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
-    return HTMLResponse(
-        "<!doctype html><html><head><title>MegaRAID Dashboard</title></head>"
-        "<body><h1>MegaRAID Dashboard</h1></body></html>"
-    )
-
-
 def create_app() -> FastAPI:
     app = FastAPI(title="MegaRAID Dashboard", lifespan=_lifespan)
     app.state.settings = get_settings()
+    app.add_middleware(ForwardedPrefixMiddleware)
+    app.mount(
+        "/static",
+        CacheControlStaticFiles(directory=_STATIC_DIR),
+        name="static",
+    )
     app.include_router(router)
     return app
 

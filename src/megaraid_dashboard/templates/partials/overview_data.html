@@ -1,0 +1,73 @@
+<div
+  id="data-block"
+  class="data-block"
+  hx-get="{{ request.url_for('overview_partial').path }}"
+  hx-trigger="every 30s"
+  hx-target="this"
+  hx-swap="outerHTML"
+>
+  {% if view_model.has_snapshot %}
+    <section class="page-title">
+      <h1>SERVER RAID Status</h1>
+      <p>{{ view_model.controller_label }} &middot; Updated: {{ view_model.captured_at | utc_to_cest }}</p>
+    </section>
+
+    <section class="stat-grid" aria-label="RAID summary">
+      {% for card in view_model.cards %}
+        <article class="stat-card stat-card--{{ card.severity }}">
+          <span class="stat-card__label">{{ card.label }}</span>
+          <strong class="stat-card__value status-text status-text--{{ card.severity }}">{{ card.value }}</strong>
+          {% if card.badges %}
+            <div class="stat-card__badges">
+              {% for badge in card.badges %}
+                <span class="status-badge status-badge--{{ badge.severity }}">{{ badge.label }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </section>
+
+    <section class="drives">
+      <div class="section-heading">
+        <h2>Physical Drives</h2>
+      </div>
+      <div class="table-frame">
+        <table class="drive-table">
+          <thead>
+            <tr>
+              <th scope="col">Slot</th>
+              <th scope="col">Model</th>
+              <th scope="col">Serial</th>
+              <th scope="col" class="numeric">Temp</th>
+              <th scope="col" class="numeric">Media Err</th>
+              <th scope="col" class="numeric">Other Err</th>
+              <th scope="col" class="numeric">Predictive</th>
+              <th scope="col">SMART</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for drive in view_model.physical_drives %}
+              <tr>
+                <td class="mono">{{ drive.slot }}</td>
+                <td>{{ drive.model }}</td>
+                <td class="mono">{{ drive.serial_number }}</td>
+                <td class="numeric status-text status-text--{{ drive.temperature_severity }}">{{ drive.temperature }}</td>
+                <td class="numeric">{{ drive.media_errors }}</td>
+                <td class="numeric">{{ drive.other_errors }}</td>
+                <td class="numeric">{{ drive.predictive_failures }}</td>
+                <td class="smart smart--{{ drive.smart_severity }}">{{ drive.smart_label }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% else %}
+    <section class="empty-state empty-state--centered">
+      <h1>{{ view_model.empty_title }}</h1>
+      <p>{{ view_model.empty_body }}</p>
+      <p>{{ view_model.empty_next_run }}</p>
+    </section>
+  {% endif %}
+</div>

@@ -48,9 +48,8 @@ def test_health_returns_package_version() -> None:
 
 
 def test_index_contains_dashboard_title() -> None:
-    client = TestClient(create_app())
+    with TestClient(create_app()) as client:
+        response = client.get("/")
 
-    response = client.get("/")
-
-    assert response.status_code == 200
-    assert "MegaRAID Dashboard" in response.text
+        assert response.status_code == 200
+        assert "MegaRAID Dashboard" in response.text

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, selectinload
 
 from megaraid_dashboard.db.models import (
@@ -199,7 +198,7 @@ def clear_temp_state_for_slot(
         .where(PhysicalDriveTempState.slot_id == slot_id)
     )
     session.flush()
-    return int(cast(CursorResult[Any], result).rowcount or 0)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def record_audit(
