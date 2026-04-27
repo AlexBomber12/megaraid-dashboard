@@ -235,6 +235,65 @@ def test_load_drive_history_preserves_hourly_rows_for_other_serial_when_raw_over
     assert error_series.replacement_markers == temperature_series.replacement_markers
 
 
+def test_load_drive_history_preserves_same_bucket_acquisition_order(
+    session: Session,
+) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    session.add_all(
+        [
+            _hourly_metric(
+                datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+                serial_number="ZZZ-OLD",
+                temperature_avg=39,
+                media_errors_max=1,
+            ),
+            _hourly_metric(
+                datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+                serial_number="AAA-MID",
+                temperature_avg=41,
+                media_errors_max=2,
+            ),
+            _hourly_metric(
+                datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+                serial_number="SN-NEW",
+                temperature_avg=45,
+                media_errors_max=3,
+            ),
+        ]
+    )
+    session.commit()
+
+    temperature_series = load_drive_temperature_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+    error_series = load_drive_error_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+
+    assert temperature_series.serial_numbers == ("ZZZ-OLD", "AAA-MID", "SN-NEW")
+    assert temperature_series.average_celsius == (39.0, 41.0, 45.0)
+    assert error_series.serial_numbers == temperature_series.serial_numbers
+    assert error_series.media_errors == (1, 2, 3)
+    assert [
+        (
+            marker.previous_serial_number,
+            marker.current_serial_number,
+        )
+        for marker in temperature_series.replacement_markers
+    ] == [("ZZZ-OLD", "AAA-MID"), ("AAA-MID", "SN-NEW")]
+    assert error_series.replacement_markers == temperature_series.replacement_markers
+
+
 def test_load_drive_history_preserves_daily_rows_for_other_serial_when_raw_overlaps(
     session: Session,
 ) -> None:
