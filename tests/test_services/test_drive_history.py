@@ -294,6 +294,62 @@ def test_load_drive_history_preserves_same_bucket_acquisition_order(
     assert error_series.replacement_markers == temperature_series.replacement_markers
 
 
+def test_load_drive_history_orders_aggregate_before_raw_at_same_timestamp(
+    session: Session,
+) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _seed_raw(
+        session,
+        datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+        temperature=45,
+        serial_number="SN-NEW",
+        media_errors=7,
+    )
+    session.add(
+        _hourly_metric(
+            datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+            serial_number="SN-OLD",
+            temperature_avg=40,
+            media_errors_max=3,
+        )
+    )
+    session.commit()
+
+    temperature_series = load_drive_temperature_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+    error_series = load_drive_error_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+
+    assert temperature_series.timestamps == (
+        datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+        datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+    )
+    assert temperature_series.serial_numbers == ("SN-OLD", "SN-NEW")
+    assert temperature_series.average_celsius == (40.0, 45.0)
+    assert error_series.serial_numbers == temperature_series.serial_numbers
+    assert error_series.media_errors == (3, 7)
+    assert [
+        (
+            marker.previous_serial_number,
+            marker.current_serial_number,
+        )
+        for marker in temperature_series.replacement_markers
+    ] == [("SN-OLD", "SN-NEW")]
+    assert error_series.replacement_markers == temperature_series.replacement_markers
+
+
 def test_load_drive_history_preserves_daily_rows_for_other_serial_when_raw_overlaps(
     session: Session,
 ) -> None:

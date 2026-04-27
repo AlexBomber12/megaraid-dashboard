@@ -91,6 +91,7 @@ class _SelectedHistoryRows:
 class _SerialPoint:
     timestamp: datetime
     serial_number: str
+    point_key: DriveHistoryPointKey
 
 
 def load_drive_temperature_series(
@@ -137,7 +138,7 @@ def load_drive_temperature_series(
                 )
                 if _temperature_point.temperature_celsius_avg is not None
             ),
-            key=lambda point: _series_sort_key(point.timestamp),
+            key=lambda point: _series_sort_key(point.timestamp, point.point_key),
         )
     )
 
@@ -149,7 +150,10 @@ def load_drive_temperature_series(
         minimum_celsius=tuple(_optional_float(point.temperature_celsius_min) for point in points),
         maximum_celsius=tuple(_optional_float(point.temperature_celsius_max) for point in points),
         replacement_markers=_replacement_markers(
-            tuple(_SerialPoint(point.timestamp, point.serial_number) for point in points),
+            tuple(
+                _SerialPoint(point.timestamp, point.serial_number, point.point_key)
+                for point in points
+            ),
         ),
         raw_point_count=len(raw_rows),
         hourly_point_count=len(hourly_rows),
@@ -197,7 +201,7 @@ def load_drive_error_series(
                 *hourly_rows,
                 *daily_rows,
             ),
-            key=lambda point: _series_sort_key(point.timestamp),
+            key=lambda point: _series_sort_key(point.timestamp, point.point_key),
         )
     )
     return DriveErrorSeries(
@@ -208,7 +212,10 @@ def load_drive_error_series(
         other_errors=tuple(point.other_errors_max for point in points),
         predictive_failures=tuple(point.predictive_failures_max for point in points),
         replacement_markers=_replacement_markers(
-            tuple(_SerialPoint(point.timestamp, point.serial_number) for point in points),
+            tuple(
+                _SerialPoint(point.timestamp, point.serial_number, point.point_key)
+                for point in points
+            ),
         ),
         raw_point_count=len(raw_rows),
         hourly_point_count=len(hourly_rows),
@@ -262,19 +269,19 @@ def _load_selected_history_rows(
     selected_raw = tuple(
         sorted(
             selected_raw,
-            key=lambda row: _series_sort_key(row.timestamp),
+            key=lambda row: _series_sort_key(row.timestamp, row.point_key),
         )
     )
     selected_hourly = tuple(
         sorted(
             selected_hourly,
-            key=lambda row: _series_sort_key(row.timestamp),
+            key=lambda row: _series_sort_key(row.timestamp, row.point_key),
         )
     )
     selected_daily = tuple(
         sorted(
             selected_daily,
-            key=lambda row: _series_sort_key(row.timestamp),
+            key=lambda row: _series_sort_key(row.timestamp, row.point_key),
         )
     )
 
@@ -456,7 +463,7 @@ def _replacement_markers(
     previous_serial_number: str | None = None
     for point in sorted(
         points,
-        key=lambda item: _series_sort_key(item.timestamp),
+        key=lambda item: _series_sort_key(item.timestamp, item.point_key),
     ):
         if previous_serial_number is None:
             previous_serial_number = point.serial_number
@@ -476,8 +483,20 @@ def _replacement_markers(
 
 def _series_sort_key(
     timestamp: datetime,
-) -> datetime:
-    return timestamp
+    point_key: DriveHistoryPointKey,
+) -> tuple[datetime, int, int]:
+    return timestamp, _source_chronology_rank(point_key.source), point_key.source_id
+
+
+def _source_chronology_rank(source: str) -> int:
+    if source == "daily":
+        return 0
+    if source == "hourly":
+        return 1
+    if source == "raw":
+        return 2
+    msg = f"unknown drive history source: {source}"
+    raise ValueError(msg)
 
 
 def _optional_float(value: int | float | None) -> float | None:
