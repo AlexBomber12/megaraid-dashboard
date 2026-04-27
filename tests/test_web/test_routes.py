@@ -428,6 +428,56 @@ def test_drive_charts_preserves_same_bucket_replacement_metrics(
     assert temperature_payload["replacementMarkers"][0]["pointIndex"] == 1
 
 
+def test_drive_charts_preserves_multiple_replacement_markers_in_same_bucket(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-A-SLOT-4",
+            temperature_avg=39,
+            media_errors_max=0,
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-B-SLOT-4",
+            temperature_avg=41,
+            media_errors_max=1,
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="WD-WM00000005",
+            temperature_avg=45,
+            media_errors_max=2,
+        )
+
+        response = client.get("/drives/252/4/charts?range_days=365")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    labels = temperature_payload["labels"]
+    duplicate_label_indexes = [index for index, label in enumerate(labels) if label == "2025-06-01"]
+    assert duplicate_label_indexes == [0, 1, 2]
+    assert temperature_payload["replacementMarkers"][:2] == [
+        {
+            "pointIndex": 1,
+            "timestamp": "2025-06-01",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-A-SLOT-4",
+            "currentSerialNumber": "OLD-B-SLOT-4",
+        },
+        {
+            "pointIndex": 2,
+            "timestamp": "2025-06-01",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-B-SLOT-4",
+            "currentSerialNumber": "WD-WM00000005",
+        },
+    ]
+
+
 def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapshot) -> None:
     test_app = create_app()
     with TestClient(test_app) as client:

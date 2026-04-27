@@ -19,6 +19,7 @@ from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
+    DriveReplacementMarker,
     DriveTemperatureSeries,
     load_drive_error_series,
     load_drive_temperature_series,
@@ -635,21 +636,35 @@ def _chart_replacement_markers(
     marker_indexes: dict[tuple[datetime, str], int] = {}
     for index, point_key in enumerate(point_keys):
         marker_indexes.setdefault((point_key.timestamp, point_key.serial_number), index)
-    markers_by_timestamp = {
-        marker.timestamp: marker
-        for marker in (*temperature_series.replacement_markers, *error_series.replacement_markers)
-    }
     return tuple(
         {
-            "pointIndex": marker_indexes[(timestamp, marker.current_serial_number)],
-            "timestamp": _chart_timestamp_label(timestamp, range_days=range_days),
+            "pointIndex": marker_indexes[(marker.timestamp, marker.current_serial_number)],
+            "timestamp": _chart_timestamp_label(marker.timestamp, range_days=range_days),
             "label": marker.label,
             "previousSerialNumber": marker.previous_serial_number,
             "currentSerialNumber": marker.current_serial_number,
         }
-        for timestamp, marker in sorted(markers_by_timestamp.items())
-        if (timestamp, marker.current_serial_number) in marker_indexes
+        for marker in _unique_replacement_markers(
+            temperature_series=temperature_series,
+            error_series=error_series,
+        )
+        if (marker.timestamp, marker.current_serial_number) in marker_indexes
     )
+
+
+def _unique_replacement_markers(
+    *,
+    temperature_series: DriveTemperatureSeries,
+    error_series: DriveErrorSeries,
+) -> tuple[DriveReplacementMarker, ...]:
+    seen_markers: set[DriveReplacementMarker] = set()
+    markers: list[DriveReplacementMarker] = []
+    for marker in (*temperature_series.replacement_markers, *error_series.replacement_markers):
+        if marker in seen_markers:
+            continue
+        seen_markers.add(marker)
+        markers.append(marker)
+    return tuple(markers)
 
 
 def _chart_point_keys(
