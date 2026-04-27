@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -15,7 +16,9 @@ from megaraid_dashboard.services.overview import OverviewViewModel, load_overvie
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
-TEMPLATES = create_templates(Path(__file__).resolve().parents[1] / "templates")
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+TEMPLATES = create_templates(_PACKAGE_ROOT / "templates")
+STATIC_ASSET_VERSION = ""
 
 router = APIRouter()
 
@@ -35,6 +38,7 @@ def overview(request: Request) -> Response:
         context={
             "active_nav": "overview",
             "current_utc_label": _current_utc_label(),
+            "static_asset_version": _static_asset_version(),
             "view_model": view_model,
         },
     )
@@ -68,6 +72,7 @@ def events(request: Request) -> Response:
         context={
             "active_nav": "events",
             "current_utc_label": _current_utc_label(),
+            "static_asset_version": _static_asset_version(),
         },
     )
 
@@ -81,6 +86,21 @@ def _load_overview(request: Request) -> OverviewViewModel:
 
 def _current_utc_label() -> str:
     return datetime.now(UTC).strftime("UTC %H:%M:%S")
+
+
+def _static_asset_version() -> str:
+    global STATIC_ASSET_VERSION
+    if STATIC_ASSET_VERSION:
+        return STATIC_ASSET_VERSION
+
+    digest = hashlib.sha256()
+    for path in (
+        _PACKAGE_ROOT / "static" / "css" / "app.css",
+        _PACKAGE_ROOT / "static" / "vendor" / "htmx.min.js",
+    ):
+        digest.update(path.read_bytes())
+    STATIC_ASSET_VERSION = digest.hexdigest()[:12]
+    return STATIC_ASSET_VERSION
 
 
 def _elapsed_ms(started_at: float) -> float:

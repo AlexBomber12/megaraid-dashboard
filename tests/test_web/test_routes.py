@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -103,6 +104,10 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "SERVER RAID Status" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
+    assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
+    assert (
+        re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
+    )
     assert "/raid/partials/overview" in response.text
     assert {"/raid/", "/raid/drives", "/raid/events"}.issubset(_anchor_hrefs(response.text))
 
@@ -119,6 +124,8 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert response.status_code == 200
     assert "/static/css/app.css" in response.text
     assert "/static/vendor/htmx.min.js" in response.text
+    assert re.search(r"/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
+    assert re.search(r"/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
     assert "/raid/" not in response.text

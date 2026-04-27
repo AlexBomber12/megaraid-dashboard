@@ -81,6 +81,8 @@ Static assets are mounted separately at `/static` with far-future cache headers:
 - `src/megaraid_dashboard/static/css/app.css` contains the vanilla CSS.
 - `src/megaraid_dashboard/static/vendor/htmx.min.js` vendors HTMX 2.0.x from the
   official release. The file is local, so CDN loading and SRI are deliberately not used.
+  Template asset URLs include a content-derived `v` query so far-future caches are
+  refreshed after CSS or JS changes.
 
 ## Reverse Proxy
 
