@@ -298,20 +298,23 @@ def _temperature_rows(
     selected: _SelectedHistoryRows,
 ) -> tuple[tuple[_RawPoint, ...], tuple[_AggregatePoint, ...], tuple[_AggregatePoint, ...]]:
     raw_rows = tuple(raw for raw in selected.raw if raw.temperature_celsius is not None)
-    raw_covered_hours = {_hour_bucket(raw.timestamp) for raw in raw_rows}
+    raw_covered_hours = {(_hour_bucket(raw.timestamp), raw.serial_number) for raw in raw_rows}
     hourly_rows = tuple(
         hourly
         for hourly in selected.hourly
-        if hourly.temperature_celsius_avg is not None and hourly.timestamp not in raw_covered_hours
+        if hourly.temperature_celsius_avg is not None
+        and (hourly.timestamp, hourly.serial_number) not in raw_covered_hours
     )
-    raw_covered_days = {_day_bucket(raw.timestamp) for raw in raw_rows}
-    hourly_covered_days = {_day_bucket(hourly.timestamp) for hourly in hourly_rows}
+    raw_covered_days = {(_day_bucket(raw.timestamp), raw.serial_number) for raw in raw_rows}
+    hourly_covered_days = {
+        (_day_bucket(hourly.timestamp), hourly.serial_number) for hourly in hourly_rows
+    }
     daily_rows = tuple(
         daily
         for daily in selected.daily
         if daily.temperature_celsius_avg is not None
-        and daily.timestamp not in raw_covered_days
-        and daily.timestamp not in hourly_covered_days
+        and (daily.timestamp, daily.serial_number) not in raw_covered_days
+        and (daily.timestamp, daily.serial_number) not in hourly_covered_days
     )
     return raw_rows, hourly_rows, daily_rows
 
@@ -319,16 +322,21 @@ def _temperature_rows(
 def _error_rows(
     selected: _SelectedHistoryRows,
 ) -> tuple[tuple[_RawPoint, ...], tuple[_AggregatePoint, ...], tuple[_AggregatePoint, ...]]:
-    raw_covered_hours = {_hour_bucket(raw.timestamp) for raw in selected.raw}
+    raw_covered_hours = {(_hour_bucket(raw.timestamp), raw.serial_number) for raw in selected.raw}
     hourly_rows = tuple(
-        hourly for hourly in selected.hourly if hourly.timestamp not in raw_covered_hours
+        hourly
+        for hourly in selected.hourly
+        if (hourly.timestamp, hourly.serial_number) not in raw_covered_hours
     )
-    raw_covered_days = {_day_bucket(raw.timestamp) for raw in selected.raw}
-    hourly_covered_days = {_day_bucket(hourly.timestamp) for hourly in hourly_rows}
+    raw_covered_days = {(_day_bucket(raw.timestamp), raw.serial_number) for raw in selected.raw}
+    hourly_covered_days = {
+        (_day_bucket(hourly.timestamp), hourly.serial_number) for hourly in hourly_rows
+    }
     daily_rows = tuple(
         daily
         for daily in selected.daily
-        if daily.timestamp not in raw_covered_days and daily.timestamp not in hourly_covered_days
+        if (daily.timestamp, daily.serial_number) not in raw_covered_days
+        and (daily.timestamp, daily.serial_number) not in hourly_covered_days
     )
     return selected.raw, hourly_rows, daily_rows
 

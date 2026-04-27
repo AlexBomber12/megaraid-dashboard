@@ -138,6 +138,148 @@ def test_load_drive_temperature_series_uses_hourly_when_raw_temperature_is_missi
     assert error_series.hourly_point_count == 0
 
 
+def test_load_drive_history_preserves_hourly_rows_for_other_serial_when_raw_overlaps(
+    session: Session,
+) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _seed_raw(
+        session,
+        datetime(2026, 4, 25, 11, 10, tzinfo=UTC),
+        temperature=45,
+        serial_number="SN-NEW",
+        media_errors=7,
+        other_errors=8,
+        predictive_failures=9,
+    )
+    session.add_all(
+        [
+            _hourly_metric(
+                datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+                serial_number="SN-OLD",
+                temperature_avg=40,
+                media_errors_max=3,
+                other_errors_max=4,
+                predictive_failures_max=5,
+            ),
+            _hourly_metric(
+                datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+                serial_number="SN-NEW",
+                temperature_avg=99,
+                media_errors_max=99,
+                other_errors_max=99,
+                predictive_failures_max=99,
+            ),
+        ]
+    )
+    session.commit()
+
+    temperature_series = load_drive_temperature_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+    error_series = load_drive_error_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+
+    assert temperature_series.timestamps == (
+        datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+        datetime(2026, 4, 25, 11, 10, tzinfo=UTC),
+    )
+    assert temperature_series.serial_numbers == ("SN-OLD", "SN-NEW")
+    assert temperature_series.average_celsius == (40.0, 45.0)
+    assert temperature_series.raw_point_count == 1
+    assert temperature_series.hourly_point_count == 1
+    assert temperature_series.daily_point_count == 0
+    assert error_series.timestamps == temperature_series.timestamps
+    assert error_series.serial_numbers == ("SN-OLD", "SN-NEW")
+    assert error_series.media_errors == (3, 7)
+    assert error_series.other_errors == (4, 8)
+    assert error_series.predictive_failures == (5, 9)
+    assert error_series.raw_point_count == 1
+    assert error_series.hourly_point_count == 1
+    assert error_series.daily_point_count == 0
+
+
+def test_load_drive_history_preserves_daily_rows_for_other_serial_when_raw_overlaps(
+    session: Session,
+) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _seed_raw(
+        session,
+        datetime(2026, 4, 25, 11, 10, tzinfo=UTC),
+        temperature=45,
+        serial_number="SN-NEW",
+        media_errors=7,
+        other_errors=8,
+        predictive_failures=9,
+    )
+    session.add_all(
+        [
+            _daily_metric(
+                datetime(2026, 4, 25, 0, 0, tzinfo=UTC),
+                serial_number="SN-OLD",
+                temperature_avg=40,
+                media_errors_max=3,
+                other_errors_max=4,
+                predictive_failures_max=5,
+            ),
+            _daily_metric(
+                datetime(2026, 4, 25, 0, 0, tzinfo=UTC),
+                serial_number="SN-NEW",
+                temperature_avg=99,
+                media_errors_max=99,
+                other_errors_max=99,
+                predictive_failures_max=99,
+            ),
+        ]
+    )
+    session.commit()
+
+    temperature_series = load_drive_temperature_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+    error_series = load_drive_error_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN-NEW",
+        range_days=7,
+        now_utc=now,
+    )
+
+    assert temperature_series.timestamps == (
+        datetime(2026, 4, 25, 0, 0, tzinfo=UTC),
+        datetime(2026, 4, 25, 11, 10, tzinfo=UTC),
+    )
+    assert temperature_series.serial_numbers == ("SN-OLD", "SN-NEW")
+    assert temperature_series.average_celsius == (40.0, 45.0)
+    assert temperature_series.raw_point_count == 1
+    assert temperature_series.hourly_point_count == 0
+    assert temperature_series.daily_point_count == 1
+    assert error_series.timestamps == temperature_series.timestamps
+    assert error_series.serial_numbers == ("SN-OLD", "SN-NEW")
+    assert error_series.media_errors == (3, 7)
+    assert error_series.other_errors == (4, 8)
+    assert error_series.predictive_failures == (5, 9)
+    assert error_series.raw_point_count == 1
+    assert error_series.hourly_point_count == 0
+    assert error_series.daily_point_count == 1
+
+
 def test_load_drive_error_series_uses_aggregate_max_columns(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
     session.add_all(
