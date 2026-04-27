@@ -164,8 +164,11 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert full_response.status_code == 200
     assert "Waiting for first metrics collection" in full_response.text
     assert "The collector has not yet completed its first run." in full_response.text
-    assert "Next run within 300 seconds." in full_response.text
+    assert "Metrics collection is disabled; no collection run is scheduled." in full_response.text
     assert "Waiting for first metrics collection" in partial_response.text
+    assert (
+        "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
+    )
     assert "<!doctype html>" not in partial_response.text
     assert "site-header" not in partial_response.text
 

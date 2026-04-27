@@ -98,7 +98,7 @@ def load_overview_view_model(
             empty_body="The collector has not yet completed its first run.",
             empty_next_run=_empty_next_run_text(
                 scheduler=scheduler,
-                fallback_seconds=settings.metrics_interval_seconds,
+                collector_enabled=settings.collector_enabled,
             ),
         )
 
@@ -151,10 +151,13 @@ def load_overview_view_model(
     )
 
 
-def _empty_next_run_text(*, scheduler: _Scheduler | None, fallback_seconds: int) -> str:
+def _empty_next_run_text(*, scheduler: _Scheduler | None, collector_enabled: bool) -> str:
+    if not collector_enabled:
+        return "Metrics collection is disabled; no collection run is scheduled."
+
     next_run_time = _next_scheduler_run(scheduler)
     if next_run_time is None:
-        return f"Next run within {fallback_seconds} seconds."
+        return "No collection run is currently scheduled."
 
     now = datetime.now(UTC)
     if next_run_time.tzinfo is None or next_run_time.utcoffset() is None:

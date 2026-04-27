@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
@@ -212,15 +213,39 @@ def test_overview_view_model_empty_database(session: Session) -> None:
 
     assert view_model.has_snapshot is False
     assert view_model.empty_title == "Waiting for first metrics collection"
-    assert view_model.empty_next_run == "Next run within 300 seconds."
+    assert view_model.empty_next_run == "No collection run is currently scheduled."
 
 
-def test_overview_view_model_empty_database_uses_scheduler_fallback_when_job_missing(
+def test_overview_view_model_empty_database_reports_missing_scheduler_job(
     session: Session,
 ) -> None:
     view_model = load_overview_view_model(session, scheduler=_SchedulerWithoutJobs())
 
-    assert view_model.empty_next_run == "Next run within 300 seconds."
+    assert view_model.empty_next_run == "No collection run is currently scheduled."
+
+
+def test_overview_view_model_empty_database_reports_disabled_collector(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    monkeypatch.setenv("COLLECTOR_ENABLED", "false")
+    get_settings.cache_clear()
+
+    view_model = load_overview_view_model(session)
+
+    assert (
+        view_model.empty_next_run
+        == "Metrics collection is disabled; no collection run is scheduled."
+    )
+
+
+def test_overview_view_model_empty_database_reports_next_scheduled_run(session: Session) -> None:
+    next_run_time = datetime.now(UTC) + timedelta(seconds=90)
+
+    view_model = load_overview_view_model(session, scheduler=_SchedulerWithJob(next_run_time))
+
+    assert view_model.empty_next_run.startswith("Next scheduled run in ")
+    assert view_model.empty_next_run.endswith(" seconds.")
 
 
 def _insert(session: Session, snapshot: StorcliSnapshot) -> None:
@@ -284,3 +309,18 @@ class _SchedulerWithoutJobs:
     def get_job(self, job_id: str) -> None:
         del job_id
         return None
+
+
+@dataclass(frozen=True)
+class _SchedulerJob:
+    next_run_time: datetime
+
+
+@dataclass(frozen=True)
+class _SchedulerWithJob:
+    next_run_time: datetime
+
+    def get_job(self, job_id: str) -> _SchedulerJob | None:
+        if job_id != "metrics_collector":
+            return None
+        return _SchedulerJob(next_run_time=self.next_run_time)
