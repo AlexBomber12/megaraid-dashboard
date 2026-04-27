@@ -60,11 +60,35 @@ def test_forwarded_prefix_middleware_sets_root_path_and_url_for() -> None:
     assert unprefixed.json() == {"root_path": "", "url_path": "/"}
 
 
+@pytest.mark.parametrize(("forwarded_prefix", "expected_root_path"), [("/raid/", "/raid")])
+def test_forwarded_prefix_middleware_normalizes_safe_trailing_slash(
+    forwarded_prefix: str,
+    expected_root_path: str,
+) -> None:
+    probe_app = FastAPI()
+    probe_app.add_middleware(ForwardedPrefixMiddleware)
+
+    @probe_app.get("/", name="probe")
+    async def probe(request: Request) -> dict[str, str]:
+        return {
+            "root_path": cast(str, request.scope.get("root_path", "")),
+            "url_path": request.url_for("probe").path,
+        }
+
+    client = TestClient(probe_app)
+
+    response = client.get("/", headers={"X-Forwarded-Prefix": forwarded_prefix})
+
+    assert response.json() == {
+        "root_path": expected_root_path,
+        "url_path": f"{expected_root_path}/",
+    }
+
+
 @pytest.mark.parametrize(
     "forwarded_prefix",
     [
         "//attacker.example",
-        "/raid/",
         "/raid//admin",
         "/../raid",
         "/raid?next=evil",

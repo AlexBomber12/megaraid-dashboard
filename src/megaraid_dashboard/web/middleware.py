@@ -16,10 +16,20 @@ class ForwardedPrefixMiddleware:
         if scope["type"] in {"http", "websocket"}:
             headers = Headers(scope=scope)
             forwarded_prefix = headers.get("x-forwarded-prefix")
-            if forwarded_prefix and _is_safe_forwarded_prefix(forwarded_prefix):
+            normalized_prefix = _normalize_forwarded_prefix(forwarded_prefix)
+            if normalized_prefix is not None:
                 scope = dict(scope)
-                scope["root_path"] = forwarded_prefix
+                scope["root_path"] = normalized_prefix
         await self.app(scope, receive, send)
+
+
+def _normalize_forwarded_prefix(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.rstrip("/")
+    if not normalized or not _is_safe_forwarded_prefix(normalized):
+        return None
+    return normalized
 
 
 def _is_safe_forwarded_prefix(value: str) -> bool:
