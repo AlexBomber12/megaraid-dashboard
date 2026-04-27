@@ -12,13 +12,28 @@
     {% endwith %}
   {% else %}
     <section class="empty-state empty-state--centered">
-      <h1>No events recorded yet.</h1>
+      <h1>{{ events_empty_title | default("No events recorded yet.") }}</h1>
+      {% if events_empty_body | default("") %}
+        <p>{{ events_empty_body }}</p>
+      {% endif %}
+      {% if events_empty_next_run | default("") %}
+        <p>{{ events_empty_next_run }}</p>
+      {% endif %}
+      {% if events_empty_detail | default("") %}
+        <p>{{ events_empty_detail }}</p>
+      {% endif %}
     </section>
   {% endif %}
 </div>
 
-{% if render_events_pagination | default(false) and view_model.events %}
-  {% with render_events_table=false, render_events_load_more=true %}
+{% if render_events_load_more_container | default(false) and view_model.events %}
+  {% with render_events_table=false %}
+    {% include "partials/events_table.html" %}
+  {% endwith %}
+{% endif %}
+
+{% if render_events_load_more_oob | default(false) %}
+  {% with render_events_table=false %}
     {% include "partials/events_table.html" %}
   {% endwith %}
 {% endif %}

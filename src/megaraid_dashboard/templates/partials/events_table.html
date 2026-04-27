@@ -1,4 +1,41 @@
-{% if render_events_table | default(true) and view_model.events %}
+{% macro event_rows(events) -%}
+  {% for event in events %}
+    <tr>
+      <td class="mono">{{ event.occurred_at | utc_to_cest }}</td>
+      <td>
+        <span class="status-badge status-badge--{{ event.severity_status }}">
+          {{ event.severity_label }}
+        </span>
+      </td>
+      <td class="mono">{{ event.category }}</td>
+      <td class="mono">{{ event.subject }}</td>
+      <td>{{ event.summary }}</td>
+    </tr>
+  {% endfor %}
+{%- endmacro %}
+
+{% macro load_more_row(cursor, swap_oob=false) -%}
+  <tr
+    id="events-load-more-row"
+    class="load-more-row"
+    {% if swap_oob %}hx-swap-oob="true"{% endif %}
+  >
+    <td colspan="5">
+      <button
+        class="button"
+        type="button"
+        hx-get="{{ request.url_for('events_partial').path }}"
+        hx-vals='{{ {"before_occurred_at": cursor.before_occurred_at_iso, "before_id": cursor.before_id} | tojson }}'
+        hx-target="#events-load-more-row"
+        hx-swap="outerHTML"
+      >Load more</button>
+    </td>
+  </tr>
+{%- endmacro %}
+
+{% if render_events_rows_only | default(false) %}
+  {{ event_rows(view_model.events) }}
+{% elif render_events_table | default(true) and view_model.events %}
   <div class="table-frame">
     <table class="drive-table">
       <thead>
@@ -11,33 +48,26 @@
         </tr>
       </thead>
       <tbody>
-        {% for event in view_model.events %}
-          <tr>
-            <td class="mono">{{ event.occurred_at | utc_to_cest }}</td>
-            <td>
-              <span class="status-badge status-badge--{{ event.severity_status }}">
-                {{ event.severity_label }}
-              </span>
-            </td>
-            <td class="mono">{{ event.category }}</td>
-            <td class="mono">{{ event.subject }}</td>
-            <td>{{ event.summary }}</td>
-          </tr>
-        {% endfor %}
+        {{ event_rows(view_model.events) }}
       </tbody>
     </table>
   </div>
 {% endif %}
 
-{% if render_events_load_more | default(true) and view_model.next_cursor is not none %}
-  <div class="load-more-row">
-    <button
-      class="button"
-      type="button"
-      hx-get="{{ request.url_for('events_partial').path }}"
-      hx-vals='{{ {"before_occurred_at": view_model.next_cursor.before_occurred_at_iso, "before_id": view_model.next_cursor.before_id} | tojson }}'
-      hx-target="closest .load-more-row"
-      hx-swap="outerHTML"
-    >Load more</button>
+{% if render_events_load_more_container | default(false) and view_model.next_cursor is not none %}
+  <div id="events-pagination" class="table-frame table-frame--compact">
+    <table class="drive-table">
+      <tbody>
+        {{ load_more_row(view_model.next_cursor) }}
+      </tbody>
+    </table>
   </div>
+{% elif render_events_load_more_oob | default(false) %}
+  {% if view_model.next_cursor is not none %}
+    {{ load_more_row(view_model.next_cursor, swap_oob=true) }}
+  {% else %}
+    <tr id="events-load-more-row" class="load-more-row" hx-swap-oob="true"></tr>
+  {% endif %}
+{% elif view_model.next_cursor is not none %}
+  {{ load_more_row(view_model.next_cursor) }}
 {% endif %}

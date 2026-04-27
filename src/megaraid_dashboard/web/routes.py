@@ -297,7 +297,11 @@ def events_partial(
     response = TEMPLATES.TemplateResponse(
         request=request,
         name=template_name,
-        context={"view_model": view_model},
+        context={
+            "render_events_load_more_oob": cursor is None,
+            "render_events_rows_only": cursor is not None,
+            "view_model": view_model,
+        },
     )
     _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=True)
     return response

@@ -4,12 +4,14 @@
 
 {% block content %}
   {% if not view_model.events and view_model.latest_captured_at is none %}
-    <section class="empty-state empty-state--centered">
-      <h1>Waiting for first metrics collection</h1>
-      <p>The collector has not yet completed its first run.</p>
-      <p>{{ empty_next_run }}</p>
-      <p>No events recorded yet.</p>
-    </section>
+    {% with
+      events_empty_title="Waiting for first metrics collection",
+      events_empty_body="The collector has not yet completed its first run.",
+      events_empty_next_run=empty_next_run,
+      events_empty_detail="No events recorded yet."
+    %}
+      {% include "partials/events_data.html" %}
+    {% endwith %}
   {% else %}
     <section class="page-title">
       <h1>Events</h1>
@@ -21,7 +23,7 @@
       </p>
     </section>
 
-    {% with render_events_pagination=true %}
+    {% with render_events_load_more_container=true %}
       {% include "partials/events_data.html" %}
     {% endwith %}
   {% endif %}

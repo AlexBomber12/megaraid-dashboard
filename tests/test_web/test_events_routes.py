@@ -55,6 +55,8 @@ def test_events_empty_database_renders_empty_state_without_load_more() -> None:
     assert response.status_code == 200
     assert "No events recorded yet." in response.text
     assert "Load more" not in response.text
+    assert 'id="events-data"' in response.text
+    assert 'hx-trigger="every 30s"' in response.text
 
 
 @pytest.mark.parametrize(
@@ -90,7 +92,8 @@ def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     assert response.status_code == 200
     assert response.text.lstrip().startswith('<div\n  id="events-data"')
     assert "event-50" in response.text
-    assert "Load more" not in response.text
+    assert "Load more" in response.text
+    assert 'hx-swap-oob="true"' in response.text
     assert 'hx-get="/partials/events"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
     assert 'hx-target="this"' in response.text
@@ -115,6 +118,8 @@ def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
 
     assert response.status_code == 200
     assert 'id="events-data"' not in response.text
+    assert "<thead>" not in response.text
+    assert "<tr" in response.text
     assert "<!doctype html>" not in response.text
     assert "event-0" in response.text
     assert "event-1" not in response.text
