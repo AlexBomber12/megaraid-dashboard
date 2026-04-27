@@ -102,6 +102,13 @@ class DriveDetailViewModel:
     charts: DriveChartsViewModel
 
 
+@dataclass(frozen=True)
+class _ChartPointKey:
+    timestamp: datetime
+    serial_number: str
+    occurrence: int
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
@@ -398,24 +405,28 @@ def _drive_charts_view_model(
         current_serial_number=drive.serial_number,
         range_days=resolved_range_days,
     )
-    timestamps = tuple(sorted({*temperature_series.timestamps, *error_series.timestamps}))
+    temperature_keys = _chart_point_keys(
+        temperature_series.timestamps,
+        temperature_series.serial_numbers,
+    )
+    error_keys = _chart_point_keys(error_series.timestamps, error_series.serial_numbers)
+    point_keys = _merge_chart_point_keys(
+        temperature_keys=temperature_keys,
+        error_keys=error_keys,
+    )
     labels = tuple(
-        _chart_timestamp_label(timestamp, range_days=resolved_range_days)
-        for timestamp in timestamps
+        _chart_timestamp_label(point_key.timestamp, range_days=resolved_range_days)
+        for point_key in point_keys
     )
-    temperature_by_timestamp = dict(
-        zip(temperature_series.timestamps, temperature_series.average_celsius, strict=True)
+    temperature_by_key = dict(
+        zip(temperature_keys, temperature_series.average_celsius, strict=True)
     )
-    media_errors_by_timestamp = dict(
-        zip(error_series.timestamps, error_series.media_errors, strict=True)
+    media_errors_by_key = dict(zip(error_keys, error_series.media_errors, strict=True))
+    other_errors_by_key = dict(zip(error_keys, error_series.other_errors, strict=True))
+    predictive_failures_by_key = dict(
+        zip(error_keys, error_series.predictive_failures, strict=True)
     )
-    other_errors_by_timestamp = dict(
-        zip(error_series.timestamps, error_series.other_errors, strict=True)
-    )
-    predictive_failures_by_timestamp = dict(
-        zip(error_series.timestamps, error_series.predictive_failures, strict=True)
-    )
-    temperature_values = tuple(temperature_by_timestamp.get(timestamp) for timestamp in timestamps)
+    temperature_values = tuple(temperature_by_key.get(point_key) for point_key in point_keys)
     max_temperature = max(
         (value for value in temperature_values if value is not None),
         default=0.0,
@@ -424,7 +435,7 @@ def _drive_charts_view_model(
         temperature_series=temperature_series,
         error_series=error_series,
         range_days=resolved_range_days,
-        timestamps=timestamps,
+        point_keys=point_keys,
     )
     temperature_chart = _temperature_chart_data(
         labels=labels,
@@ -436,10 +447,10 @@ def _drive_charts_view_model(
     )
     error_chart = _error_chart_data(
         labels=labels,
-        media_errors=tuple(media_errors_by_timestamp.get(timestamp) for timestamp in timestamps),
-        other_errors=tuple(other_errors_by_timestamp.get(timestamp) for timestamp in timestamps),
+        media_errors=tuple(media_errors_by_key.get(point_key) for point_key in point_keys),
+        other_errors=tuple(other_errors_by_key.get(point_key) for point_key in point_keys),
         predictive_failures=tuple(
-            predictive_failures_by_timestamp.get(timestamp) for timestamp in timestamps
+            predictive_failures_by_key.get(point_key) for point_key in point_keys
         ),
         replacement_markers=replacement_markers,
     )
@@ -619,23 +630,59 @@ def _chart_replacement_markers(
     temperature_series: DriveTemperatureSeries,
     error_series: DriveErrorSeries,
     range_days: int,
-    timestamps: tuple[datetime, ...],
+    point_keys: tuple[_ChartPointKey, ...],
 ) -> tuple[dict[str, Any], ...]:
-    timestamp_indexes = {timestamp: index for index, timestamp in enumerate(timestamps)}
+    marker_indexes: dict[tuple[datetime, str], int] = {}
+    for index, point_key in enumerate(point_keys):
+        marker_indexes.setdefault((point_key.timestamp, point_key.serial_number), index)
     markers_by_timestamp = {
         marker.timestamp: marker
         for marker in (*temperature_series.replacement_markers, *error_series.replacement_markers)
     }
     return tuple(
         {
-            "pointIndex": timestamp_indexes[timestamp],
+            "pointIndex": marker_indexes[(timestamp, marker.current_serial_number)],
             "timestamp": _chart_timestamp_label(timestamp, range_days=range_days),
             "label": marker.label,
             "previousSerialNumber": marker.previous_serial_number,
             "currentSerialNumber": marker.current_serial_number,
         }
         for timestamp, marker in sorted(markers_by_timestamp.items())
-        if timestamp in timestamp_indexes
+        if (timestamp, marker.current_serial_number) in marker_indexes
+    )
+
+
+def _chart_point_keys(
+    timestamps: tuple[datetime, ...],
+    serial_numbers: tuple[str, ...],
+) -> tuple[_ChartPointKey, ...]:
+    occurrence_counts: dict[tuple[datetime, str], int] = {}
+    point_keys: list[_ChartPointKey] = []
+    for timestamp, serial_number in zip(timestamps, serial_numbers, strict=True):
+        occurrence_key = (timestamp, serial_number)
+        occurrence = occurrence_counts.get(occurrence_key, 0)
+        occurrence_counts[occurrence_key] = occurrence + 1
+        point_keys.append(
+            _ChartPointKey(
+                timestamp=timestamp,
+                serial_number=serial_number,
+                occurrence=occurrence,
+            )
+        )
+    return tuple(point_keys)
+
+
+def _merge_chart_point_keys(
+    *,
+    temperature_keys: tuple[_ChartPointKey, ...],
+    error_keys: tuple[_ChartPointKey, ...],
+) -> tuple[_ChartPointKey, ...]:
+    ordering_source = (*error_keys, *temperature_keys)
+    order_by_key: dict[_ChartPointKey, int] = {}
+    for index, point_key in enumerate(ordering_source):
+        order_by_key.setdefault(point_key, index)
+    return tuple(
+        sorted(order_by_key, key=lambda point_key: (point_key.timestamp, order_by_key[point_key]))
     )
 
 

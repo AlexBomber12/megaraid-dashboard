@@ -25,6 +25,7 @@ class DriveReplacementMarker:
 @dataclass(frozen=True)
 class DriveTemperatureSeries:
     timestamps: tuple[datetime, ...]
+    serial_numbers: tuple[str, ...]
     average_celsius: tuple[float, ...]
     minimum_celsius: tuple[float | None, ...]
     maximum_celsius: tuple[float | None, ...]
@@ -37,6 +38,7 @@ class DriveTemperatureSeries:
 @dataclass(frozen=True)
 class DriveErrorSeries:
     timestamps: tuple[datetime, ...]
+    serial_numbers: tuple[str, ...]
     media_errors: tuple[int, ...]
     other_errors: tuple[int, ...]
     predictive_failures: tuple[int, ...]
@@ -124,7 +126,11 @@ def load_drive_temperature_series(
                 )
                 if _temperature_point.temperature_celsius_avg is not None
             ),
-            key=lambda point: point.timestamp,
+            key=lambda point: _series_sort_key(
+                point.timestamp,
+                point.serial_number,
+                current_serial_number,
+            ),
         )
     )
 
@@ -138,6 +144,7 @@ def load_drive_temperature_series(
 
     return DriveTemperatureSeries(
         timestamps=tuple(point.timestamp for point in points),
+        serial_numbers=tuple(point.serial_number for point in points),
         average_celsius=tuple(_require_float(point.temperature_celsius_avg) for point in points),
         minimum_celsius=tuple(_optional_float(point.temperature_celsius_min) for point in points),
         maximum_celsius=tuple(_optional_float(point.temperature_celsius_max) for point in points),
@@ -186,11 +193,16 @@ def load_drive_error_series(
                 *selected.hourly,
                 *selected.daily,
             ),
-            key=lambda point: point.timestamp,
+            key=lambda point: _series_sort_key(
+                point.timestamp,
+                point.serial_number,
+                current_serial_number,
+            ),
         )
     )
     return DriveErrorSeries(
         timestamps=tuple(point.timestamp for point in points),
+        serial_numbers=tuple(point.serial_number for point in points),
         media_errors=tuple(point.media_errors_max for point in points),
         other_errors=tuple(point.other_errors_max for point in points),
         predictive_failures=tuple(point.predictive_failures_max for point in points),
@@ -242,15 +254,45 @@ def _load_selected_history_rows(
         current_serial_number=current_serial_number,
     )
     raw_covered_hours = {_hour_bucket(raw.timestamp) for raw in selected_raw}
+    selected_raw = tuple(
+        sorted(
+            selected_raw,
+            key=lambda row: _series_sort_key(
+                row.timestamp,
+                row.serial_number,
+                current_serial_number,
+            ),
+        )
+    )
     selected_hourly = tuple(
         hourly for hourly in selected_hourly if hourly.timestamp not in raw_covered_hours
     )
     raw_covered_days = {_day_bucket(raw.timestamp) for raw in selected_raw}
     hourly_covered_days = {_day_bucket(hourly.timestamp) for hourly in selected_hourly}
+    selected_hourly = tuple(
+        sorted(
+            selected_hourly,
+            key=lambda row: _series_sort_key(
+                row.timestamp,
+                row.serial_number,
+                current_serial_number,
+            ),
+        )
+    )
     selected_daily = tuple(
         daily
         for daily in selected_daily
         if daily.timestamp not in raw_covered_days and daily.timestamp not in hourly_covered_days
+    )
+    selected_daily = tuple(
+        sorted(
+            selected_daily,
+            key=lambda row: _series_sort_key(
+                row.timestamp,
+                row.serial_number,
+                current_serial_number,
+            ),
+        )
     )
 
     replacement_markers = _replacement_markers(
@@ -258,7 +300,8 @@ def _load_selected_history_rows(
             *(_SerialPoint(raw.timestamp, raw.serial_number) for raw in selected_raw),
             *(_SerialPoint(hourly.timestamp, hourly.serial_number) for hourly in selected_hourly),
             *(_SerialPoint(daily.timestamp, daily.serial_number) for daily in selected_daily),
-        )
+        ),
+        current_serial_number=current_serial_number,
     )
     return _SelectedHistoryRows(
         raw=selected_raw,
@@ -378,10 +421,19 @@ def _select_rows_for_serial_window(
 
 def _replacement_markers(
     points: tuple[_SerialPoint, ...],
+    *,
+    current_serial_number: str,
 ) -> tuple[DriveReplacementMarker, ...]:
     markers: list[DriveReplacementMarker] = []
     previous_serial_number: str | None = None
-    for point in sorted(points, key=lambda item: item.timestamp):
+    for point in sorted(
+        points,
+        key=lambda item: _series_sort_key(
+            item.timestamp,
+            item.serial_number,
+            current_serial_number,
+        ),
+    ):
         if previous_serial_number is None:
             previous_serial_number = point.serial_number
             continue
@@ -396,6 +448,14 @@ def _replacement_markers(
         )
         previous_serial_number = point.serial_number
     return tuple(markers)
+
+
+def _series_sort_key(
+    timestamp: datetime,
+    serial_number: str,
+    current_serial_number: str,
+) -> tuple[datetime, int, str]:
+    return timestamp, 1 if serial_number == current_serial_number else 0, serial_number
 
 
 def _optional_float(value: int | float | None) -> float | None:

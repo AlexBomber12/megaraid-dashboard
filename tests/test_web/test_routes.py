@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,7 @@ from megaraid_dashboard import __version__
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot
+from megaraid_dashboard.db.models import PhysicalDriveMetricsHourly
 from megaraid_dashboard.storcli import StorcliSnapshot
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 
@@ -394,6 +396,38 @@ def test_drive_charts_replacement_markers_use_point_index_for_duplicate_labels(
     assert "labels.indexOf(marker.timestamp)" not in response.text
 
 
+def test_drive_charts_preserves_same_bucket_replacement_metrics(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-SLOT-4",
+            temperature_avg=41,
+            media_errors_max=1,
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="WD-WM00000005",
+            temperature_avg=45,
+            media_errors_max=2,
+        )
+
+        response = client.get("/drives/252/4/charts?range_days=365")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    error_payload = scripts["error-history-data"]
+    labels = temperature_payload["labels"]
+    duplicate_label_indexes = [index for index, label in enumerate(labels) if label == "2025-06-01"]
+    assert duplicate_label_indexes == [0, 1]
+    assert temperature_payload["datasets"][0]["data"][:2] == [41.0, 45.0]
+    assert error_payload["datasets"][0]["data"][:2] == [1, 2]
+    assert temperature_payload["replacementMarkers"][0]["pointIndex"] == 1
+
+
 def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapshot) -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
@@ -450,6 +484,34 @@ def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) ->
     session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
     with session_factory() as session:
         insert_snapshot(session, sample_snapshot)
+        session.commit()
+
+
+def _insert_hourly_metric(
+    test_app: FastAPI,
+    *,
+    serial_number: str,
+    temperature_avg: float,
+    media_errors_max: int,
+) -> None:
+    session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
+    with session_factory() as session:
+        session.add(
+            PhysicalDriveMetricsHourly(
+                bucket_start=datetime(2025, 6, 1, 3, 0, tzinfo=UTC),
+                enclosure_id=252,
+                slot_id=4,
+                serial_number=serial_number,
+                temperature_celsius_min=int(temperature_avg),
+                temperature_celsius_max=int(temperature_avg),
+                temperature_celsius_avg=temperature_avg,
+                temperature_sample_count=1,
+                media_errors_max=media_errors_max,
+                other_errors_max=0,
+                predictive_failures_max=0,
+                sample_count=1,
+            )
+        )
         session.commit()
 
 
