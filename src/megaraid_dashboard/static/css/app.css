@@ -272,6 +272,118 @@ a:hover {
   font-weight: 800;
 }
 
+.drive-detail,
+.history-section,
+.chart-area {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.attribute-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.attribute-grid__item {
+  min-height: 82px;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.attribute-grid dt {
+  color: var(--color-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.attribute-grid dd {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.range-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.range-tabs__button {
+  min-height: 38px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+
+.range-tabs__button:hover,
+.range-tabs__button--active {
+  border-color: rgba(55, 214, 255, 0.52);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.chart-panel {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.chart-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 280px;
+  aspect-ratio: 16 / 6;
+}
+
+.chart-empty {
+  color: var(--color-muted);
+}
+
+.table-frame--compact {
+  margin-top: var(--space-4);
+  box-shadow: none;
+}
+
+.history-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+}
+
+.history-table th,
+.history-table td {
+  padding: 10px var(--space-3);
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.history-table th {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.history-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .section-heading {
   display: flex;
   align-items: baseline;
@@ -392,5 +504,14 @@ a:hover {
 
   .empty-state {
     padding: var(--space-6);
+  }
+
+  .chart-panel {
+    padding: var(--space-4);
+  }
+
+  .chart-canvas {
+    min-height: 240px;
+    aspect-ratio: 4 / 3;
   }
 }

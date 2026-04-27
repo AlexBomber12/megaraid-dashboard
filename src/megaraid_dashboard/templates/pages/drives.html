@@ -1,0 +1,27 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Drives - MegaRAID Dashboard{% endblock %}
+
+{% block content %}
+  {% if view_model.has_snapshot %}
+    <section class="page-title">
+      <h1>Drives</h1>
+      <p>{{ view_model.controller_label }} &middot; Updated: {{ view_model.captured_at | utc_to_cest }}</p>
+    </section>
+
+    <section class="drives">
+      <div class="section-heading">
+        <h2>Physical Drives</h2>
+      </div>
+      {% with drives=view_model.physical_drives %}
+        {% include "partials/physical_drive_table.html" %}
+      {% endwith %}
+    </section>
+  {% else %}
+    <section class="empty-state empty-state--centered">
+      <h1>{{ view_model.empty_title }}</h1>
+      <p>{{ view_model.empty_body }}</p>
+      <p>{{ view_model.empty_next_run }}</p>
+    </section>
+  {% endif %}
+{% endblock %}

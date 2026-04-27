@@ -1,0 +1,51 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ view_model.title }} - MegaRAID Dashboard{% endblock %}
+
+{% block extra_scripts %}
+  <script
+    src="{{ request.url_for('static', path='vendor/chart.min.js').path }}?v={{ static_asset_version }}"
+    defer
+  ></script>
+{% endblock %}
+
+{% block content %}
+  <section class="page-title">
+    <h1>{{ view_model.title }}</h1>
+    <p><span class="mono">{{ view_model.model }}</span> &middot; Updated: {{ view_model.captured_at | utc_to_cest }}</p>
+  </section>
+
+  <section class="drive-detail" aria-label="Drive attributes">
+    <dl class="attribute-grid">
+      {% for attribute in view_model.attributes %}
+        <div class="attribute-grid__item">
+          <dt>{{ attribute.label }}</dt>
+          <dd
+            class="{% if attribute.mono %}mono{% endif %}{% if attribute.severity %} status-text status-text--{{ attribute.severity }}{% endif %}"
+          >{{ attribute.value }}</dd>
+        </div>
+      {% endfor %}
+    </dl>
+  </section>
+
+  <section class="history-section" aria-label="Drive history">
+    <div class="range-tabs" role="tablist" aria-label="History range">
+      {% for tab in view_model.range_tabs %}
+        <button
+          class="range-tabs__button{% if tab.active %} range-tabs__button--active{% endif %}"
+          type="button"
+          role="tab"
+          aria-selected="{{ 'true' if tab.active else 'false' }}"
+          hx-get="{{ tab.hx_get }}"
+          hx-vals='{"range_days": {{ tab.range_days }}}'
+          hx-target="#chart-area"
+          hx-swap="outerHTML"
+        >{{ tab.label }}</button>
+      {% endfor %}
+    </div>
+
+    {% with view_model=view_model.charts %}
+      {% include "partials/drive_charts.html" %}
+    {% endwith %}
+  </section>
+{% endblock %}

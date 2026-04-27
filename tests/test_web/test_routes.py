@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator
 from html.parser import HTMLParser
@@ -128,6 +129,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "SERVER RAID Status" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
+    assert "/raid/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
@@ -148,6 +150,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert response.status_code == 200
     assert "/static/css/app.css" in response.text
     assert "/static/vendor/htmx.min.js" in response.text
+    assert "/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
@@ -214,25 +217,174 @@ def test_vendored_htmx_exists_and_is_referenced() -> None:
 def test_static_assets_are_served_with_far_future_cache_header() -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
-        response = client.get("/static/css/app.css")
+        css_response = client.get("/static/css/app.css")
+        chart_response = client.get("/static/vendor/chart.min.js")
 
-    assert response.status_code == 200
-    assert "public" in response.headers["Cache-Control"]
-    assert "max-age=31536000" in response.headers["Cache-Control"]
-    assert "immutable" not in response.headers["Cache-Control"]
+    assert css_response.status_code == 200
+    assert chart_response.status_code == 200
+    assert "public" in css_response.headers["Cache-Control"]
+    assert "max-age=31536000" in css_response.headers["Cache-Control"]
+    assert "immutable" not in css_response.headers["Cache-Control"]
+    assert "public" in chart_response.headers["Cache-Control"]
+    assert "max-age=31536000" in chart_response.headers["Cache-Control"]
 
 
-def test_drives_placeholder_redirects_to_overview_with_content(
+def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
-        response = client.get("/drives", follow_redirects=True)
+        response = client.get("/drives", headers={"X-Forwarded-Prefix": "/raid"})
 
     assert response.status_code == 200
-    assert "SERVER RAID Status" in response.text
+    assert "Physical Drives" in response.text
+    assert response.history == []
+    drive_links = {
+        href
+        for href in _anchor_hrefs(response.text)
+        if re.fullmatch(r"/raid/drives/252/[0-7]", href)
+    }
+    assert len(drive_links) == 8
+    assert "/raid/drives/252/4" in drive_links
+
+
+def test_drive_list_slot_column_links_to_drive_detail(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives")
+
+    assert response.status_code == 200
+    assert '<a href="/drives/252/4">e252:s4</a>' in response.text
+
+
+def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/drives/252/4")
+
+    assert response.status_code == 404
+
+
+def test_drive_detail_returns_404_when_latest_snapshot_lacks_requested_slot(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/99")
+
+    assert response.status_code == 404
+
+
+def test_drive_detail_renders_attributes_and_chart_area(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4")
+        overview_response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Drive 252:4" in response.text
+    assert '<span class="mono">WDC WD30EFRX-68EUZN0</span>' in response.text
+    assert "WD-WM00000005" in response.text
+    assert 'id="chart-area"' in response.text
+    assert "/static/vendor/chart.min.js" in response.text
+    assert "/static/vendor/chart.min.js" not in overview_response.text
+
+
+def test_drive_charts_partial_returns_only_chart_area(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=30")
+
+    assert response.status_code == 200
+    assert response.text.lstrip().startswith('<div id="chart-area"')
+    assert "<!doctype html>" not in response.text
+    assert "site-header" not in response.text
+
+
+def test_drive_charts_range_changes_dataset_labels(sample_snapshot: StorcliSnapshot) -> None:
+    older_snapshot = sample_snapshot.model_copy(
+        update={"captured_at": sample_snapshot.captured_at.replace(day=10)}
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, older_snapshot)
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        seven_day_response = client.get("/drives/252/4/charts?range_days=7")
+        thirty_day_response = client.get("/drives/252/4/charts?range_days=30")
+
+    assert seven_day_response.status_code == 200
+    assert thirty_day_response.status_code == 200
+    assert "2026-04-10 12:00" not in seven_day_response.text
+    assert "2026-04-10 12:00" in thirty_day_response.text
+
+
+def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=7")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["thresholds"] == {"warning": 55, "critical": 60}
+    assert [dataset["label"] for dataset in temperature_payload["thresholdDatasets"]] == [
+        "Warning Threshold",
+        "Critical Threshold",
+    ]
+    assert len(temperature_payload["labels"]) == len(temperature_payload["datasets"][0]["data"])
+    assert "error-history-data" in scripts
+
+
+def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4", headers={"X-Forwarded-Prefix": "/raid"})
+
+    assert response.status_code == 200
+    assert 'hx-get="/raid/drives/252/4/charts"' in response.text
+
+
+def test_static_asset_version_includes_chartjs_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from megaraid_dashboard.web import routes
+
+    (tmp_path / "static" / "css").mkdir(parents=True)
+    (tmp_path / "static" / "vendor").mkdir()
+    (tmp_path / "static" / "css" / "app.css").write_text("css", encoding="utf-8")
+    (tmp_path / "static" / "vendor" / "htmx.min.js").write_text("htmx", encoding="utf-8")
+    chart_path = tmp_path / "static" / "vendor" / "chart.min.js"
+    chart_path.write_text("chart-a", encoding="utf-8")
+    monkeypatch.setattr(routes, "_PACKAGE_ROOT", tmp_path)
+    monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
+    first_version = routes._static_asset_version()
+
+    chart_path.write_text("chart-b", encoding="utf-8")
+    monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
+    second_version = routes._static_asset_version()
+
+    assert first_version != second_version
 
 
 def test_events_placeholder_returns_coming_soon() -> None:
@@ -266,6 +418,15 @@ def _anchor_hrefs(html: str) -> set[str]:
     return parser.hrefs
 
 
+def _json_scripts(html: str) -> dict[str, dict[str, object]]:
+    parser = _JsonScriptParser()
+    parser.feed(html)
+    return {
+        script_id: cast(dict[str, object], json.loads(payload))
+        for script_id, payload in parser.scripts.items()
+    }
+
+
 class _AnchorParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -278,3 +439,34 @@ class _AnchorParser(HTMLParser):
         href = attributes.get("href")
         if href is not None:
             self.hrefs.add(href)
+
+
+class _JsonScriptParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.scripts: dict[str, str] = {}
+        self._active_script_id: str | None = None
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "script":
+            return
+        attributes = dict(attrs)
+        if attributes.get("type") != "application/json":
+            return
+        script_id = attributes.get("id")
+        if script_id is None:
+            return
+        self._active_script_id = script_id
+        self._chunks = []
+
+    def handle_data(self, data: str) -> None:
+        if self._active_script_id is not None:
+            self._chunks.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "script" or self._active_script_id is None:
+            return
+        self.scripts[self._active_script_id] = "".join(self._chunks)
+        self._active_script_id = None
+        self._chunks = []

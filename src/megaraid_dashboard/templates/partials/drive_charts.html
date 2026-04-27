@@ -1,0 +1,250 @@
+<div id="chart-area" class="chart-area" data-range-days="{{ view_model.active_range_days }}">
+  <section class="chart-panel" aria-labelledby="temperature-history-heading">
+    <div class="section-heading">
+      <h2 id="temperature-history-heading">Temperature History</h2>
+    </div>
+    <canvas class="chart-canvas" id="temperature-history-chart"></canvas>
+    <script id="temperature-history-data" type="application/json">{{ view_model.temperature_chart | tojson }}</script>
+    <noscript>
+      {% if view_model.temperature_rows %}
+        <div class="table-frame table-frame--compact">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th scope="col">Timestamp</th>
+                <th scope="col" class="numeric">Avg C</th>
+                <th scope="col" class="numeric">Min C</th>
+                <th scope="col" class="numeric">Max C</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in view_model.temperature_rows %}
+                <tr>
+                  <td class="mono">{{ row.timestamp }}</td>
+                  <td class="numeric">{{ row.average_celsius }}</td>
+                  <td class="numeric">{{ row.minimum_celsius }}</td>
+                  <td class="numeric">{{ row.maximum_celsius }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="chart-empty">No temperature samples in this range.</p>
+      {% endif %}
+    </noscript>
+  </section>
+
+  <section class="chart-panel" aria-labelledby="error-history-heading">
+    <div class="section-heading">
+      <h2 id="error-history-heading">Error Counter History</h2>
+    </div>
+    <canvas class="chart-canvas" id="error-history-chart"></canvas>
+    <script id="error-history-data" type="application/json">{{ view_model.error_chart | tojson }}</script>
+    <noscript>
+      {% if view_model.error_rows %}
+        <div class="table-frame table-frame--compact">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th scope="col">Timestamp</th>
+                <th scope="col" class="numeric">Media</th>
+                <th scope="col" class="numeric">Other</th>
+                <th scope="col" class="numeric">Predictive</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in view_model.error_rows %}
+                <tr>
+                  <td class="mono">{{ row.timestamp }}</td>
+                  <td class="numeric">{{ row.media_errors }}</td>
+                  <td class="numeric">{{ row.other_errors }}</td>
+                  <td class="numeric">{{ row.predictive_failures }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="chart-empty">No error counter samples in this range.</p>
+      {% endif %}
+    </noscript>
+  </section>
+
+  <script>
+    (function () {
+      const currentScript = document.currentScript;
+      if (!currentScript) {
+        return;
+      }
+      const chartArea = currentScript.closest("#chart-area");
+      if (!chartArea) {
+        return;
+      }
+
+      const replacementLinePlugin = {
+        id: "driveReplacementLines",
+        afterDraw(chart, _args, options) {
+          const markers = options.markers || [];
+          if (!markers.length || !chart.scales.x || !chart.scales.y) {
+            return;
+          }
+          const labels = chart.data.labels || [];
+          const context = chart.ctx;
+          context.save();
+          context.setLineDash([4, 4]);
+          context.strokeStyle = "rgba(246, 248, 251, 0.38)";
+          context.fillStyle = "rgba(246, 248, 251, 0.72)";
+          context.font = "12px system-ui, sans-serif";
+          markers.forEach((marker) => {
+            const index = labels.indexOf(marker.timestamp);
+            if (index < 0) {
+              return;
+            }
+            const x = chart.scales.x.getPixelForValue(index);
+            context.beginPath();
+            context.moveTo(x, chart.scales.y.top);
+            context.lineTo(x, chart.scales.y.bottom);
+            context.stroke();
+            context.fillText(marker.label, x + 6, chart.scales.y.top + 14);
+          });
+          context.restore();
+        },
+      };
+
+      function readPayload(selector) {
+        const payloadElement = chartArea.querySelector(selector);
+        return JSON.parse(payloadElement.textContent || "{}");
+      }
+
+      function hasAnnotationPlugin() {
+        return Boolean(
+          window.Chart.registry
+          && window.Chart.registry.plugins
+          && window.Chart.registry.plugins.get
+          && window.Chart.registry.plugins.get("annotation")
+        );
+      }
+
+      function thresholdAnnotationOptions(payload) {
+        if (!hasAnnotationPlugin()) {
+          return {};
+        }
+        return {
+          annotation: {
+            annotations: {
+              tempWarning: {
+                type: "line",
+                yMin: payload.thresholds.warning,
+                yMax: payload.thresholds.warning,
+                borderColor: "#f0b44d",
+                borderDash: [6, 6],
+                borderWidth: 1,
+                label: { content: "Warning", display: true },
+              },
+              tempCritical: {
+                type: "line",
+                yMin: payload.thresholds.critical,
+                yMax: payload.thresholds.critical,
+                borderColor: "#ff5c6c",
+                borderDash: [6, 6],
+                borderWidth: 1,
+                label: { content: "Critical", display: true },
+              },
+            },
+          },
+        };
+      }
+
+      function destroyExistingChart(canvas) {
+        const existingChart = window.Chart.getChart(canvas);
+        if (existingChart) {
+          existingChart.destroy();
+        }
+      }
+
+      function renderTemperatureChart() {
+        const canvas = chartArea.querySelector("#temperature-history-chart");
+        const payload = readPayload("#temperature-history-data");
+        const annotationOptions = thresholdAnnotationOptions(payload);
+        const thresholdDatasets = annotationOptions.annotation ? [] : payload.thresholdDatasets;
+        destroyExistingChart(canvas);
+        new window.Chart(canvas, {
+          type: "line",
+          data: {
+            labels: payload.labels,
+            datasets: [...payload.datasets, ...thresholdDatasets],
+          },
+          plugins: [replacementLinePlugin],
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { labels: { color: "#f6f8fb" } },
+              tooltip: { mode: "index", intersect: false },
+              driveReplacementLines: { markers: payload.replacementMarkers },
+              ...annotationOptions,
+            },
+            scales: {
+              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+              y: {
+                min: payload.yMin,
+                max: payload.yMax,
+                ticks: { color: "#9aa5b1" },
+                grid: { color: "rgba(154, 165, 177, 0.15)" },
+              },
+            },
+          },
+        });
+      }
+
+      function renderErrorChart() {
+        const canvas = chartArea.querySelector("#error-history-chart");
+        const payload = readPayload("#error-history-data");
+        destroyExistingChart(canvas);
+        new window.Chart(canvas, {
+          type: "line",
+          data: {
+            labels: payload.labels,
+            datasets: payload.datasets,
+          },
+          plugins: [replacementLinePlugin],
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { labels: { color: "#f6f8fb" } },
+              tooltip: { mode: "index", intersect: false },
+              driveReplacementLines: { markers: payload.replacementMarkers },
+            },
+            scales: {
+              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+              y: {
+                beginAtZero: true,
+                ticks: { color: "#9aa5b1", precision: 0 },
+                grid: { color: "rgba(154, 165, 177, 0.15)" },
+              },
+            },
+          },
+        });
+      }
+
+      function initializeCharts() {
+        if (!window.Chart) {
+          window.setTimeout(initializeCharts, 50);
+          return;
+        }
+        renderTemperatureChart();
+        renderErrorChart();
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initializeCharts, { once: true });
+      } else {
+        initializeCharts();
+      }
+    }());
+  </script>
+</div>
