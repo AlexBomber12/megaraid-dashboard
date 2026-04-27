@@ -6,8 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from megaraid_dashboard.db.dao import get_latest_snapshot
-from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.db.models import ControllerSnapshot, Event
 
 EVENTS_PAGE_SIZE = 50
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
@@ -68,12 +67,12 @@ def load_events_page(
         before_occurred_at=before_occurred_at,
         before_id=before_id,
     )
-    latest_snapshot = get_latest_snapshot(session) if fragment.is_first_page else None
+    latest_captured_at = _latest_captured_at(session) if fragment.is_first_page else None
     return EventsPageViewModel(
         events=fragment.events,
         next_cursor=fragment.next_cursor,
         is_first_page=fragment.is_first_page,
-        latest_captured_at=None if latest_snapshot is None else latest_snapshot.captured_at,
+        latest_captured_at=latest_captured_at,
         controller_label=controller_label,
     )
 
@@ -149,6 +148,15 @@ def _event_row(event: Event) -> EventRow:
 
 def _normalize_event_severity(severity: str) -> str:
     return severity if severity in {"info", "warning", "critical"} else "unknown"
+
+
+def _latest_captured_at(session: Session) -> datetime | None:
+    captured_at = session.scalar(
+        select(ControllerSnapshot.captured_at)
+        .order_by(ControllerSnapshot.captured_at.desc())
+        .limit(1)
+    )
+    return None if captured_at is None else _require_aware_utc(captured_at)
 
 
 def _require_aware_utc(value: datetime) -> datetime:

@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
-from megaraid_dashboard.db.dao import record_event
+from megaraid_dashboard.db.dao import insert_snapshot, record_event
+from megaraid_dashboard.storcli import StorcliSnapshot
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,22 @@ def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     assert "site-header" not in response.text
 
 
+def test_events_partial_without_cursor_refreshes_header_timestamp(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_app_events(test_app, count=1)
+        response = client.get("/partials/events")
+
+    assert response.status_code == 200
+    assert "<h1>Events</h1>" in response.text
+    assert "LSI MegaRAID SAS9270CV-8i" in response.text
+    assert "Updated: 2026-04-25 14:00:00 CEST" in response.text
+    assert "Waiting for first metrics collection" not in response.text
+
+
 def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
@@ -196,6 +213,13 @@ def _insert_app_events(test_app: FastAPI, *, count: int) -> tuple[_InsertedEvent
         )
         for index in range(count)
     )
+
+
+def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) -> None:
+    session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
+    with session_factory() as session:
+        insert_snapshot(session, sample_snapshot)
+        session.commit()
 
 
 def _insert_app_event(

@@ -261,9 +261,9 @@ def events(request: Request) -> Response:
         context={
             "active_nav": "events",
             "current_utc_label": _current_utc_label(),
-            "empty_next_run": _events_empty_next_run_text(request),
             "static_asset_version": _static_asset_version(),
             "view_model": view_model,
+            **_events_empty_context(request=request, view_model=view_model),
         },
     )
     _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=False)
