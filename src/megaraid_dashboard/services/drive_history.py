@@ -23,9 +23,16 @@ class DriveReplacementMarker:
 
 
 @dataclass(frozen=True)
+class DriveHistoryPointKey:
+    source: str
+    source_id: int
+
+
+@dataclass(frozen=True)
 class DriveTemperatureSeries:
     timestamps: tuple[datetime, ...]
     serial_numbers: tuple[str, ...]
+    point_keys: tuple[DriveHistoryPointKey, ...]
     average_celsius: tuple[float, ...]
     minimum_celsius: tuple[float | None, ...]
     maximum_celsius: tuple[float | None, ...]
@@ -39,6 +46,7 @@ class DriveTemperatureSeries:
 class DriveErrorSeries:
     timestamps: tuple[datetime, ...]
     serial_numbers: tuple[str, ...]
+    point_keys: tuple[DriveHistoryPointKey, ...]
     media_errors: tuple[int, ...]
     other_errors: tuple[int, ...]
     predictive_failures: tuple[int, ...]
@@ -52,6 +60,7 @@ class DriveErrorSeries:
 class _RawPoint:
     timestamp: datetime
     serial_number: str
+    point_key: DriveHistoryPointKey
     temperature_celsius: int | None
     media_errors: int
     other_errors: int
@@ -62,6 +71,7 @@ class _RawPoint:
 class _AggregatePoint:
     timestamp: datetime
     serial_number: str
+    point_key: DriveHistoryPointKey
     temperature_celsius_min: int | None
     temperature_celsius_max: int | None
     temperature_celsius_avg: float | None
@@ -110,6 +120,7 @@ def load_drive_temperature_series(
                         _AggregatePoint(
                             timestamp=raw.timestamp,
                             serial_number=raw.serial_number,
+                            point_key=raw.point_key,
                             temperature_celsius_min=raw.temperature_celsius,
                             temperature_celsius_max=raw.temperature_celsius,
                             temperature_celsius_avg=float(raw.temperature_celsius)
@@ -137,6 +148,7 @@ def load_drive_temperature_series(
     return DriveTemperatureSeries(
         timestamps=tuple(point.timestamp for point in points),
         serial_numbers=tuple(point.serial_number for point in points),
+        point_keys=tuple(point.point_key for point in points),
         average_celsius=tuple(_require_float(point.temperature_celsius_avg) for point in points),
         minimum_celsius=tuple(_optional_float(point.temperature_celsius_min) for point in points),
         maximum_celsius=tuple(_optional_float(point.temperature_celsius_max) for point in points),
@@ -175,6 +187,7 @@ def load_drive_error_series(
                     _AggregatePoint(
                         timestamp=raw.timestamp,
                         serial_number=raw.serial_number,
+                        point_key=raw.point_key,
                         temperature_celsius_min=raw.temperature_celsius,
                         temperature_celsius_max=raw.temperature_celsius,
                         temperature_celsius_avg=float(raw.temperature_celsius)
@@ -199,6 +212,7 @@ def load_drive_error_series(
     return DriveErrorSeries(
         timestamps=tuple(point.timestamp for point in points),
         serial_numbers=tuple(point.serial_number for point in points),
+        point_keys=tuple(point.point_key for point in points),
         media_errors=tuple(point.media_errors_max for point in points),
         other_errors=tuple(point.other_errors_max for point in points),
         predictive_failures=tuple(point.predictive_failures_max for point in points),
@@ -355,12 +369,13 @@ def _load_raw_points(
         .where(PhysicalDriveSnapshot.slot_id == slot_id)
         .where(ControllerSnapshot.captured_at >= cutoff)
         .where(ControllerSnapshot.captured_at <= until)
-        .order_by(ControllerSnapshot.captured_at)
+        .order_by(ControllerSnapshot.captured_at, PhysicalDriveSnapshot.id)
     )
     return tuple(
         _RawPoint(
             timestamp=_require_aware_utc(captured_at),
             serial_number=drive.serial_number,
+            point_key=DriveHistoryPointKey(source="raw", source_id=drive.id),
             temperature_celsius=drive.temperature_celsius,
             media_errors=drive.media_errors,
             other_errors=drive.other_errors,
@@ -384,12 +399,13 @@ def _load_hourly_points(
         .where(PhysicalDriveMetricsHourly.slot_id == slot_id)
         .where(PhysicalDriveMetricsHourly.bucket_start >= cutoff)
         .where(PhysicalDriveMetricsHourly.bucket_start <= until)
-        .order_by(PhysicalDriveMetricsHourly.bucket_start)
+        .order_by(PhysicalDriveMetricsHourly.bucket_start, PhysicalDriveMetricsHourly.id)
     )
     return tuple(
         _AggregatePoint(
             timestamp=_require_aware_utc(row.bucket_start),
             serial_number=row.serial_number,
+            point_key=DriveHistoryPointKey(source="hourly", source_id=row.id),
             temperature_celsius_min=row.temperature_celsius_min,
             temperature_celsius_max=row.temperature_celsius_max,
             temperature_celsius_avg=row.temperature_celsius_avg,
@@ -415,12 +431,13 @@ def _load_daily_points(
         .where(PhysicalDriveMetricsDaily.slot_id == slot_id)
         .where(PhysicalDriveMetricsDaily.bucket_start >= cutoff)
         .where(PhysicalDriveMetricsDaily.bucket_start <= until)
-        .order_by(PhysicalDriveMetricsDaily.bucket_start)
+        .order_by(PhysicalDriveMetricsDaily.bucket_start, PhysicalDriveMetricsDaily.id)
     )
     return tuple(
         _AggregatePoint(
             timestamp=_require_aware_utc(row.bucket_start),
             serial_number=row.serial_number,
+            point_key=DriveHistoryPointKey(source="daily", source_id=row.id),
             temperature_celsius_min=row.temperature_celsius_min,
             temperature_celsius_max=row.temperature_celsius_max,
             temperature_celsius_avg=row.temperature_celsius_avg,

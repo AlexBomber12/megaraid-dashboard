@@ -387,6 +387,54 @@ def test_drive_charts_pins_refresh_to_detail_serial_and_captured_at(
     assert temperature_payload["replacementMarkers"] == []
 
 
+def test_drive_charts_aligns_duplicate_points_when_temperature_is_missing(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    slot_drive = next(
+        drive
+        for drive in sample_snapshot.physical_drives
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+    )
+    missing_temperature_drives = [
+        drive.model_copy(update={"temperature_celsius": None, "media_errors": 11})
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    present_temperature_drives = [
+        drive.model_copy(update={"temperature_celsius": 45, "media_errors": 22})
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    missing_temperature_snapshot = sample_snapshot.model_copy(
+        update={"physical_drives": missing_temperature_drives}
+    )
+    present_temperature_snapshot = sample_snapshot.model_copy(
+        update={"physical_drives": present_temperature_drives}
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, missing_temperature_snapshot)
+        _insert_app_snapshot(test_app, present_temperature_snapshot)
+
+        response = client.get(
+            "/drives/252/4/charts",
+            params={
+                "range_days": 7,
+                "serial_number": slot_drive.serial_number,
+                "captured_at": sample_snapshot.captured_at.isoformat(),
+            },
+        )
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    error_payload = scripts["error-history-data"]
+    assert temperature_payload["labels"] == ["2026-04-25 12:00", "2026-04-25 12:00"]
+    assert temperature_payload["datasets"][0]["data"] == [None, 45.0]
+    assert error_payload["datasets"][0]["data"] == [11, 22]
+
+
 def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
     sample_snapshot: StorcliSnapshot,
 ) -> None:

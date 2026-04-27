@@ -19,6 +19,7 @@ from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
+    DriveHistoryPointKey,
     DriveReplacementMarker,
     DriveTemperatureSeries,
     load_drive_error_series,
@@ -109,7 +110,7 @@ class DriveDetailViewModel:
 class _ChartPointKey:
     timestamp: datetime
     serial_number: str
-    occurrence: int
+    history_point_key: DriveHistoryPointKey
 
 
 @router.get("/health")
@@ -469,8 +470,13 @@ def _drive_charts_view_model(
     temperature_keys = _chart_point_keys(
         temperature_series.timestamps,
         temperature_series.serial_numbers,
+        temperature_series.point_keys,
     )
-    error_keys = _chart_point_keys(error_series.timestamps, error_series.serial_numbers)
+    error_keys = _chart_point_keys(
+        error_series.timestamps,
+        error_series.serial_numbers,
+        error_series.point_keys,
+    )
     point_keys = _merge_chart_point_keys(
         temperature_keys=temperature_keys,
         error_keys=error_keys,
@@ -730,18 +736,20 @@ def _unique_replacement_markers(
 def _chart_point_keys(
     timestamps: tuple[datetime, ...],
     serial_numbers: tuple[str, ...],
+    history_point_keys: tuple[DriveHistoryPointKey, ...],
 ) -> tuple[_ChartPointKey, ...]:
-    occurrence_counts: dict[tuple[datetime, str], int] = {}
     point_keys: list[_ChartPointKey] = []
-    for timestamp, serial_number in zip(timestamps, serial_numbers, strict=True):
-        occurrence_key = (timestamp, serial_number)
-        occurrence = occurrence_counts.get(occurrence_key, 0)
-        occurrence_counts[occurrence_key] = occurrence + 1
+    for timestamp, serial_number, history_point_key in zip(
+        timestamps,
+        serial_numbers,
+        history_point_keys,
+        strict=True,
+    ):
         point_keys.append(
             _ChartPointKey(
                 timestamp=timestamp,
                 serial_number=serial_number,
-                occurrence=occurrence,
+                history_point_key=history_point_key,
             )
         )
     return tuple(point_keys)
