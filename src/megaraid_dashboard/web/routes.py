@@ -517,7 +517,7 @@ def _temperature_chart_data(
         ),
         "replacementMarkers": replacement_markers,
         "yMin": 20,
-        "yMax": max(70, ceil(max_temperature + 5)),
+        "yMax": max(70, ceil(max_temperature + 5), warning_celsius + 5, critical_celsius + 5),
     }
 
 

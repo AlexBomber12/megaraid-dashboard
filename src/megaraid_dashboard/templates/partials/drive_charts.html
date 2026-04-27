@@ -167,11 +167,16 @@
         };
       }
 
-      function destroyExistingChart(canvas) {
-        const existingChart = window.Chart.getChart(canvas);
-        if (existingChart) {
-          existingChart.destroy();
+      function destroyChartsIn(container) {
+        if (!window.Chart) {
+          return;
         }
+        container.querySelectorAll("canvas").forEach((canvas) => {
+          const existingChart = window.Chart.getChart(canvas);
+          if (existingChart) {
+            existingChart.destroy();
+          }
+        });
       }
 
       function renderTemperatureChart() {
@@ -179,7 +184,6 @@
         const payload = readPayload("#temperature-history-data");
         const annotationOptions = thresholdAnnotationOptions(payload);
         const thresholdDatasets = annotationOptions.annotation ? [] : payload.thresholdDatasets;
-        destroyExistingChart(canvas);
         new window.Chart(canvas, {
           type: "line",
           data: {
@@ -213,7 +217,6 @@
       function renderErrorChart() {
         const canvas = chartArea.querySelector("#error-history-chart");
         const payload = readPayload("#error-history-data");
-        destroyExistingChart(canvas);
         new window.Chart(canvas, {
           type: "line",
           data: {
@@ -255,6 +258,9 @@
       }
 
       syncRangeTabs();
+      chartArea.addEventListener("htmx:beforeSwap", () => {
+        destroyChartsIn(chartArea);
+      });
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initializeCharts, { once: true });
       } else {

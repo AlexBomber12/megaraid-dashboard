@@ -317,6 +317,8 @@ def test_drive_charts_partial_returns_only_chart_area(
     assert "site-header" not in response.text
     assert "chartRetryLimit = 40" in response.text
     assert "syncRangeTabs();" in response.text
+    assert 'chartArea.addEventListener("htmx:beforeSwap"' in response.text
+    assert "destroyChartsIn(chartArea);" in response.text
 
 
 def test_drive_charts_range_changes_dataset_labels(sample_snapshot: StorcliSnapshot) -> None:
@@ -355,6 +357,25 @@ def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
     ]
     assert len(temperature_payload["labels"]) == len(temperature_payload["datasets"][0]["data"])
     assert "error-history-data" in scripts
+
+
+def test_drive_charts_y_axis_includes_high_configured_thresholds(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    monkeypatch.setenv("TEMP_WARNING_CELSIUS", "80")
+    monkeypatch.setenv("TEMP_CRITICAL_CELSIUS", "90")
+    get_settings.cache_clear()
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=7")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["thresholds"] == {"warning": 80, "critical": 90}
+    assert temperature_payload["yMax"] == 95
 
 
 def test_drive_charts_replacement_markers_use_point_index_for_duplicate_labels(
