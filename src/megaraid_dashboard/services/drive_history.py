@@ -75,7 +75,6 @@ class _SelectedHistoryRows:
     raw: tuple[_RawPoint, ...]
     hourly: tuple[_AggregatePoint, ...]
     daily: tuple[_AggregatePoint, ...]
-    replacement_markers: tuple[DriveReplacementMarker, ...]
 
 
 @dataclass(frozen=True)
@@ -141,7 +140,10 @@ def load_drive_temperature_series(
         average_celsius=tuple(_require_float(point.temperature_celsius_avg) for point in points),
         minimum_celsius=tuple(_optional_float(point.temperature_celsius_min) for point in points),
         maximum_celsius=tuple(_optional_float(point.temperature_celsius_max) for point in points),
-        replacement_markers=selected.replacement_markers,
+        replacement_markers=_replacement_markers(
+            tuple(_SerialPoint(point.timestamp, point.serial_number) for point in points),
+            current_serial_number=current_serial_number,
+        ),
         raw_point_count=len(raw_rows),
         hourly_point_count=len(hourly_rows),
         daily_point_count=len(daily_rows),
@@ -200,7 +202,10 @@ def load_drive_error_series(
         media_errors=tuple(point.media_errors_max for point in points),
         other_errors=tuple(point.other_errors_max for point in points),
         predictive_failures=tuple(point.predictive_failures_max for point in points),
-        replacement_markers=selected.replacement_markers,
+        replacement_markers=_replacement_markers(
+            tuple(_SerialPoint(point.timestamp, point.serial_number) for point in points),
+            current_serial_number=current_serial_number,
+        ),
         raw_point_count=len(raw_rows),
         hourly_point_count=len(hourly_rows),
         daily_point_count=len(daily_rows),
@@ -278,19 +283,10 @@ def _load_selected_history_rows(
         )
     )
 
-    replacement_markers = _replacement_markers(
-        (
-            *(_SerialPoint(raw.timestamp, raw.serial_number) for raw in selected_raw),
-            *(_SerialPoint(hourly.timestamp, hourly.serial_number) for hourly in selected_hourly),
-            *(_SerialPoint(daily.timestamp, daily.serial_number) for daily in selected_daily),
-        ),
-        current_serial_number=current_serial_number,
-    )
     return _SelectedHistoryRows(
         raw=selected_raw,
         hourly=selected_hourly,
         daily=selected_daily,
-        replacement_markers=replacement_markers,
     )
 
 

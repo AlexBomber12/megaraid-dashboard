@@ -449,6 +449,46 @@ def test_drive_charts_preserves_same_bucket_replacement_metrics(
     assert temperature_payload["replacementMarkers"][0]["pointIndex"] == 1
 
 
+def test_drive_charts_anchors_replacement_marker_to_surviving_raw_point(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    current_snapshot = sample_snapshot.model_copy(
+        update={"captured_at": datetime(2026, 4, 25, 12, 10, tzinfo=UTC)}
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, current_snapshot)
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-SLOT-4",
+            temperature_avg=41,
+            media_errors_max=1,
+            bucket_start=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="WD-WM00000005",
+            temperature_avg=45,
+            media_errors_max=2,
+            bucket_start=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+        )
+
+        response = client.get("/drives/252/4/charts?range_days=7")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["labels"] == ["2026-04-25 12:00", "2026-04-25 12:10"]
+    assert temperature_payload["replacementMarkers"] == [
+        {
+            "pointIndex": 1,
+            "timestamp": "2026-04-25 12:10",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-SLOT-4",
+            "currentSerialNumber": "WD-WM00000005",
+        }
+    ]
+
+
 def test_drive_charts_preserves_multiple_replacement_markers_in_same_bucket(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -564,12 +604,13 @@ def _insert_hourly_metric(
     serial_number: str,
     temperature_avg: float,
     media_errors_max: int,
+    bucket_start: datetime | None = None,
 ) -> None:
     session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
     with session_factory() as session:
         session.add(
             PhysicalDriveMetricsHourly(
-                bucket_start=datetime(2025, 6, 1, 3, 0, tzinfo=UTC),
+                bucket_start=bucket_start or datetime(2025, 6, 1, 3, 0, tzinfo=UTC),
                 enclosure_id=252,
                 slot_id=4,
                 serial_number=serial_number,

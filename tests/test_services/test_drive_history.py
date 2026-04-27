@@ -199,6 +199,12 @@ def test_load_drive_history_preserves_hourly_rows_for_other_serial_when_raw_over
     assert temperature_series.raw_point_count == 1
     assert temperature_series.hourly_point_count == 1
     assert temperature_series.daily_point_count == 0
+    assert len(temperature_series.replacement_markers) == 1
+    assert temperature_series.replacement_markers[0].timestamp == datetime(
+        2026, 4, 25, 11, 10, tzinfo=UTC
+    )
+    assert temperature_series.replacement_markers[0].previous_serial_number == "SN-OLD"
+    assert temperature_series.replacement_markers[0].current_serial_number == "SN-NEW"
     assert error_series.timestamps == temperature_series.timestamps
     assert error_series.serial_numbers == ("SN-OLD", "SN-NEW")
     assert error_series.media_errors == (3, 7)
@@ -207,6 +213,7 @@ def test_load_drive_history_preserves_hourly_rows_for_other_serial_when_raw_over
     assert error_series.raw_point_count == 1
     assert error_series.hourly_point_count == 1
     assert error_series.daily_point_count == 0
+    assert error_series.replacement_markers == temperature_series.replacement_markers
 
 
 def test_load_drive_history_preserves_daily_rows_for_other_serial_when_raw_overlaps(
@@ -270,6 +277,12 @@ def test_load_drive_history_preserves_daily_rows_for_other_serial_when_raw_overl
     assert temperature_series.raw_point_count == 1
     assert temperature_series.hourly_point_count == 0
     assert temperature_series.daily_point_count == 1
+    assert len(temperature_series.replacement_markers) == 1
+    assert temperature_series.replacement_markers[0].timestamp == datetime(
+        2026, 4, 25, 11, 10, tzinfo=UTC
+    )
+    assert temperature_series.replacement_markers[0].previous_serial_number == "SN-OLD"
+    assert temperature_series.replacement_markers[0].current_serial_number == "SN-NEW"
     assert error_series.timestamps == temperature_series.timestamps
     assert error_series.serial_numbers == ("SN-OLD", "SN-NEW")
     assert error_series.media_errors == (3, 7)
@@ -278,6 +291,7 @@ def test_load_drive_history_preserves_daily_rows_for_other_serial_when_raw_overl
     assert error_series.raw_point_count == 1
     assert error_series.hourly_point_count == 0
     assert error_series.daily_point_count == 1
+    assert error_series.replacement_markers == temperature_series.replacement_markers
 
 
 def test_load_drive_error_series_uses_aggregate_max_columns(session: Session) -> None:
