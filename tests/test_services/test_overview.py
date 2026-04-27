@@ -69,6 +69,23 @@ def test_overview_view_model_degraded_virtual_drive(
     assert _card(view_model, "Controller Health").severity == "warning"
 
 
+def test_overview_view_model_falls_back_to_first_available_virtual_drive(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    snapshot = _snapshot(sample_snapshot)
+    nonzero_virtual_drive = snapshot.virtual_drives[0].model_copy(
+        update={"vd_id": 2, "state": "Optl", "raid_level": "RAID10", "size_bytes": 2 * 10**12}
+    )
+    _insert(session, snapshot.model_copy(update={"virtual_drives": [nonzero_virtual_drive]}))
+
+    view_model = load_overview_view_model(session)
+
+    assert _card(view_model, "Virtual Drive").value == "Optimal"
+    assert _card(view_model, "RAID Type").value == "RAID10"
+    assert _card(view_model, "Size").value == "2.0 TB"
+
+
 def test_overview_view_model_failed_physical_drive(
     session: Session,
     sample_snapshot: StorcliSnapshot,

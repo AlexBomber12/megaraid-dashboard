@@ -59,6 +59,37 @@ def test_forwarded_prefix_middleware_sets_root_path_and_url_for() -> None:
     assert unprefixed.json() == {"root_path": "", "url_path": "/"}
 
 
+@pytest.mark.parametrize(
+    "forwarded_prefix",
+    [
+        "//attacker.example",
+        "/raid/",
+        "/raid//admin",
+        "/../raid",
+        "/raid?next=evil",
+        "/raid#fragment",
+        "/raid value",
+        "raid",
+    ],
+)
+def test_forwarded_prefix_middleware_ignores_unsafe_prefixes(forwarded_prefix: str) -> None:
+    probe_app = FastAPI()
+    probe_app.add_middleware(ForwardedPrefixMiddleware)
+
+    @probe_app.get("/", name="probe")
+    async def probe(request: Request) -> dict[str, str]:
+        return {
+            "root_path": cast(str, request.scope.get("root_path", "")),
+            "url_path": request.url_for("probe").path,
+        }
+
+    client = TestClient(probe_app)
+
+    response = client.get("/", headers={"X-Forwarded-Prefix": forwarded_prefix})
+
+    assert response.json() == {"root_path": "", "url_path": "/"}
+
+
 def test_overview_navigation_and_assets_are_prefix_aware(
     sample_snapshot: StorcliSnapshot,
 ) -> None:

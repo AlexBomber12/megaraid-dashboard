@@ -104,7 +104,7 @@ def load_overview_view_model(
     sorted_drives = tuple(
         sorted(snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id))
     )
-    vd0 = _find_virtual_drive(snapshot.virtual_drives, vd_id=0)
+    overview_virtual_drive = _select_overview_virtual_drive(snapshot.virtual_drives)
     cachevault = snapshot.cachevault
     temp_warning = settings.temp_warning_celsius
     temp_critical = settings.temp_critical_celsius
@@ -118,9 +118,9 @@ def load_overview_view_model(
         captured_at=snapshot.captured_at,
         cards=(
             _controller_health_card(snapshot=snapshot),
-            _virtual_drive_card(vd0),
-            _raid_type_card(vd0),
-            _size_card(vd0),
+            _virtual_drive_card(overview_virtual_drive),
+            _raid_type_card(overview_virtual_drive),
+            _size_card(overview_virtual_drive),
             _cachevault_card(
                 cachevault,
                 capacitance_warning_percent=settings.cv_capacitance_warning_percent,
@@ -314,6 +314,17 @@ def _find_virtual_drive(
         if virtual_drive.vd_id == vd_id:
             return virtual_drive
     return None
+
+
+def _select_overview_virtual_drive(
+    virtual_drives: Sequence[VirtualDriveSnapshot],
+) -> VirtualDriveSnapshot | None:
+    vd0 = _find_virtual_drive(virtual_drives, vd_id=0)
+    if vd0 is not None:
+        return vd0
+    if not virtual_drives:
+        return None
+    return min(virtual_drives, key=lambda virtual_drive: virtual_drive.vd_id)
 
 
 def _virtual_drive_state_label(state: str) -> str:
