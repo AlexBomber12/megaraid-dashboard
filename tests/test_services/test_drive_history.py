@@ -88,6 +88,56 @@ def test_load_drive_temperature_series_marks_replacement_and_falls_back_to_slot_
     assert series.replacement_markers[0].current_serial_number == "SN-NEW"
 
 
+def test_load_drive_temperature_series_uses_hourly_when_raw_temperature_is_missing(
+    session: Session,
+) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _seed_raw(
+        session,
+        datetime(2026, 4, 25, 11, 10, tzinfo=UTC),
+        temperature=None,
+        media_errors=7,
+    )
+    session.add_all(
+        [
+            _hourly_metric(
+                datetime(2026, 4, 25, 11, 0, tzinfo=UTC),
+                temperature_avg=44,
+                media_errors_max=99,
+            ),
+            _daily_metric(datetime(2026, 4, 25, 0, 0, tzinfo=UTC), temperature_avg=42),
+        ]
+    )
+    session.commit()
+
+    temperature_series = load_drive_temperature_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN0001",
+        range_days=7,
+        now_utc=now,
+    )
+    error_series = load_drive_error_series(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        current_serial_number="SN0001",
+        range_days=7,
+        now_utc=now,
+    )
+
+    assert temperature_series.timestamps == (datetime(2026, 4, 25, 11, 0, tzinfo=UTC),)
+    assert temperature_series.average_celsius == (44.0,)
+    assert temperature_series.raw_point_count == 0
+    assert temperature_series.hourly_point_count == 1
+    assert temperature_series.daily_point_count == 0
+    assert error_series.timestamps == (datetime(2026, 4, 25, 11, 10, tzinfo=UTC),)
+    assert error_series.media_errors == (7,)
+    assert error_series.raw_point_count == 1
+    assert error_series.hourly_point_count == 0
+
+
 def test_load_drive_error_series_uses_aggregate_max_columns(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
     session.add_all(

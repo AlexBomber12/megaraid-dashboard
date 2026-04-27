@@ -101,6 +101,7 @@ def load_drive_temperature_series(
         range_days=range_days,
         now_utc=now_utc,
     )
+    raw_rows, hourly_rows, daily_rows = _temperature_rows(selected)
     points = tuple(
         sorted(
             (
@@ -119,10 +120,10 @@ def load_drive_temperature_series(
                             other_errors_max=raw.other_errors,
                             predictive_failures_max=raw.predictive_failures,
                         )
-                        for raw in selected.raw
+                        for raw in raw_rows
                     ),
-                    *selected.hourly,
-                    *selected.daily,
+                    *hourly_rows,
+                    *daily_rows,
                 )
                 if _temperature_point.temperature_celsius_avg is not None
             ),
@@ -134,14 +135,6 @@ def load_drive_temperature_series(
         )
     )
 
-    raw_point_count = sum(1 for raw in selected.raw if raw.temperature_celsius is not None)
-    hourly_point_count = sum(
-        1 for hourly in selected.hourly if hourly.temperature_celsius_avg is not None
-    )
-    daily_point_count = sum(
-        1 for daily in selected.daily if daily.temperature_celsius_avg is not None
-    )
-
     return DriveTemperatureSeries(
         timestamps=tuple(point.timestamp for point in points),
         serial_numbers=tuple(point.serial_number for point in points),
@@ -149,9 +142,9 @@ def load_drive_temperature_series(
         minimum_celsius=tuple(_optional_float(point.temperature_celsius_min) for point in points),
         maximum_celsius=tuple(_optional_float(point.temperature_celsius_max) for point in points),
         replacement_markers=selected.replacement_markers,
-        raw_point_count=raw_point_count,
-        hourly_point_count=hourly_point_count,
-        daily_point_count=daily_point_count,
+        raw_point_count=len(raw_rows),
+        hourly_point_count=len(hourly_rows),
+        daily_point_count=len(daily_rows),
     )
 
 
@@ -172,6 +165,7 @@ def load_drive_error_series(
         range_days=range_days,
         now_utc=now_utc,
     )
+    raw_rows, hourly_rows, daily_rows = _error_rows(selected)
     points = tuple(
         sorted(
             (
@@ -188,10 +182,10 @@ def load_drive_error_series(
                         other_errors_max=raw.other_errors,
                         predictive_failures_max=raw.predictive_failures,
                     )
-                    for raw in selected.raw
+                    for raw in raw_rows
                 ),
-                *selected.hourly,
-                *selected.daily,
+                *hourly_rows,
+                *daily_rows,
             ),
             key=lambda point: _series_sort_key(
                 point.timestamp,
@@ -207,9 +201,9 @@ def load_drive_error_series(
         other_errors=tuple(point.other_errors_max for point in points),
         predictive_failures=tuple(point.predictive_failures_max for point in points),
         replacement_markers=selected.replacement_markers,
-        raw_point_count=len(selected.raw),
-        hourly_point_count=len(selected.hourly),
-        daily_point_count=len(selected.daily),
+        raw_point_count=len(raw_rows),
+        hourly_point_count=len(hourly_rows),
+        daily_point_count=len(daily_rows),
     )
 
 
@@ -253,7 +247,6 @@ def _load_selected_history_rows(
         daily_rows=daily_rows,
         current_serial_number=current_serial_number,
     )
-    raw_covered_hours = {_hour_bucket(raw.timestamp) for raw in selected_raw}
     selected_raw = tuple(
         sorted(
             selected_raw,
@@ -265,11 +258,6 @@ def _load_selected_history_rows(
         )
     )
     selected_hourly = tuple(
-        hourly for hourly in selected_hourly if hourly.timestamp not in raw_covered_hours
-    )
-    raw_covered_days = {_day_bucket(raw.timestamp) for raw in selected_raw}
-    hourly_covered_days = {_day_bucket(hourly.timestamp) for hourly in selected_hourly}
-    selected_hourly = tuple(
         sorted(
             selected_hourly,
             key=lambda row: _series_sort_key(
@@ -278,11 +266,6 @@ def _load_selected_history_rows(
                 current_serial_number,
             ),
         )
-    )
-    selected_daily = tuple(
-        daily
-        for daily in selected_daily
-        if daily.timestamp not in raw_covered_days and daily.timestamp not in hourly_covered_days
     )
     selected_daily = tuple(
         sorted(
@@ -309,6 +292,45 @@ def _load_selected_history_rows(
         daily=selected_daily,
         replacement_markers=replacement_markers,
     )
+
+
+def _temperature_rows(
+    selected: _SelectedHistoryRows,
+) -> tuple[tuple[_RawPoint, ...], tuple[_AggregatePoint, ...], tuple[_AggregatePoint, ...]]:
+    raw_rows = tuple(raw for raw in selected.raw if raw.temperature_celsius is not None)
+    raw_covered_hours = {_hour_bucket(raw.timestamp) for raw in raw_rows}
+    hourly_rows = tuple(
+        hourly
+        for hourly in selected.hourly
+        if hourly.temperature_celsius_avg is not None and hourly.timestamp not in raw_covered_hours
+    )
+    raw_covered_days = {_day_bucket(raw.timestamp) for raw in raw_rows}
+    hourly_covered_days = {_day_bucket(hourly.timestamp) for hourly in hourly_rows}
+    daily_rows = tuple(
+        daily
+        for daily in selected.daily
+        if daily.temperature_celsius_avg is not None
+        and daily.timestamp not in raw_covered_days
+        and daily.timestamp not in hourly_covered_days
+    )
+    return raw_rows, hourly_rows, daily_rows
+
+
+def _error_rows(
+    selected: _SelectedHistoryRows,
+) -> tuple[tuple[_RawPoint, ...], tuple[_AggregatePoint, ...], tuple[_AggregatePoint, ...]]:
+    raw_covered_hours = {_hour_bucket(raw.timestamp) for raw in selected.raw}
+    hourly_rows = tuple(
+        hourly for hourly in selected.hourly if hourly.timestamp not in raw_covered_hours
+    )
+    raw_covered_days = {_day_bucket(raw.timestamp) for raw in selected.raw}
+    hourly_covered_days = {_day_bucket(hourly.timestamp) for hourly in hourly_rows}
+    daily_rows = tuple(
+        daily
+        for daily in selected.daily
+        if daily.timestamp not in raw_covered_days and daily.timestamp not in hourly_covered_days
+    )
+    return selected.raw, hourly_rows, daily_rows
 
 
 def _load_raw_points(
