@@ -12,6 +12,7 @@
       src="{{ request.url_for('static', path='vendor/htmx.min.js').path }}?v={{ static_asset_version }}"
       defer
     ></script>
+    {% block extra_scripts %}{% endblock %}
   </head>
   <body>
     <div class="app-shell">

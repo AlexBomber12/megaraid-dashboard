@@ -1,26 +1,116 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from math import ceil
 from pathlib import Path
 from time import perf_counter
-from typing import cast
+from typing import Any, cast
 
 import structlog
-from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard import __version__
-from megaraid_dashboard.services.overview import OverviewViewModel, load_overview_view_model
+from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.db.dao import get_latest_snapshot
+from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
+from megaraid_dashboard.services.drive_history import (
+    DriveErrorSeries,
+    DriveHistoryPointKey,
+    DriveReplacementMarker,
+    DriveTemperatureSeries,
+    load_drive_error_series,
+    load_drive_temperature_series,
+)
+from megaraid_dashboard.services.event_detector import physical_drive_state_severity
+from megaraid_dashboard.services.overview import (
+    DriveListViewModel,
+    OverviewViewModel,
+    format_tb,
+    load_drive_list_view_model,
+    load_overview_view_model,
+    temperature_severity,
+)
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = create_templates(_PACKAGE_ROOT / "templates")
 STATIC_ASSET_VERSION = ""
+_DEFAULT_CHART_RANGE_DAYS = 7
+_ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
 
 router = APIRouter()
+
+
+@dataclass(frozen=True)
+class DriveAttribute:
+    label: str
+    value: str
+    mono: bool = False
+    severity: str | None = None
+
+
+@dataclass(frozen=True)
+class RangeTab:
+    label: str
+    range_days: int
+    active: bool
+    hx_get: str
+
+
+@dataclass(frozen=True)
+class TemperatureFallbackRow:
+    timestamp: str
+    average_celsius: str
+    minimum_celsius: str
+    maximum_celsius: str
+
+
+@dataclass(frozen=True)
+class ErrorFallbackRow:
+    timestamp: str
+    media_errors: str
+    other_errors: str
+    predictive_failures: str
+
+
+@dataclass(frozen=True)
+class DriveChartsViewModel:
+    enclosure_id: int
+    slot_id: int
+    active_range_days: int
+    temperature_chart: dict[str, Any]
+    error_chart: dict[str, Any]
+    temperature_rows: tuple[TemperatureFallbackRow, ...]
+    error_rows: tuple[ErrorFallbackRow, ...]
+    raw_point_count: int
+    hourly_point_count: int
+    daily_point_count: int
+
+
+@dataclass(frozen=True)
+class DriveDetailViewModel:
+    enclosure_id: int
+    slot_id: int
+    title: str
+    model: str
+    serial_number: str
+    captured_at: datetime
+    captured_at_iso: str
+    attributes: tuple[DriveAttribute, ...]
+    range_tabs: tuple[RangeTab, ...]
+    charts: DriveChartsViewModel
+
+
+@dataclass(frozen=True)
+class _ChartPointKey:
+    timestamp: datetime
+    serial_number: str
+    history_point_key: DriveHistoryPointKey
 
 
 @router.get("/health")
@@ -60,8 +150,98 @@ def overview_partial(request: Request) -> Response:
 
 
 @router.get("/drives", name="drives")
-def drives(request: Request) -> RedirectResponse:
-    return RedirectResponse(str(request.url_for("overview").path), status_code=303)
+def drives(request: Request) -> Response:
+    view_model = _load_drive_list(request)
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="pages/drives.html",
+        context={
+            "active_nav": "drives",
+            "current_utc_label": _current_utc_label(),
+            "static_asset_version": _static_asset_version(),
+            "view_model": view_model,
+        },
+    )
+
+
+@router.get("/drives/{enclosure_id}/{slot_id}", name="drive_detail")
+def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
+    started_at = perf_counter()
+    with _session(request) as session:
+        snapshot, drive = _latest_drive_or_404(
+            session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+        view_model = _drive_detail_view_model(
+            request=request,
+            session=session,
+            snapshot=snapshot,
+            drive=drive,
+            range_days=_DEFAULT_CHART_RANGE_DAYS,
+        )
+    _log_drive_detail_rendered(
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        range_days=view_model.charts.active_range_days,
+        raw_point_count=view_model.charts.raw_point_count,
+        hourly_point_count=view_model.charts.hourly_point_count,
+        daily_point_count=view_model.charts.daily_point_count,
+        elapsed_ms=_elapsed_ms(started_at),
+    )
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="pages/drive_detail.html",
+        context={
+            "active_nav": "drives",
+            "current_utc_label": _current_utc_label(),
+            "static_asset_version": _static_asset_version(),
+            "view_model": view_model,
+        },
+    )
+
+
+@router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
+def drive_charts(
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+    range_days: int = _DEFAULT_CHART_RANGE_DAYS,
+    serial_number: str | None = None,
+    captured_at: datetime | None = None,
+) -> Response:
+    started_at = perf_counter()
+    resolved_range_days = _validate_range_days(range_days)
+    with _session(request) as session:
+        chart_serial_number, chart_captured_at = _chart_identity_or_404(
+            session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=serial_number,
+            captured_at=captured_at,
+        )
+        view_model = _drive_charts_view_model(
+            session=session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=chart_serial_number,
+            range_days=resolved_range_days,
+            now_utc=chart_captured_at,
+        )
+    _log_drive_detail_rendered(
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        range_days=view_model.active_range_days,
+        raw_point_count=view_model.raw_point_count,
+        hourly_point_count=view_model.hourly_point_count,
+        daily_point_count=view_model.daily_point_count,
+        elapsed_ms=_elapsed_ms(started_at),
+    )
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="partials/drive_charts.html",
+        context={"view_model": view_model},
+    )
 
 
 @router.get("/events", name="events")
@@ -77,11 +257,541 @@ def events(request: Request) -> Response:
     )
 
 
-def _load_overview(request: Request) -> OverviewViewModel:
+def _session(request: Request) -> Session:
     session_factory = cast(sessionmaker[Session], request.app.state.session_factory)
+    return session_factory()
+
+
+def _load_overview(request: Request) -> OverviewViewModel:
     scheduler = getattr(request.app.state, "scheduler", None)
-    with session_factory() as session:
+    with _session(request) as session:
         return load_overview_view_model(session, scheduler=scheduler)
+
+
+def _load_drive_list(request: Request) -> DriveListViewModel:
+    scheduler = getattr(request.app.state, "scheduler", None)
+
+    def slot_url(enclosure_id: int, slot_id: int) -> str:
+        return str(
+            request.url_for(
+                "drive_detail",
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+            ).path
+        )
+
+    with _session(request) as session:
+        return load_drive_list_view_model(
+            session,
+            scheduler=scheduler,
+            slot_url_factory=slot_url,
+        )
+
+
+def _latest_drive_or_404(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+) -> tuple[ControllerSnapshot, PhysicalDriveSnapshot]:
+    snapshot = _latest_snapshot_or_404(session)
+    drive = _find_physical_drive(snapshot, enclosure_id=enclosure_id, slot_id=slot_id)
+    if drive is None:
+        raise HTTPException(status_code=404, detail="Physical drive not found in latest snapshot")
+    return snapshot, drive
+
+
+def _latest_snapshot_or_404(session: Session) -> ControllerSnapshot:
+    snapshot = get_latest_snapshot(session)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="No controller snapshot exists")
+    return snapshot
+
+
+def _chart_identity_or_404(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str | None,
+    captured_at: datetime | None,
+) -> tuple[str, datetime]:
+    if serial_number is None and captured_at is None:
+        snapshot, drive = _latest_drive_or_404(
+            session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+        return drive.serial_number, snapshot.captured_at
+    if serial_number is None or captured_at is None:
+        raise HTTPException(
+            status_code=400,
+            detail="serial_number and captured_at must be provided together",
+        )
+    if not serial_number:
+        raise HTTPException(status_code=400, detail="serial_number must not be empty")
+    _latest_snapshot_or_404(session)
+    return serial_number, _require_aware_utc_query(captured_at)
+
+
+def _require_aware_utc_query(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise HTTPException(status_code=400, detail="captured_at must include a timezone")
+    return value.astimezone(UTC)
+
+
+def _find_physical_drive(
+    snapshot: ControllerSnapshot,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+) -> PhysicalDriveSnapshot | None:
+    for drive in snapshot.physical_drives:
+        if drive.enclosure_id == enclosure_id and drive.slot_id == slot_id:
+            return drive
+    return None
+
+
+def _drive_detail_view_model(
+    *,
+    request: Request,
+    session: Session,
+    snapshot: ControllerSnapshot,
+    drive: PhysicalDriveSnapshot,
+    range_days: int,
+) -> DriveDetailViewModel:
+    settings = get_settings()
+    chart_url = str(
+        request.url_for(
+            "drive_charts",
+            enclosure_id=drive.enclosure_id,
+            slot_id=drive.slot_id,
+        ).path
+    )
+    return DriveDetailViewModel(
+        enclosure_id=drive.enclosure_id,
+        slot_id=drive.slot_id,
+        title=f"Drive {drive.enclosure_id}:{drive.slot_id}",
+        model=drive.model,
+        serial_number=drive.serial_number,
+        captured_at=snapshot.captured_at,
+        captured_at_iso=snapshot.captured_at.isoformat(),
+        attributes=_drive_attributes(
+            drive,
+            temp_warning=settings.temp_warning_celsius,
+            temp_critical=settings.temp_critical_celsius,
+        ),
+        range_tabs=_range_tabs(active_range_days=range_days, chart_url=chart_url),
+        charts=_drive_charts_view_model(
+            session=session,
+            enclosure_id=drive.enclosure_id,
+            slot_id=drive.slot_id,
+            serial_number=drive.serial_number,
+            range_days=range_days,
+            now_utc=snapshot.captured_at,
+        ),
+    )
+
+
+def _drive_attributes(
+    drive: PhysicalDriveSnapshot,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+) -> tuple[DriveAttribute, ...]:
+    return (
+        DriveAttribute(label="Model", value=drive.model),
+        DriveAttribute(label="Serial Number", value=drive.serial_number, mono=True),
+        DriveAttribute(label="Firmware Revision", value=drive.firmware_version, mono=True),
+        DriveAttribute(label="Interface", value=drive.interface),
+        DriveAttribute(label="Media Type", value=drive.media_type),
+        DriveAttribute(label="Size", value=format_tb(drive.size_bytes)),
+        DriveAttribute(label="SAS Address", value=drive.sas_address, mono=True),
+        DriveAttribute(
+            label="State",
+            value=drive.state,
+            severity=_event_severity_to_status(
+                physical_drive_state_severity(drive.state, drive.state)
+            ),
+        ),
+        DriveAttribute(
+            label="Current Temperature",
+            value=(
+                "Unknown" if drive.temperature_celsius is None else f"{drive.temperature_celsius} C"
+            ),
+            severity=temperature_severity(
+                drive.temperature_celsius,
+                temp_warning=temp_warning,
+                temp_critical=temp_critical,
+            ),
+        ),
+    )
+
+
+def _range_tabs(*, active_range_days: int, chart_url: str) -> tuple[RangeTab, ...]:
+    return tuple(
+        RangeTab(
+            label=f"{range_days} days",
+            range_days=range_days,
+            active=range_days == active_range_days,
+            hx_get=chart_url,
+        )
+        for range_days in _ALLOWED_CHART_RANGE_DAYS
+    )
+
+
+def _drive_charts_view_model(
+    *,
+    session: Session,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
+    range_days: int,
+    now_utc: datetime | None,
+) -> DriveChartsViewModel:
+    settings = get_settings()
+    resolved_range_days = _validate_range_days(range_days)
+    temperature_series = load_drive_temperature_series(
+        session,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        current_serial_number=serial_number,
+        range_days=resolved_range_days,
+        now_utc=now_utc,
+    )
+    error_series = load_drive_error_series(
+        session,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        current_serial_number=serial_number,
+        range_days=resolved_range_days,
+        now_utc=now_utc,
+    )
+    temperature_keys = _chart_point_keys(
+        temperature_series.timestamps,
+        temperature_series.serial_numbers,
+        temperature_series.point_keys,
+    )
+    error_keys = _chart_point_keys(
+        error_series.timestamps,
+        error_series.serial_numbers,
+        error_series.point_keys,
+    )
+    point_keys = _merge_chart_point_keys(
+        temperature_keys=temperature_keys,
+        error_keys=error_keys,
+    )
+    labels = tuple(
+        _chart_timestamp_label(point_key.timestamp, range_days=resolved_range_days)
+        for point_key in point_keys
+    )
+    temperature_by_key = dict(
+        zip(temperature_keys, temperature_series.average_celsius, strict=True)
+    )
+    media_errors_by_key = dict(zip(error_keys, error_series.media_errors, strict=True))
+    other_errors_by_key = dict(zip(error_keys, error_series.other_errors, strict=True))
+    predictive_failures_by_key = dict(
+        zip(error_keys, error_series.predictive_failures, strict=True)
+    )
+    temperature_values = tuple(temperature_by_key.get(point_key) for point_key in point_keys)
+    max_temperature = max(
+        (value for value in temperature_values if value is not None),
+        default=0.0,
+    )
+    replacement_markers = _chart_replacement_markers(
+        temperature_series=temperature_series,
+        error_series=error_series,
+        range_days=resolved_range_days,
+        point_keys=point_keys,
+    )
+    temperature_chart = _temperature_chart_data(
+        labels=labels,
+        values=temperature_values,
+        warning_celsius=settings.temp_warning_celsius,
+        critical_celsius=settings.temp_critical_celsius,
+        max_temperature=max_temperature,
+        replacement_markers=replacement_markers,
+    )
+    error_chart = _error_chart_data(
+        labels=labels,
+        media_errors=tuple(media_errors_by_key.get(point_key) for point_key in point_keys),
+        other_errors=tuple(other_errors_by_key.get(point_key) for point_key in point_keys),
+        predictive_failures=tuple(
+            predictive_failures_by_key.get(point_key) for point_key in point_keys
+        ),
+        replacement_markers=replacement_markers,
+    )
+    return DriveChartsViewModel(
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        active_range_days=resolved_range_days,
+        temperature_chart=temperature_chart,
+        error_chart=error_chart,
+        temperature_rows=_temperature_fallback_rows(
+            temperature_series,
+            range_days=resolved_range_days,
+        ),
+        error_rows=_error_fallback_rows(error_series, range_days=resolved_range_days),
+        raw_point_count=max(temperature_series.raw_point_count, error_series.raw_point_count),
+        hourly_point_count=max(
+            temperature_series.hourly_point_count,
+            error_series.hourly_point_count,
+        ),
+        daily_point_count=max(temperature_series.daily_point_count, error_series.daily_point_count),
+    )
+
+
+def _temperature_chart_data(
+    *,
+    labels: tuple[str, ...],
+    values: tuple[float | None, ...],
+    warning_celsius: int,
+    critical_celsius: int,
+    max_temperature: float,
+    replacement_markers: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    return {
+        "labels": labels,
+        "datasets": (
+            {
+                "label": "Average Temperature",
+                "data": values,
+                "borderColor": "#37d6ff",
+                "backgroundColor": "rgba(55, 214, 255, 0.16)",
+                "pointRadius": 2,
+                "spanGaps": True,
+                "tension": 0.2,
+            },
+        ),
+        "thresholds": {
+            "warning": warning_celsius,
+            "critical": critical_celsius,
+        },
+        "thresholdDatasets": (
+            _threshold_dataset(
+                "Warning Threshold",
+                warning_celsius,
+                "rgba(240, 180, 77, 0.52)",
+                len(labels),
+            ),
+            _threshold_dataset(
+                "Critical Threshold",
+                critical_celsius,
+                "rgba(255, 92, 108, 0.52)",
+                len(labels),
+            ),
+        ),
+        "replacementMarkers": replacement_markers,
+        "yMin": 20,
+        "yMax": max(70, ceil(max_temperature + 5), warning_celsius + 5, critical_celsius + 5),
+    }
+
+
+def _threshold_dataset(
+    label: str,
+    value: int,
+    color: str,
+    point_count: int,
+) -> dict[str, Any]:
+    return {
+        "label": label,
+        "data": tuple(value for _ in range(point_count)),
+        "borderColor": color,
+        "borderDash": (6, 6),
+        "borderWidth": 1,
+        "pointRadius": 0,
+        "spanGaps": True,
+        "tension": 0,
+    }
+
+
+def _error_chart_data(
+    *,
+    labels: tuple[str, ...],
+    media_errors: tuple[int | None, ...],
+    other_errors: tuple[int | None, ...],
+    predictive_failures: tuple[int | None, ...],
+    replacement_markers: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    return {
+        "labels": labels,
+        "datasets": (
+            {
+                "label": "Media Errors",
+                "data": media_errors,
+                "borderColor": "#ff5c6c",
+                "pointRadius": 2,
+                "spanGaps": True,
+                "tension": 0.2,
+            },
+            {
+                "label": "Other Errors",
+                "data": other_errors,
+                "borderColor": "#f0b44d",
+                "pointRadius": 2,
+                "spanGaps": True,
+                "tension": 0.2,
+            },
+            {
+                "label": "Predictive Failures",
+                "data": predictive_failures,
+                "borderColor": "#ff5c6c",
+                "borderDash": (6, 6),
+                "pointRadius": 2,
+                "spanGaps": True,
+                "tension": 0.2,
+            },
+        ),
+        "replacementMarkers": replacement_markers,
+    }
+
+
+def _temperature_fallback_rows(
+    series: DriveTemperatureSeries,
+    *,
+    range_days: int,
+) -> tuple[TemperatureFallbackRow, ...]:
+    rows = tuple(
+        TemperatureFallbackRow(
+            timestamp=_chart_timestamp_label(timestamp, range_days=range_days),
+            average_celsius=f"{average:.1f}",
+            minimum_celsius="Unknown" if minimum is None else f"{minimum:.1f}",
+            maximum_celsius="Unknown" if maximum is None else f"{maximum:.1f}",
+        )
+        for timestamp, average, minimum, maximum in zip(
+            series.timestamps,
+            series.average_celsius,
+            series.minimum_celsius,
+            series.maximum_celsius,
+            strict=True,
+        )
+    )
+    return rows[-24:]
+
+
+def _error_fallback_rows(
+    series: DriveErrorSeries,
+    *,
+    range_days: int,
+) -> tuple[ErrorFallbackRow, ...]:
+    rows = tuple(
+        ErrorFallbackRow(
+            timestamp=_chart_timestamp_label(timestamp, range_days=range_days),
+            media_errors=str(media_errors),
+            other_errors=str(other_errors),
+            predictive_failures=str(predictive_failures),
+        )
+        for timestamp, media_errors, other_errors, predictive_failures in zip(
+            series.timestamps,
+            series.media_errors,
+            series.other_errors,
+            series.predictive_failures,
+            strict=True,
+        )
+    )
+    return rows[-24:]
+
+
+def _chart_replacement_markers(
+    *,
+    temperature_series: DriveTemperatureSeries,
+    error_series: DriveErrorSeries,
+    range_days: int,
+    point_keys: tuple[_ChartPointKey, ...],
+) -> tuple[dict[str, Any], ...]:
+    marker_indexes: dict[tuple[datetime, str], int] = {}
+    for index, point_key in enumerate(point_keys):
+        marker_indexes.setdefault((point_key.timestamp, point_key.serial_number), index)
+    return tuple(
+        {
+            "pointIndex": marker_indexes[(marker.timestamp, marker.current_serial_number)],
+            "timestamp": _chart_timestamp_label(marker.timestamp, range_days=range_days),
+            "label": marker.label,
+            "previousSerialNumber": marker.previous_serial_number,
+            "currentSerialNumber": marker.current_serial_number,
+        }
+        for marker in _unique_replacement_markers(
+            temperature_series=temperature_series,
+            error_series=error_series,
+        )
+        if (marker.timestamp, marker.current_serial_number) in marker_indexes
+    )
+
+
+def _unique_replacement_markers(
+    *,
+    temperature_series: DriveTemperatureSeries,
+    error_series: DriveErrorSeries,
+) -> tuple[DriveReplacementMarker, ...]:
+    seen_markers: set[DriveReplacementMarker] = set()
+    markers: list[DriveReplacementMarker] = []
+    for marker in (*temperature_series.replacement_markers, *error_series.replacement_markers):
+        if marker in seen_markers:
+            continue
+        seen_markers.add(marker)
+        markers.append(marker)
+    return tuple(markers)
+
+
+def _chart_point_keys(
+    timestamps: tuple[datetime, ...],
+    serial_numbers: tuple[str, ...],
+    history_point_keys: tuple[DriveHistoryPointKey, ...],
+) -> tuple[_ChartPointKey, ...]:
+    point_keys: list[_ChartPointKey] = []
+    for timestamp, serial_number, history_point_key in zip(
+        timestamps,
+        serial_numbers,
+        history_point_keys,
+        strict=True,
+    ):
+        point_keys.append(
+            _ChartPointKey(
+                timestamp=timestamp,
+                serial_number=serial_number,
+                history_point_key=history_point_key,
+            )
+        )
+    return tuple(point_keys)
+
+
+def _merge_chart_point_keys(
+    *,
+    temperature_keys: tuple[_ChartPointKey, ...],
+    error_keys: tuple[_ChartPointKey, ...],
+) -> tuple[_ChartPointKey, ...]:
+    ordering_source = (*error_keys, *temperature_keys)
+    order_by_key: dict[_ChartPointKey, int] = {}
+    for index, point_key in enumerate(ordering_source):
+        order_by_key.setdefault(point_key, index)
+    return tuple(
+        sorted(order_by_key, key=lambda point_key: (point_key.timestamp, order_by_key[point_key]))
+    )
+
+
+def _chart_timestamp_label(timestamp: datetime, *, range_days: int) -> str:
+    timestamp_utc = timestamp.astimezone(UTC)
+    if range_days == 365:
+        return timestamp_utc.strftime("%Y-%m-%d")
+    if range_days == 30:
+        return timestamp_utc.strftime("%Y-%m-%d %H:00")
+    return timestamp_utc.strftime("%Y-%m-%d %H:%M")
+
+
+def _validate_range_days(range_days: int) -> int:
+    if range_days not in _ALLOWED_CHART_RANGE_DAYS:
+        raise HTTPException(status_code=400, detail="range_days must be one of 7, 30, or 365")
+    return range_days
+
+
+def _event_severity_to_status(severity: str) -> str:
+    if severity == "info":
+        return "optimal"
+    if severity == "critical":
+        return "critical"
+    if severity == "warning":
+        return "warning"
+    return "unknown"
 
 
 def _current_utc_label() -> str:
@@ -96,6 +806,7 @@ def _static_asset_version() -> str:
     digest = hashlib.sha256()
     for path in (
         _PACKAGE_ROOT / "static" / "css" / "app.css",
+        _PACKAGE_ROOT / "static" / "vendor" / "chart.min.js",
         _PACKAGE_ROOT / "static" / "vendor" / "htmx.min.js",
     ):
         digest.update(path.read_bytes())
@@ -119,4 +830,26 @@ def _log_overview_rendered(
         captured_at=captured_at,
         elapsed_ms=elapsed_ms,
         partial=partial,
+    )
+
+
+def _log_drive_detail_rendered(
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    range_days: int,
+    raw_point_count: int,
+    hourly_point_count: int,
+    daily_point_count: int,
+    elapsed_ms: float,
+) -> None:
+    LOGGER.info(
+        "ui_drive_detail_rendered",
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        range_days=range_days,
+        raw_point_count=raw_point_count,
+        hourly_point_count=hourly_point_count,
+        daily_point_count=daily_point_count,
+        elapsed_ms=elapsed_ms,
     )

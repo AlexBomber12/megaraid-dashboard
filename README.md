@@ -47,6 +47,21 @@ drive snapshots are retained at full 5-minute resolution for 30 days, then downs
 `pd_metrics_hourly` for 1 year, then into `pd_metrics_daily` indefinitely. Events and audit
 logs are retained forever.
 
+### History Aggregation
+
+Drive detail graphs read history from three layers: raw `pd_snapshots` joined to
+`controller_snapshots.captured_at`, hourly `pd_metrics_hourly`, and daily
+`pd_metrics_daily`. The UI merges them with raw points taking priority over hourly buckets,
+and hourly buckets taking priority over daily buckets, so overlapping windows are shown once
+at the highest available resolution.
+
+For a selected drive, history normally matches enclosure, slot, and the latest serial number.
+If a replacement occurred inside the requested window, the loader falls back to enclosure and
+slot matching and returns a replacement marker for the graph. During the first 30 days of
+operation, 30-day charts may contain only raw data. During the first year, 365-day charts may
+contain raw plus hourly data before daily buckets exist. Those partial-layer cases are
+expected and still use the same merge priority.
+
 ## Background Collector
 
 When enabled, the background collector runs `storcli` every `metrics_interval_seconds`
@@ -72,7 +87,11 @@ Routes:
 - `/` renders the Overview page with the latest controller, virtual drive, CacheVault,
   and physical drive snapshot.
 - `/partials/overview` renders only the Overview data block used by HTMX refreshes.
-- `/drives` is a placeholder route that currently redirects to `/`.
+- `/drives` renders a physical drive list with links to drive detail pages.
+- `/drives/{enclosure_id}/{slot_id}` renders the Drive Detail page with current drive
+  attributes, temperature history, and error counter history.
+- `/drives/{enclosure_id}/{slot_id}/charts` renders only the chart fragment used by the
+  Drive Detail range selector.
 - `/events` renders a Coming soon empty state.
 - `/health` returns the health JSON used by smoke checks.
 
@@ -81,8 +100,13 @@ Static assets are mounted separately at `/static` with far-future cache headers:
 - `src/megaraid_dashboard/static/css/app.css` contains the vanilla CSS.
 - `src/megaraid_dashboard/static/vendor/htmx.min.js` vendors HTMX 2.0.x from the
   official release. The file is local, so CDN loading and SRI are deliberately not used.
-  Template asset URLs include a content-derived `v` query so far-future caches are
-  refreshed after CSS or JS changes.
+- `src/megaraid_dashboard/static/vendor/chart.min.js` vendors the Chart.js 4.x UMD
+  minified release from the official `chartjs/Chart.js` GitHub release asset. It is loaded
+  only by the Drive Detail page, not the global layout, so overview pages avoid the parse
+  cost.
+
+Template asset URLs include a content-derived `v` query so far-future caches are refreshed
+after CSS or vendored JS changes.
 
 ## Reverse Proxy
 
@@ -136,6 +160,7 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |       |-- services/
 |       |   |-- __init__.py
 |       |   |-- collector.py
+|       |   |-- drive_history.py
 |       |   |-- event_detector.py
 |       |   |-- overview.py
 |       |   `-- scheduler.py
@@ -143,6 +168,7 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |       |   |-- css/
 |       |   |   `-- app.css
 |       |   `-- vendor/
+|       |       |-- chart.min.js
 |       |       `-- htmx.min.js
 |       |-- storcli/
 |       |   |-- __init__.py
@@ -154,9 +180,13 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |       |   |-- layouts/
 |       |   |   `-- base.html
 |       |   |-- pages/
+|       |   |   |-- drive_detail.html
+|       |   |   |-- drives.html
 |       |   |   |-- events.html
 |       |   |   `-- overview.html
 |       |   `-- partials/
+|       |       |-- drive_charts.html
+|       |       |-- physical_drive_table.html
 |       |       `-- overview_data.html
 |       `-- web/
 |           |-- __init__.py
@@ -183,6 +213,7 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |   |-- test_services/
 |   |   |-- __init__.py
 |   |   |-- test_collector.py
+|   |   |-- test_drive_history.py
 |   |   |-- test_event_detector.py
 |   |   |-- test_overview.py
 |   |   `-- test_scheduler.py

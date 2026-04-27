@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -16,8 +16,8 @@ from megaraid_dashboard.db.models import (
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.event_detector import (
-    _physical_drive_state_severity,
-    _virtual_drive_state_severity,
+    physical_drive_state_severity,
+    virtual_drive_state_severity,
 )
 
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
@@ -43,6 +43,7 @@ class StatCard:
 @dataclass(frozen=True)
 class PhysicalDriveRow:
     slot: str
+    slot_url: str
     model: str
     serial_number: str
     temperature: str
@@ -64,6 +65,17 @@ class OverviewViewModel:
     max_temperature_celsius: int | None
     elevated_drive_count: int
     critical_drive_count: int
+    empty_title: str
+    empty_body: str
+    empty_next_run: str
+
+
+@dataclass(frozen=True)
+class DriveListViewModel:
+    has_snapshot: bool
+    controller_label: str
+    captured_at: datetime | None
+    physical_drives: tuple[PhysicalDriveRow, ...]
     empty_title: str
     empty_body: str
     empty_next_run: str
@@ -151,6 +163,53 @@ def load_overview_view_model(
     )
 
 
+def load_drive_list_view_model(
+    session: Session,
+    *,
+    slot_url_factory: Callable[[int, int], str],
+    scheduler: _Scheduler | None = None,
+) -> DriveListViewModel:
+    settings = get_settings()
+    snapshot = get_latest_snapshot(session)
+    if snapshot is None:
+        return DriveListViewModel(
+            has_snapshot=False,
+            controller_label=_CONTROLLER_LABEL,
+            captured_at=None,
+            physical_drives=(),
+            empty_title="Waiting for first metrics collection",
+            empty_body="The collector has not yet completed its first run.",
+            empty_next_run=_empty_next_run_text(
+                scheduler=scheduler,
+                collector_enabled=settings.collector_enabled,
+            ),
+        )
+
+    sorted_drives = tuple(
+        sorted(snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id))
+    )
+    temp_warning = settings.temp_warning_celsius
+    temp_critical = settings.temp_critical_celsius
+
+    return DriveListViewModel(
+        has_snapshot=True,
+        controller_label=_CONTROLLER_LABEL,
+        captured_at=snapshot.captured_at,
+        physical_drives=tuple(
+            _physical_drive_row(
+                drive,
+                temp_warning=temp_warning,
+                temp_critical=temp_critical,
+                slot_url=slot_url_factory(drive.enclosure_id, drive.slot_id),
+            )
+            for drive in sorted_drives
+        ),
+        empty_title="Waiting for first metrics collection",
+        empty_body="The collector has not yet completed its first run.",
+        empty_next_run="",
+    )
+
+
 def _empty_next_run_text(*, scheduler: _Scheduler | None, collector_enabled: bool) -> str:
     if not collector_enabled:
         return "Metrics collection is disabled; no collection run is scheduled."
@@ -186,7 +245,7 @@ def _controller_health_card(*, snapshot: ControllerSnapshot) -> StatCard:
         if virtual_drive.state not in _VD_OPTIMAL_STATES:
             severity = _worst_severity(
                 severity,
-                _event_severity_to_status(_virtual_drive_state_severity(virtual_drive.state)),
+                _event_severity_to_status(virtual_drive_state_severity(virtual_drive.state)),
             )
 
     for physical_drive in snapshot.physical_drives:
@@ -194,7 +253,7 @@ def _controller_health_card(*, snapshot: ControllerSnapshot) -> StatCard:
             severity = _worst_severity(
                 severity,
                 _event_severity_to_status(
-                    _physical_drive_state_severity("Onln", physical_drive.state)
+                    physical_drive_state_severity("Onln", physical_drive.state)
                 ),
             )
             if severity == "optimal":
@@ -219,7 +278,7 @@ def _virtual_drive_card(virtual_drive: VirtualDriveSnapshot | None) -> StatCard:
     return StatCard(
         label="Virtual Drive",
         value=_virtual_drive_state_label(virtual_drive.state),
-        severity=_event_severity_to_status(_virtual_drive_state_severity(virtual_drive.state)),
+        severity=_event_severity_to_status(virtual_drive_state_severity(virtual_drive.state)),
     )
 
 
@@ -230,7 +289,7 @@ def _raid_type_card(virtual_drive: VirtualDriveSnapshot | None) -> StatCard:
 
 
 def _size_card(virtual_drive: VirtualDriveSnapshot | None) -> StatCard:
-    value = "Unknown" if virtual_drive is None else _format_tb(virtual_drive.size_bytes)
+    value = "Unknown" if virtual_drive is None else format_tb(virtual_drive.size_bytes)
     severity = "unknown" if virtual_drive is None else "neutral"
     return StatCard(label="Size", value=value, severity=severity)
 
@@ -273,7 +332,7 @@ def _max_disk_temp_card(
     return StatCard(
         label="Max Disk Temp",
         value=f"{max_temp} C",
-        severity=_temperature_severity(
+        severity=temperature_severity(
             max_temp,
             temp_warning=temp_warning,
             temp_critical=temp_critical,
@@ -287,16 +346,18 @@ def _physical_drive_row(
     *,
     temp_warning: int,
     temp_critical: int,
+    slot_url: str = "",
 ) -> PhysicalDriveRow:
     smart_alert = drive.smart_alert
     return PhysicalDriveRow(
         slot=f"e{drive.enclosure_id}:s{drive.slot_id}",
+        slot_url=slot_url,
         model=drive.model,
         serial_number=drive.serial_number,
         temperature="Unknown"
         if drive.temperature_celsius is None
         else f"{drive.temperature_celsius} C",
-        temperature_severity=_temperature_severity(
+        temperature_severity=temperature_severity(
             drive.temperature_celsius,
             temp_warning=temp_warning,
             temp_critical=temp_critical,
@@ -355,7 +416,7 @@ def _event_severity_to_status(severity: str) -> str:
     return "unknown"
 
 
-def _temperature_severity(
+def temperature_severity(
     temperature_celsius: int | None,
     *,
     temp_warning: int,
@@ -368,6 +429,19 @@ def _temperature_severity(
     if temperature_celsius >= temp_warning:
         return "warning"
     return "optimal"
+
+
+def _temperature_severity(
+    temperature_celsius: int | None,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+) -> str:
+    return temperature_severity(
+        temperature_celsius,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
 
 
 def _temperature_count(
@@ -391,8 +465,12 @@ def _max_temperature(physical_drives: Sequence[PhysicalDriveSnapshot]) -> int | 
     return max(temperatures) if temperatures else None
 
 
-def _format_tb(size_bytes: int) -> str:
+def format_tb(size_bytes: int) -> str:
     return f"{size_bytes / 10**12:.1f} TB"
+
+
+def _format_tb(size_bytes: int) -> str:
+    return format_tb(size_bytes)
 
 
 def _worst_severity(current: str, candidate: str) -> str:

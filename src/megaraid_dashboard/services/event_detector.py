@@ -163,7 +163,7 @@ class EventDetector:
                 continue
             events.append(
                 DetectedEvent(
-                    severity=_virtual_drive_state_severity(current_drive.state),
+                    severity=virtual_drive_state_severity(current_drive.state),
                     category="vd_state",
                     subject=f"VD {previous_drive.vd_id}",
                     summary=(
@@ -506,7 +506,7 @@ class EventDetector:
         return events
 
 
-def _virtual_drive_state_severity(state: str) -> str:
+def virtual_drive_state_severity(state: str) -> str:
     if state in {"Optl", "Optimal"}:
         return "info"
     if state in {"Failed", "Offline", "Offln", "Partially Degraded", "Pdgd"}:
@@ -515,7 +515,7 @@ def _virtual_drive_state_severity(state: str) -> str:
 
 
 def _new_virtual_drive_event(virtual_drive: VirtualDrive) -> DetectedEvent | None:
-    severity = _virtual_drive_state_severity(virtual_drive.state)
+    severity = virtual_drive_state_severity(virtual_drive.state)
     if severity == "info":
         return None
     return DetectedEvent(
@@ -533,7 +533,7 @@ def _physical_drive_state_event(
     current: PhysicalDrive,
 ) -> DetectedEvent:
     return DetectedEvent(
-        severity=_physical_drive_state_severity(previous.state, current.state),
+        severity=physical_drive_state_severity(previous.state, current.state),
         category="pd_state",
         subject=_physical_drive_subject(current),
         summary=(
@@ -547,7 +547,7 @@ def _physical_drive_state_event(
 
 def _new_physical_drive_events(current: PhysicalDrive) -> list[DetectedEvent]:
     events: list[DetectedEvent] = []
-    state_severity = _physical_drive_state_severity(current.state, current.state)
+    state_severity = physical_drive_state_severity(current.state, current.state)
     if state_severity != "info":
         events.append(
             DetectedEvent(
@@ -608,7 +608,7 @@ def _smart_alert_event(
     )
 
 
-def _physical_drive_state_severity(previous_state: str, current_state: str) -> str:
+def physical_drive_state_severity(previous_state: str, current_state: str) -> str:
     if current_state in {"Failed", "Missing", "Msng", "Offline", "Offln"}:
         return "critical"
     if current_state in {"JBOD", "UGood", "UBad"}:
@@ -616,6 +616,10 @@ def _physical_drive_state_severity(previous_state: str, current_state: str) -> s
     if previous_state == "Onln" or current_state == "Onln":
         return "info"
     return "info"
+
+
+_virtual_drive_state_severity = virtual_drive_state_severity
+_physical_drive_state_severity = physical_drive_state_severity
 
 
 def _cachevault_state_severity(state: str) -> str:

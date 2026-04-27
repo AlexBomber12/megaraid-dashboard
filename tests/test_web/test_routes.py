@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import cast
@@ -15,6 +17,7 @@ from megaraid_dashboard import __version__
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot
+from megaraid_dashboard.db.models import PhysicalDriveMetricsHourly
 from megaraid_dashboard.storcli import StorcliSnapshot
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 
@@ -128,6 +131,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "SERVER RAID Status" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
+    assert "/raid/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
@@ -148,6 +152,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert response.status_code == 200
     assert "/static/css/app.css" in response.text
     assert "/static/vendor/htmx.min.js" in response.text
+    assert "/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
@@ -214,25 +219,458 @@ def test_vendored_htmx_exists_and_is_referenced() -> None:
 def test_static_assets_are_served_with_far_future_cache_header() -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
-        response = client.get("/static/css/app.css")
+        css_response = client.get("/static/css/app.css")
+        chart_response = client.get("/static/vendor/chart.min.js")
 
-    assert response.status_code == 200
-    assert "public" in response.headers["Cache-Control"]
-    assert "max-age=31536000" in response.headers["Cache-Control"]
-    assert "immutable" not in response.headers["Cache-Control"]
+    assert css_response.status_code == 200
+    assert chart_response.status_code == 200
+    assert "public" in css_response.headers["Cache-Control"]
+    assert "max-age=31536000" in css_response.headers["Cache-Control"]
+    assert "immutable" not in css_response.headers["Cache-Control"]
+    assert "public" in chart_response.headers["Cache-Control"]
+    assert "max-age=31536000" in chart_response.headers["Cache-Control"]
 
 
-def test_drives_placeholder_redirects_to_overview_with_content(
+def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
-        response = client.get("/drives", follow_redirects=True)
+        response = client.get("/drives", headers={"X-Forwarded-Prefix": "/raid"})
 
     assert response.status_code == 200
-    assert "SERVER RAID Status" in response.text
+    assert "Physical Drives" in response.text
+    assert response.history == []
+    drive_links = {
+        href
+        for href in _anchor_hrefs(response.text)
+        if re.fullmatch(r"/raid/drives/252/[0-7]", href)
+    }
+    assert len(drive_links) == 8
+    assert "/raid/drives/252/4" in drive_links
+
+
+def test_drive_list_slot_column_links_to_drive_detail(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives")
+
+    assert response.status_code == 200
+    assert '<a href="/drives/252/4">e252:s4</a>' in response.text
+
+
+def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/drives/252/4")
+
+    assert response.status_code == 404
+
+
+def test_drive_detail_returns_404_when_latest_snapshot_lacks_requested_slot(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/99")
+
+    assert response.status_code == 404
+
+
+def test_drive_detail_renders_attributes_and_chart_area(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4")
+        overview_response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Drive 252:4" in response.text
+    assert '<span class="mono">WDC WD30EFRX-68EUZN0</span>' in response.text
+    assert "WD-WM00000005" in response.text
+    assert 'id="chart-area"' in response.text
+    assert "/static/vendor/chart.min.js" in response.text
+    assert "/static/vendor/chart.min.js" not in overview_response.text
+
+
+def test_drive_charts_partial_returns_only_chart_area(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=30")
+
+    assert response.status_code == 200
+    assert response.text.lstrip().startswith('<div id="chart-area"')
+    assert "<!doctype html>" not in response.text
+    assert "site-header" not in response.text
+    assert "chartRetryLimit = 40" in response.text
+    assert "syncRangeTabs();" in response.text
+    assert 'chartArea.addEventListener("htmx:beforeSwap"' in response.text
+    assert "destroyChartsIn(chartArea);" in response.text
+
+
+def test_drive_charts_range_changes_dataset_labels(sample_snapshot: StorcliSnapshot) -> None:
+    older_snapshot = sample_snapshot.model_copy(
+        update={"captured_at": sample_snapshot.captured_at.replace(day=10)}
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, older_snapshot)
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        seven_day_response = client.get("/drives/252/4/charts?range_days=7")
+        thirty_day_response = client.get("/drives/252/4/charts?range_days=30")
+
+    assert seven_day_response.status_code == 200
+    assert thirty_day_response.status_code == 200
+    assert "2026-04-10 12:00" not in seven_day_response.text
+    assert "2026-04-10 12:00" in thirty_day_response.text
+
+
+def test_drive_charts_pins_refresh_to_detail_serial_and_captured_at(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    old_drive = next(
+        drive
+        for drive in sample_snapshot.physical_drives
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+    )
+    assert old_drive.temperature_celsius is not None
+    replaced_drives = [
+        drive.model_copy(
+            update={
+                "serial_number": "NEW-SLOT-4",
+                "temperature_celsius": 99,
+                "media_errors": 99,
+            }
+        )
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    replaced_snapshot = sample_snapshot.model_copy(
+        update={
+            "captured_at": datetime(2026, 4, 25, 12, 10, tzinfo=UTC),
+            "physical_drives": replaced_drives,
+        }
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_app_snapshot(test_app, replaced_snapshot)
+
+        response = client.get(
+            "/drives/252/4/charts",
+            params={
+                "range_days": 7,
+                "serial_number": old_drive.serial_number,
+                "captured_at": sample_snapshot.captured_at.isoformat(),
+            },
+        )
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["labels"] == ["2026-04-25 12:00"]
+    assert temperature_payload["datasets"][0]["data"] == [float(old_drive.temperature_celsius)]
+    assert temperature_payload["replacementMarkers"] == []
+
+
+def test_drive_charts_aligns_duplicate_points_when_temperature_is_missing(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    slot_drive = next(
+        drive
+        for drive in sample_snapshot.physical_drives
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+    )
+    missing_temperature_drives = [
+        drive.model_copy(update={"temperature_celsius": None, "media_errors": 11})
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    present_temperature_drives = [
+        drive.model_copy(update={"temperature_celsius": 45, "media_errors": 22})
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    missing_temperature_snapshot = sample_snapshot.model_copy(
+        update={"physical_drives": missing_temperature_drives}
+    )
+    present_temperature_snapshot = sample_snapshot.model_copy(
+        update={"physical_drives": present_temperature_drives}
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, missing_temperature_snapshot)
+        _insert_app_snapshot(test_app, present_temperature_snapshot)
+
+        response = client.get(
+            "/drives/252/4/charts",
+            params={
+                "range_days": 7,
+                "serial_number": slot_drive.serial_number,
+                "captured_at": sample_snapshot.captured_at.isoformat(),
+            },
+        )
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    error_payload = scripts["error-history-data"]
+    assert temperature_payload["labels"] == ["2026-04-25 12:00", "2026-04-25 12:00"]
+    assert temperature_payload["datasets"][0]["data"] == [None, 45.0]
+    assert error_payload["datasets"][0]["data"] == [11, 22]
+
+
+def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=7")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["thresholds"] == {"warning": 55, "critical": 60}
+    assert [dataset["label"] for dataset in temperature_payload["thresholdDatasets"]] == [
+        "Warning Threshold",
+        "Critical Threshold",
+    ]
+    assert len(temperature_payload["labels"]) == len(temperature_payload["datasets"][0]["data"])
+    assert "error-history-data" in scripts
+
+
+def test_drive_charts_y_axis_includes_high_configured_thresholds(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    monkeypatch.setenv("TEMP_WARNING_CELSIUS", "80")
+    monkeypatch.setenv("TEMP_CRITICAL_CELSIUS", "90")
+    get_settings.cache_clear()
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=7")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["thresholds"] == {"warning": 80, "critical": 90}
+    assert temperature_payload["yMax"] == 95
+
+
+def test_drive_charts_replacement_markers_use_point_index_for_duplicate_labels(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    old_drives = [
+        drive.model_copy(update={"serial_number": "OLD-SLOT-4"})
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    old_snapshot = sample_snapshot.model_copy(
+        update={
+            "captured_at": sample_snapshot.captured_at.replace(hour=10),
+            "physical_drives": old_drives,
+        }
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, old_snapshot)
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=365")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    labels = temperature_payload["labels"]
+    replacement_markers = temperature_payload["replacementMarkers"]
+    assert labels == ["2026-04-25", "2026-04-25"]
+    assert replacement_markers == [
+        {
+            "pointIndex": 1,
+            "timestamp": "2026-04-25",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-SLOT-4",
+            "currentSerialNumber": "WD-WM00000005",
+        }
+    ]
+    assert "labels.indexOf(marker.timestamp)" not in response.text
+
+
+def test_drive_charts_preserves_same_bucket_replacement_metrics(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-SLOT-4",
+            temperature_avg=41,
+            media_errors_max=1,
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="WD-WM00000005",
+            temperature_avg=45,
+            media_errors_max=2,
+        )
+
+        response = client.get("/drives/252/4/charts?range_days=365")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    error_payload = scripts["error-history-data"]
+    labels = temperature_payload["labels"]
+    duplicate_label_indexes = [index for index, label in enumerate(labels) if label == "2025-06-01"]
+    assert duplicate_label_indexes == [0, 1]
+    assert temperature_payload["datasets"][0]["data"][:2] == [41.0, 45.0]
+    assert error_payload["datasets"][0]["data"][:2] == [1, 2]
+    assert temperature_payload["replacementMarkers"][0]["pointIndex"] == 1
+
+
+def test_drive_charts_anchors_replacement_marker_to_surviving_raw_point(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    current_snapshot = sample_snapshot.model_copy(
+        update={"captured_at": datetime(2026, 4, 25, 12, 10, tzinfo=UTC)}
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, current_snapshot)
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-SLOT-4",
+            temperature_avg=41,
+            media_errors_max=1,
+            bucket_start=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="WD-WM00000005",
+            temperature_avg=45,
+            media_errors_max=2,
+            bucket_start=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+        )
+
+        response = client.get("/drives/252/4/charts?range_days=7")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    assert temperature_payload["labels"] == ["2026-04-25 12:00", "2026-04-25 12:10"]
+    assert temperature_payload["replacementMarkers"] == [
+        {
+            "pointIndex": 1,
+            "timestamp": "2026-04-25 12:10",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-SLOT-4",
+            "currentSerialNumber": "WD-WM00000005",
+        }
+    ]
+
+
+def test_drive_charts_preserves_multiple_replacement_markers_in_same_bucket(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-A-SLOT-4",
+            temperature_avg=39,
+            media_errors_max=0,
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="OLD-B-SLOT-4",
+            temperature_avg=41,
+            media_errors_max=1,
+        )
+        _insert_hourly_metric(
+            test_app,
+            serial_number="WD-WM00000005",
+            temperature_avg=45,
+            media_errors_max=2,
+        )
+
+        response = client.get("/drives/252/4/charts?range_days=365")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    labels = temperature_payload["labels"]
+    duplicate_label_indexes = [index for index, label in enumerate(labels) if label == "2025-06-01"]
+    assert duplicate_label_indexes == [0, 1, 2]
+    assert temperature_payload["replacementMarkers"][:2] == [
+        {
+            "pointIndex": 1,
+            "timestamp": "2025-06-01",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-A-SLOT-4",
+            "currentSerialNumber": "OLD-B-SLOT-4",
+        },
+        {
+            "pointIndex": 2,
+            "timestamp": "2025-06-01",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-B-SLOT-4",
+            "currentSerialNumber": "WD-WM00000005",
+        },
+    ]
+
+
+def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4", headers={"X-Forwarded-Prefix": "/raid"})
+
+    assert response.status_code == 200
+    assert 'hx-get="/raid/drives/252/4/charts"' in response.text
+    assert (
+        'hx-vals=\'{"range_days": 7, "serial_number": "WD-WM00000005", '
+        '"captured_at": "2026-04-25T12:00:00+00:00"}\''
+    ) in response.text
+
+
+def test_static_asset_version_includes_chartjs_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from megaraid_dashboard.web import routes
+
+    (tmp_path / "static" / "css").mkdir(parents=True)
+    (tmp_path / "static" / "vendor").mkdir()
+    (tmp_path / "static" / "css" / "app.css").write_text("css", encoding="utf-8")
+    (tmp_path / "static" / "vendor" / "htmx.min.js").write_text("htmx", encoding="utf-8")
+    chart_path = tmp_path / "static" / "vendor" / "chart.min.js"
+    chart_path.write_text("chart-a", encoding="utf-8")
+    monkeypatch.setattr(routes, "_PACKAGE_ROOT", tmp_path)
+    monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
+    first_version = routes._static_asset_version()
+
+    chart_path.write_text("chart-b", encoding="utf-8")
+    monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
+    second_version = routes._static_asset_version()
+
+    assert first_version != second_version
 
 
 def test_events_placeholder_returns_coming_soon() -> None:
@@ -260,10 +698,48 @@ def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) ->
         session.commit()
 
 
+def _insert_hourly_metric(
+    test_app: FastAPI,
+    *,
+    serial_number: str,
+    temperature_avg: float,
+    media_errors_max: int,
+    bucket_start: datetime | None = None,
+) -> None:
+    session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
+    with session_factory() as session:
+        session.add(
+            PhysicalDriveMetricsHourly(
+                bucket_start=bucket_start or datetime(2025, 6, 1, 3, 0, tzinfo=UTC),
+                enclosure_id=252,
+                slot_id=4,
+                serial_number=serial_number,
+                temperature_celsius_min=int(temperature_avg),
+                temperature_celsius_max=int(temperature_avg),
+                temperature_celsius_avg=temperature_avg,
+                temperature_sample_count=1,
+                media_errors_max=media_errors_max,
+                other_errors_max=0,
+                predictive_failures_max=0,
+                sample_count=1,
+            )
+        )
+        session.commit()
+
+
 def _anchor_hrefs(html: str) -> set[str]:
     parser = _AnchorParser()
     parser.feed(html)
     return parser.hrefs
+
+
+def _json_scripts(html: str) -> dict[str, dict[str, object]]:
+    parser = _JsonScriptParser()
+    parser.feed(html)
+    return {
+        script_id: cast(dict[str, object], json.loads(payload))
+        for script_id, payload in parser.scripts.items()
+    }
 
 
 class _AnchorParser(HTMLParser):
@@ -278,3 +754,34 @@ class _AnchorParser(HTMLParser):
         href = attributes.get("href")
         if href is not None:
             self.hrefs.add(href)
+
+
+class _JsonScriptParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.scripts: dict[str, str] = {}
+        self._active_script_id: str | None = None
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "script":
+            return
+        attributes = dict(attrs)
+        if attributes.get("type") != "application/json":
+            return
+        script_id = attributes.get("id")
+        if script_id is None:
+            return
+        self._active_script_id = script_id
+        self._chunks = []
+
+    def handle_data(self, data: str) -> None:
+        if self._active_script_id is not None:
+            self._chunks.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "script" or self._active_script_id is None:
+            return
+        self.scripts[self._active_script_id] = "".join(self._chunks)
+        self._active_script_id = None
+        self._chunks = []
