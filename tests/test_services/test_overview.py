@@ -149,6 +149,18 @@ def test_overview_view_model_bbu_warning_from_low_capacitance(
     assert _card(view_model, "BBU/CV").severity == "warning"
 
 
+def test_overview_view_model_bbu_accepts_abbreviated_optimal_state(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    _insert(session, _snapshot(sample_snapshot, cv_state="Optl"))
+
+    view_model = load_overview_view_model(session)
+
+    assert _card(view_model, "BBU/CV").value == "Opt"
+    assert _card(view_model, "BBU/CV").severity == "optimal"
+
+
 def test_overview_view_model_bbu_replace_from_replacement_required(
     session: Session,
     sample_snapshot: StorcliSnapshot,
@@ -222,6 +234,7 @@ def _snapshot(
     vd_state: str = "Optl",
     pd_state: str = "Onln",
     temperatures: tuple[int | None, ...] = (40,),
+    cv_state: str = "Optimal",
     cv_replacement_required: bool = False,
     cv_capacitance_percent: int | None = 89,
     cachevault_present: bool = True,
@@ -244,7 +257,7 @@ def _snapshot(
         assert sample_snapshot.cachevault is not None
         cachevault = sample_snapshot.cachevault.model_copy(
             update={
-                "state": "Optimal",
+                "state": cv_state,
                 "replacement_required": cv_replacement_required,
                 "capacitance_percent": cv_capacitance_percent,
             }

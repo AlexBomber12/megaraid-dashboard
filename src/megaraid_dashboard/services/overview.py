@@ -23,6 +23,7 @@ from megaraid_dashboard.services.event_detector import (
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 _VD_OPTIMAL_STATES = {"Optl", "Optimal"}
 _PD_OPTIMAL_STATES = {"Onln"}
+_CACHEVAULT_OPTIMAL_STATES = {"Optl", "Optimal"}
 
 
 @dataclass(frozen=True)
@@ -238,7 +239,7 @@ def _cachevault_card(
 ) -> StatCard:
     if cachevault is None:
         return StatCard(label="BBU/CV", value="Absent", severity="unknown")
-    if cachevault.replacement_required or cachevault.state != "Optimal":
+    if cachevault.replacement_required or cachevault.state not in _CACHEVAULT_OPTIMAL_STATES:
         return StatCard(label="BBU/CV", value="Replace", severity="critical")
     if cachevault.capacitance_percent is None:
         return StatCard(label="BBU/CV", value="Unknown", severity="unknown")
