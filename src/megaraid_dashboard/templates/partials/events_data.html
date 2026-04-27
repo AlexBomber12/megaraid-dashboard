@@ -26,7 +26,7 @@
   {% endif %}
 </div>
 
-{% if render_events_load_more_container | default(false) and view_model.events %}
+{% if render_events_load_more_container | default(false) %}
   {% with render_events_table=false %}
     {% include "partials/events_table.html" %}
   {% endwith %}

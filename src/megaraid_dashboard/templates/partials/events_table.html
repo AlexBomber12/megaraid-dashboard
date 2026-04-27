@@ -33,6 +33,23 @@
   </tr>
 {%- endmacro %}
 
+{% macro load_more_container(cursor, swap_oob=false) -%}
+  <div
+    id="events-pagination"
+    {% if swap_oob %}hx-swap-oob="true"{% endif %}
+  >
+    {% if cursor is not none %}
+      <div class="table-frame table-frame--compact">
+        <table class="drive-table">
+          <tbody>
+            {{ load_more_row(cursor) }}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{%- endmacro %}
+
 {% if render_events_rows_only | default(false) %}
   {{ event_rows(view_model.events) }}
 {% elif render_events_table | default(true) and view_model.events %}
@@ -55,20 +72,10 @@
 {% endif %}
 
 {% if render_events_load_more | default(true) %}
-  {% if render_events_load_more_container | default(false) and view_model.next_cursor is not none %}
-    <div id="events-pagination" class="table-frame table-frame--compact">
-      <table class="drive-table">
-        <tbody>
-          {{ load_more_row(view_model.next_cursor) }}
-        </tbody>
-      </table>
-    </div>
+  {% if render_events_load_more_container | default(false) %}
+    {{ load_more_container(view_model.next_cursor) }}
   {% elif render_events_load_more_oob | default(false) %}
-    {% if view_model.next_cursor is not none %}
-      {{ load_more_row(view_model.next_cursor, swap_oob=true) }}
-    {% else %}
-      <tr id="events-load-more-row" class="load-more-row" hx-swap-oob="true"></tr>
-    {% endif %}
+    {{ load_more_container(view_model.next_cursor, swap_oob=true) }}
   {% elif view_model.next_cursor is not none %}
     {{ load_more_row(view_model.next_cursor) }}
   {% endif %}

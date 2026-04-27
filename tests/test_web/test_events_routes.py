@@ -58,6 +58,7 @@ def test_events_empty_database_renders_empty_state_without_load_more() -> None:
     assert "No events recorded yet." in response.text
     assert "Load more" not in response.text
     assert 'id="events-data"' in response.text
+    assert 'id="events-pagination"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
     assert partial_response.status_code == 200
     assert "Waiting for first metrics collection" in partial_response.text
@@ -84,9 +85,9 @@ def test_events_page_renders_table_and_load_more_state(
     assert '<th scope="col">Time</th>' in response.text
     assert expected_subject in response.text
     assert ("Load more" in response.text) is expect_load_more
+    assert response.text.count('id="events-pagination"') == 1
     if expect_load_more:
         assert 'hx-get="/raid/partials/events"' in response.text
-        assert response.text.count('id="events-pagination"') == 1
         assert response.text.count('id="events-load-more-row"') == 1
 
 
@@ -100,6 +101,7 @@ def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     assert response.text.lstrip().startswith('<div\n  id="events-data"')
     assert "event-50" in response.text
     assert "Load more" in response.text
+    assert 'id="events-pagination"' in response.text
     assert 'hx-swap-oob="true"' in response.text
     assert 'hx-get="/partials/events"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
