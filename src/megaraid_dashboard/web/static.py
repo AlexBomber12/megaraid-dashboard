@@ -11,6 +11,6 @@ class CacheControlStaticFiles(StaticFiles):
         if response.status_code == 200:
             response.headers.setdefault(
                 "Cache-Control",
-                "public, max-age=31536000, immutable",
+                "public, max-age=31536000",
             )
         return response

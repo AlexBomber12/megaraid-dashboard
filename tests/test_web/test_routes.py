@@ -154,7 +154,7 @@ def test_static_assets_are_served_with_far_future_cache_header() -> None:
     assert response.status_code == 200
     assert "public" in response.headers["Cache-Control"]
     assert "max-age=31536000" in response.headers["Cache-Control"]
-    assert "immutable" in response.headers["Cache-Control"]
+    assert "immutable" not in response.headers["Cache-Control"]
 
 
 def test_drives_placeholder_redirects_to_overview_with_content(
