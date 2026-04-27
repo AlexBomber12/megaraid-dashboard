@@ -424,6 +424,7 @@ def _drive_charts_view_model(
         temperature_series=temperature_series,
         error_series=error_series,
         range_days=resolved_range_days,
+        timestamps=timestamps,
     )
     temperature_chart = _temperature_chart_data(
         labels=labels,
@@ -469,7 +470,7 @@ def _temperature_chart_data(
     warning_celsius: int,
     critical_celsius: int,
     max_temperature: float,
-    replacement_markers: tuple[dict[str, str], ...],
+    replacement_markers: tuple[dict[str, Any], ...],
 ) -> dict[str, Any]:
     return {
         "labels": labels,
@@ -532,7 +533,7 @@ def _error_chart_data(
     media_errors: tuple[int | None, ...],
     other_errors: tuple[int | None, ...],
     predictive_failures: tuple[int | None, ...],
-    replacement_markers: tuple[dict[str, str], ...],
+    replacement_markers: tuple[dict[str, Any], ...],
 ) -> dict[str, Any]:
     return {
         "labels": labels,
@@ -618,19 +619,23 @@ def _chart_replacement_markers(
     temperature_series: DriveTemperatureSeries,
     error_series: DriveErrorSeries,
     range_days: int,
-) -> tuple[dict[str, str], ...]:
+    timestamps: tuple[datetime, ...],
+) -> tuple[dict[str, Any], ...]:
+    timestamp_indexes = {timestamp: index for index, timestamp in enumerate(timestamps)}
     markers_by_timestamp = {
         marker.timestamp: marker
         for marker in (*temperature_series.replacement_markers, *error_series.replacement_markers)
     }
     return tuple(
         {
+            "pointIndex": timestamp_indexes[timestamp],
             "timestamp": _chart_timestamp_label(timestamp, range_days=range_days),
             "label": marker.label,
             "previousSerialNumber": marker.previous_serial_number,
             "currentSerialNumber": marker.current_serial_number,
         }
         for timestamp, marker in sorted(markers_by_timestamp.items())
+        if timestamp in timestamp_indexes
     )
 
 

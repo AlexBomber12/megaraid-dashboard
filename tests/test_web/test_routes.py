@@ -313,6 +313,8 @@ def test_drive_charts_partial_returns_only_chart_area(
     assert response.text.lstrip().startswith('<div id="chart-area"')
     assert "<!doctype html>" not in response.text
     assert "site-header" not in response.text
+    assert "chartRetryLimit = 40" in response.text
+    assert "syncRangeTabs();" in response.text
 
 
 def test_drive_charts_range_changes_dataset_labels(sample_snapshot: StorcliSnapshot) -> None:
@@ -351,6 +353,45 @@ def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
     ]
     assert len(temperature_payload["labels"]) == len(temperature_payload["datasets"][0]["data"])
     assert "error-history-data" in scripts
+
+
+def test_drive_charts_replacement_markers_use_point_index_for_duplicate_labels(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    old_drives = [
+        drive.model_copy(update={"serial_number": "OLD-SLOT-4"})
+        if drive.enclosure_id == 252 and drive.slot_id == 4
+        else drive
+        for drive in sample_snapshot.physical_drives
+    ]
+    old_snapshot = sample_snapshot.model_copy(
+        update={
+            "captured_at": sample_snapshot.captured_at.replace(hour=10),
+            "physical_drives": old_drives,
+        }
+    )
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        _insert_app_snapshot(test_app, old_snapshot)
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252/4/charts?range_days=365")
+
+    scripts = _json_scripts(response.text)
+    temperature_payload = scripts["temperature-history-data"]
+    labels = temperature_payload["labels"]
+    replacement_markers = temperature_payload["replacementMarkers"]
+    assert labels == ["2026-04-25", "2026-04-25"]
+    assert replacement_markers == [
+        {
+            "pointIndex": 1,
+            "timestamp": "2026-04-25",
+            "label": "Drive replaced",
+            "previousSerialNumber": "OLD-SLOT-4",
+            "currentSerialNumber": "WD-WM00000005",
+        }
+    ]
+    assert "labels.indexOf(marker.timestamp)" not in response.text
 
 
 def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapshot) -> None:

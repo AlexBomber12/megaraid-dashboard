@@ -81,6 +81,8 @@
       if (!chartArea) {
         return;
       }
+      const chartRetryLimit = 40;
+      let chartRetryCount = 0;
 
       const replacementLinePlugin = {
         id: "driveReplacementLines",
@@ -89,7 +91,6 @@
           if (!markers.length || !chart.scales.x || !chart.scales.y) {
             return;
           }
-          const labels = chart.data.labels || [];
           const context = chart.ctx;
           context.save();
           context.setLineDash([4, 4]);
@@ -97,8 +98,8 @@
           context.fillStyle = "rgba(246, 248, 251, 0.72)";
           context.font = "12px system-ui, sans-serif";
           markers.forEach((marker) => {
-            const index = labels.indexOf(marker.timestamp);
-            if (index < 0) {
+            const index = Number(marker.pointIndex);
+            if (!Number.isInteger(index) || index < 0) {
               return;
             }
             const x = chart.scales.x.getPixelForValue(index);
@@ -115,6 +116,16 @@
       function readPayload(selector) {
         const payloadElement = chartArea.querySelector(selector);
         return JSON.parse(payloadElement.textContent || "{}");
+      }
+
+      function syncRangeTabs() {
+        const activeRangeDays = chartArea.dataset.rangeDays;
+        document.querySelectorAll(".range-tabs__button").forEach((button) => {
+          const values = JSON.parse(button.getAttribute("hx-vals") || "{}");
+          const isActive = String(values.range_days) === activeRangeDays;
+          button.classList.toggle("range-tabs__button--active", isActive);
+          button.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
       }
 
       function hasAnnotationPlugin() {
@@ -233,13 +244,17 @@
 
       function initializeCharts() {
         if (!window.Chart) {
-          window.setTimeout(initializeCharts, 50);
+          chartRetryCount += 1;
+          if (chartRetryCount <= chartRetryLimit) {
+            window.setTimeout(initializeCharts, 50);
+          }
           return;
         }
         renderTemperatureChart();
         renderErrorChart();
       }
 
+      syncRangeTabs();
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initializeCharts, { once: true });
       } else {
