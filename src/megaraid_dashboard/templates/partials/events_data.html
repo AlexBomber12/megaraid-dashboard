@@ -1,0 +1,51 @@
+<div
+  id="events-data"
+  class="data-block"
+  hx-get="{{ request.url_for('events_partial').path }}"
+  hx-trigger="every 30s"
+  hx-target="this"
+  hx-swap="outerHTML"
+>
+  {% if view_model.events or view_model.latest_captured_at is not none %}
+    <section class="page-title">
+      <h1>Events</h1>
+      <p>
+        {{ view_model.controller_label }}
+        {% if view_model.latest_captured_at is not none %}
+          &middot; Updated: {{ view_model.latest_captured_at | utc_to_cest }}
+        {% endif %}
+      </p>
+    </section>
+  {% endif %}
+
+  {% if view_model.events %}
+    {% with render_events_load_more=false %}
+      {% include "partials/events_table.html" %}
+    {% endwith %}
+  {% else %}
+    <section class="empty-state empty-state--centered">
+      <h1>{{ events_empty_title | default("No events recorded yet.") }}</h1>
+      {% if events_empty_body | default("") %}
+        <p>{{ events_empty_body }}</p>
+      {% endif %}
+      {% if events_empty_next_run | default("") %}
+        <p>{{ events_empty_next_run }}</p>
+      {% endif %}
+      {% if events_empty_detail | default("") %}
+        <p>{{ events_empty_detail }}</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+
+{% if render_events_load_more_container | default(false) %}
+  {% with render_events_table=false %}
+    {% include "partials/events_table.html" %}
+  {% endwith %}
+{% endif %}
+
+{% if render_events_load_more_oob | default(false) %}
+  {% with render_events_table=false %}
+    {% include "partials/events_table.html" %}
+  {% endwith %}
+{% endif %}

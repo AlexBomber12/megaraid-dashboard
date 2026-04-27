@@ -673,13 +673,14 @@ def test_static_asset_version_includes_chartjs_bytes(
     assert first_version != second_version
 
 
-def test_events_placeholder_returns_coming_soon() -> None:
+def test_events_route_returns_read_only_empty_state() -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
         response = client.get("/events")
 
     assert response.status_code == 200
-    assert "Coming soon" in response.text
+    assert "No events recorded yet." in response.text
+    assert "Coming soon" not in response.text
 
 
 def test_health_response_is_unchanged() -> None:

@@ -3,8 +3,7 @@
 {% block title %}Events - MegaRAID Dashboard{% endblock %}
 
 {% block content %}
-  <section class="empty-state empty-state--centered">
-    <h1>Coming soon</h1>
-    <p>Event history will appear here in a future read-only UI increment.</p>
-  </section>
+  {% with render_events_load_more_container=true %}
+    {% include "partials/events_data.html" %}
+  {% endwith %}
 {% endblock %}

@@ -92,8 +92,14 @@ Routes:
   attributes, temperature history, and error counter history.
 - `/drives/{enclosure_id}/{slot_id}/charts` renders only the chart fragment used by the
   Drive Detail range selector.
-- `/events` renders a Coming soon empty state.
+- `/events` renders the read-only events log page.
+- `/partials/events` renders the events fragment used by HTMX auto-refresh and Load more
+  pagination.
 - `/health` returns the health JSON used by smoke checks.
+
+Events are retained indefinitely while raw controller snapshots are pruned after 30 days.
+That means the Events page can show event history older than the oldest retained raw
+snapshot.
 
 Static assets are mounted separately at `/static` with far-future cache headers:
 
@@ -162,6 +168,7 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |       |   |-- collector.py
 |       |   |-- drive_history.py
 |       |   |-- event_detector.py
+|       |   |-- events.py
 |       |   |-- overview.py
 |       |   `-- scheduler.py
 |       |-- static/
@@ -186,6 +193,8 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |       |   |   `-- overview.html
 |       |   `-- partials/
 |       |       |-- drive_charts.html
+|       |       |-- events_data.html
+|       |       |-- events_table.html
 |       |       |-- physical_drive_table.html
 |       |       `-- overview_data.html
 |       `-- web/
@@ -245,7 +254,7 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 2. [x] `storcli` wrapper with JSON parsing and pydantic models.
 3. [x] SQLite schema and migrations.
 4. [x] Background metrics collector.
-5. Read-only web dashboard.
+5. [x] Read-only web dashboard.
 6. Email alerts via SMTP.
 7. Basic auth.
 8. Maintenance mode for locate LED, alarm, patrol read, and consistency check.
