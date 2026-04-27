@@ -21,6 +21,8 @@
       </p>
     </section>
 
-    {% include "partials/events_data.html" %}
+    {% with render_events_pagination=true %}
+      {% include "partials/events_data.html" %}
+    {% endwith %}
   {% endif %}
 {% endblock %}

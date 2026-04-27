@@ -84,10 +84,13 @@ def test_events_page_renders_table_and_load_more_state(
 def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
+        _insert_app_events(test_app, count=51)
         response = client.get("/partials/events")
 
     assert response.status_code == 200
     assert response.text.lstrip().startswith('<div\n  id="events-data"')
+    assert "event-50" in response.text
+    assert "Load more" not in response.text
     assert 'hx-get="/partials/events"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
     assert 'hx-target="this"' in response.text

@@ -1,4 +1,4 @@
-{% if view_model.events %}
+{% if render_events_table | default(true) and view_model.events %}
   <div class="table-frame">
     <table class="drive-table">
       <thead>
@@ -29,7 +29,7 @@
   </div>
 {% endif %}
 
-{% if view_model.next_cursor is not none %}
+{% if render_events_load_more | default(true) and view_model.next_cursor is not none %}
   <div class="load-more-row">
     <button
       class="button"

@@ -7,10 +7,18 @@
   hx-swap="outerHTML"
 >
   {% if view_model.events %}
-    {% include "partials/events_table.html" %}
+    {% with render_events_load_more=false %}
+      {% include "partials/events_table.html" %}
+    {% endwith %}
   {% else %}
     <section class="empty-state empty-state--centered">
       <h1>No events recorded yet.</h1>
     </section>
   {% endif %}
 </div>
+
+{% if render_events_pagination | default(false) and view_model.events %}
+  {% with render_events_table=false, render_events_load_more=true %}
+    {% include "partials/events_table.html" %}
+  {% endwith %}
+{% endif %}
