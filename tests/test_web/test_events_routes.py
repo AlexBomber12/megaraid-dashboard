@@ -51,12 +51,17 @@ def test_events_empty_database_renders_empty_state_without_load_more() -> None:
     test_app = create_app()
     with TestClient(test_app) as client:
         response = client.get("/events")
+        partial_response = client.get("/partials/events")
 
     assert response.status_code == 200
+    assert "Waiting for first metrics collection" in response.text
     assert "No events recorded yet." in response.text
     assert "Load more" not in response.text
     assert 'id="events-data"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
+    assert partial_response.status_code == 200
+    assert "Waiting for first metrics collection" in partial_response.text
+    assert "No events recorded yet." in partial_response.text
 
 
 @pytest.mark.parametrize(
@@ -81,6 +86,8 @@ def test_events_page_renders_table_and_load_more_state(
     assert ("Load more" in response.text) is expect_load_more
     if expect_load_more:
         assert 'hx-get="/raid/partials/events"' in response.text
+        assert response.text.count('id="events-pagination"') == 1
+        assert response.text.count('id="events-load-more-row"') == 1
 
 
 def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:

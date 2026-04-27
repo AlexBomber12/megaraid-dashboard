@@ -281,9 +281,10 @@ def events_partial(
         before_occurred_at=before_occurred_at,
         before_id=before_id,
     )
+    view_model: EventsPageViewModel | EventsFragmentViewModel
     with _session(request) as session:
         if cursor is None:
-            view_model = load_events_fragment(session, page_size=EVENTS_PAGE_SIZE)
+            view_model = load_events_page(session, page_size=EVENTS_PAGE_SIZE)
             template_name = "partials/events_data.html"
         else:
             cursor_occurred_at, cursor_id = cursor
@@ -301,6 +302,7 @@ def events_partial(
             "render_events_load_more_oob": cursor is None,
             "render_events_rows_only": cursor is not None,
             "view_model": view_model,
+            **_events_empty_context(request=request, view_model=view_model),
         },
     )
     _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=True)
@@ -396,6 +398,21 @@ def _events_empty_next_run_text(request: Request) -> str:
         next_run_utc = next_run_time.astimezone(UTC)
     seconds = max(0, int((next_run_utc - datetime.now(UTC)).total_seconds()))
     return f"Next scheduled run in {seconds} seconds."
+
+
+def _events_empty_context(
+    *,
+    request: Request,
+    view_model: EventsPageViewModel | EventsFragmentViewModel,
+) -> dict[str, str]:
+    if not isinstance(view_model, EventsPageViewModel) or view_model.latest_captured_at is not None:
+        return {}
+    return {
+        "events_empty_title": "Waiting for first metrics collection",
+        "events_empty_body": "The collector has not yet completed its first run.",
+        "events_empty_next_run": _events_empty_next_run_text(request),
+        "events_empty_detail": "No events recorded yet.",
+    }
 
 
 def _latest_drive_or_404(
