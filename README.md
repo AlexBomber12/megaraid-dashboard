@@ -248,6 +248,61 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 `-- pyproject.toml
 ```
 
+## Alerts (email)
+
+### Configuration
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ALERT_SMTP_HOST` | str | required | SMTP submission host. |
+| `ALERT_SMTP_PORT` | int | required | SMTP submission port (typically 587 for STARTTLS). |
+| `ALERT_SMTP_USER` | str | required | SMTP username. |
+| `ALERT_SMTP_PASSWORD` | str | required | SMTP password or token. Loaded from `.env`, never commit. |
+| `ALERT_FROM` | str | required | Envelope and header `From` address. |
+| `ALERT_TO` | str | required | Default recipient address. |
+| `ALERT_SMTP_USE_STARTTLS` | bool | `true` | If true, the transport runs STARTTLS over the submission port after the initial EHLO. |
+| `ALERT_SEVERITY_THRESHOLD` | str | `critical` | Lowest severity that triggers an alert. One of `info`, `warning`, `critical`. Not consumed in this release. |
+| `ALERT_SUPPRESS_WINDOW_MINUTES` | int | `60` | Minutes to suppress duplicate alerts for the same event key. Not consumed in this release. |
+| `ALERT_THROTTLE_PER_HOUR` | int | `20` | Maximum alerts sent per hour. Not consumed in this release. |
+
+### CLI
+
+```
+python -m megaraid_dashboard.alerts test
+python -m megaraid_dashboard.alerts test --to other@example.com
+```
+
+The `test` command sends one fixed test message synchronously and exits. It bypasses
+any future suppression window or throttle, so operators can verify SMTP credentials,
+DNS records (SPF, DKIM, DMARC), and outbound network access without waiting for a
+real event.
+
+### Example .env block
+
+```
+ALERT_SMTP_HOST=smtp.protonmail.ch
+ALERT_SMTP_PORT=587
+ALERT_SMTP_USE_STARTTLS=true
+ALERT_SMTP_USER=alert@yourdomain.example
+ALERT_SMTP_PASSWORD=<proton-smtp-token>
+ALERT_FROM=alert@yourdomain.example
+ALERT_TO=ops@yourdomain.example
+ALERT_SEVERITY_THRESHOLD=critical
+ALERT_SUPPRESS_WINDOW_MINUTES=60
+ALERT_THROTTLE_PER_HOUR=20
+```
+
+### Risk
+
+SMTP credentials live in `.env`, which must remain gitignored. The transport blocks the
+calling thread for up to 30 seconds on network IO and must NOT be invoked from a FastAPI
+request handler; the notifier integration in PR-003 will call it from an APScheduler
+executor. STARTTLS over port 587 is the only encryption mode supported in this PR; SMTPS
+over port 465 (implicit TLS) is out of scope. The CLI `test` command bypasses any future
+suppression window or throttle and sends unconditionally. The `ALERT_SEVERITY_THRESHOLD`,
+`ALERT_SUPPRESS_WINDOW_MINUTES`, and `ALERT_THROTTLE_PER_HOUR` settings are wired into
+config but **not consumed** in this PR; they are read by the notifier in PR-003.
+
 ## Roadmap
 
 1. [x] Skeleton and CI.

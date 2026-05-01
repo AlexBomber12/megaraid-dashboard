@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     alert_smtp_password: str = Field(...)
     alert_from: str = Field(...)
     alert_to: str = Field(...)
+    alert_smtp_use_starttls: bool = True
+    alert_severity_threshold: str = "critical"
+    alert_suppress_window_minutes: int = 60
+    alert_throttle_per_hour: int = 20
     admin_username: str = Field(...)
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
@@ -61,6 +65,18 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.temp_hysteresis_celsius >= self.temp_warning_celsius:
             msg = "temp_hysteresis_celsius must be less than temp_warning_celsius"
+            raise ValueError(msg)
+        if self.alert_smtp_port <= 0:
+            msg = "alert_smtp_port must be positive"
+            raise ValueError(msg)
+        if self.alert_severity_threshold not in {"info", "warning", "critical"}:
+            msg = "alert_severity_threshold must be one of info, warning, critical"
+            raise ValueError(msg)
+        if self.alert_suppress_window_minutes <= 0:
+            msg = "alert_suppress_window_minutes must be positive"
+            raise ValueError(msg)
+        if self.alert_throttle_per_hour <= 0:
+            msg = "alert_throttle_per_hour must be positive"
             raise ValueError(msg)
         return self
 
