@@ -114,6 +114,43 @@ def test_run_notifier_cycle_severity_filter(session: Session) -> None:
     assert refreshed.notified_at is None
 
 
+def test_run_notifier_cycle_threshold_warning_includes_critical(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    settings = _settings(alert_severity_threshold="warning")
+    info_event = _add_event(
+        session,
+        occurred_at=now - timedelta(minutes=7),
+        severity="info",
+        subject="info-below-threshold",
+    )
+    warning_event = _add_event(
+        session,
+        occurred_at=now - timedelta(minutes=5),
+        severity="warning",
+        subject="warning-at-threshold",
+    )
+    critical_event = _add_event(
+        session,
+        occurred_at=now - timedelta(minutes=3),
+        severity="critical",
+        subject="critical-above-threshold",
+    )
+    session.commit()
+    transport = FakeAlertTransport()
+
+    result = run_notifier_cycle(session, transport, settings=settings, now=now)
+
+    assert result.attempted == 2
+    assert result.sent == 2
+    assert {message.subject for message, _ in transport.sent} == {
+        "[MegaRAID warning] pd_state: warning-at-threshold",
+        "[MegaRAID critical] pd_state: critical-above-threshold",
+    }
+    assert session.get(Event, info_event.id).notified_at is None  # type: ignore[union-attr]
+    assert session.get(Event, warning_event.id).notified_at == now  # type: ignore[union-attr]
+    assert session.get(Event, critical_event.id).notified_at == now  # type: ignore[union-attr]
+
+
 def test_run_notifier_cycle_skips_events_below_since_cutoff(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
     settings = _settings(alert_suppress_window_minutes=60)

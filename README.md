@@ -282,8 +282,10 @@ real event.
 The notifier runs inside the same APScheduler instance as the metrics collector and
 fires on a 60-second interval whenever `COLLECTOR_ENABLED=true`. Each cycle:
 
-- selects pending events whose `severity` matches `ALERT_SEVERITY_THRESHOLD` and whose
-  `occurred_at` is within the trailing `ALERT_SUPPRESS_WINDOW_MINUTES` window;
+- selects pending events whose `severity` is at or above `ALERT_SEVERITY_THRESHOLD`
+  (severities are ordered `info` < `warning` < `critical`, so `warning` includes both
+  `warning` and `critical`) and whose `occurred_at` is within the trailing
+  `ALERT_SUPPRESS_WINDOW_MINUTES` window;
 - skips an event when a prior event with the same `(severity, category, subject)` was
   already notified within that window — the current event is still marked notified so
   it does not re-appear in the next cycle;

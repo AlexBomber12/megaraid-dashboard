@@ -51,7 +51,7 @@ def run_notifier_cycle(
     pending = list(
         iter_pending_events(
             session,
-            severity=settings.alert_severity_threshold,
+            severity_threshold=settings.alert_severity_threshold,
             since=since,
         )
     )
