@@ -230,7 +230,8 @@ class CollectorService:
         await self._run_tracked_job(self._run_notifier_once)
 
     async def _run_notifier_once(self) -> None:
-        await asyncio.to_thread(self._run_notifier_cycle_with_lock)
+        async with self._write_lock:
+            await asyncio.to_thread(self._run_notifier_cycle_with_lock)
 
     def _run_notifier_cycle_with_lock(self) -> None:
         lock_fd = _try_acquire_notifier_lock(_LOCK_PATH_DEFAULT)

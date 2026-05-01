@@ -234,6 +234,31 @@ def test_run_notifier_cycle_send_failure_isolates_other_events(session: Session)
     assert statuses[2] == now
 
 
+def test_run_notifier_cycle_oserror_isolates_other_events(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    events = [
+        _add_event(
+            session,
+            occurred_at=now - timedelta(minutes=10 - index),
+            subject=f"oserror-isolation-{index}",
+        )
+        for index in range(3)
+    ]
+    session.commit()
+    transport = FakeAlertTransport(fail_indexes={1}, fail_exception=OSError)
+
+    result = run_notifier_cycle(session, transport, settings=_settings(), now=now)
+
+    assert result.attempted == 3
+    assert result.sent == 2
+    assert result.failed == 1
+    assert len(transport.sent) == 2
+    statuses = [session.get(Event, event.id).notified_at for event in events]  # type: ignore[union-attr]
+    assert statuses[0] == now
+    assert statuses[1] is None
+    assert statuses[2] == now
+
+
 def test_run_notifier_cycle_rejects_naive_now(session: Session) -> None:
     transport = FakeAlertTransport()
     with pytest.raises(ValueError):

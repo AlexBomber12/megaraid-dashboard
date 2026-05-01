@@ -87,7 +87,7 @@ def run_notifier_cycle(
         message = _build_alert_message(event)
         try:
             transport.send(message, to=settings.alert_to)
-        except (smtplib.SMTPException, ssl.SSLError) as exc:
+        except (smtplib.SMTPException, ssl.SSLError, OSError) as exc:
             failed += 1
             _LOG.error(
                 "notifier_event_failed",

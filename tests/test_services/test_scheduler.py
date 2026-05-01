@@ -244,6 +244,52 @@ async def test_run_once_waits_for_retention_write_lock(
         assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 1
 
 
+async def test_run_once_waits_for_notifier_write_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    service = _service(service_session_factory)
+    notifier_started = threading.Event()
+    release_notifier = threading.Event()
+
+    def slow_notifier_cycle_with_lock() -> None:
+        notifier_started.set()
+        assert release_notifier.wait(timeout=5)
+
+    async def fake_collect(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
+        del settings
+        return sample_snapshot, {"controller": {"stored": True}}
+
+    monkeypatch.setattr(
+        service,
+        "_run_notifier_cycle_with_lock",
+        slow_notifier_cycle_with_lock,
+    )
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.scheduler.collect_storcli_snapshot",
+        fake_collect,
+    )
+
+    notifier_task = asyncio.create_task(service._run_notifier_once())
+    assert await asyncio.to_thread(notifier_started.wait, 5)
+    run_once_task = asyncio.create_task(service.run_once())
+
+    try:
+        await asyncio.sleep(0.05)
+        with service_session_factory() as session:
+            assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 0
+        assert run_once_task.done() is False
+    finally:
+        release_notifier.set()
+
+    await notifier_task
+    await run_once_task
+
+    with service_session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ControllerSnapshot)) == 1
+
+
 async def test_start_registers_jobs_and_shutdown_stops_scheduler(
     service_session_factory: sessionmaker[Session],
 ) -> None:
