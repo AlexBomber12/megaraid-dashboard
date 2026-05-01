@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,10 +15,13 @@ from megaraid_dashboard.db import (
     PhysicalDriveTempState,
     VirtualDriveSnapshot,
     clear_temp_state_for_slot,
+    count_events_notified_since,
     get_latest_snapshot,
     get_temp_state,
     insert_snapshot,
+    iter_pending_events,
     list_recent_snapshots,
+    mark_event_notified,
     record_audit,
     record_event,
     upsert_temp_state,
@@ -143,6 +147,192 @@ def test_record_audit_writes_command_argv_list(session: Session) -> None:
     audit_log = session.scalars(select(AuditLog)).one()
     assert audit_log.command_argv == ["storcli64", "/c0/e252/s4", "start", "locate", "J"]
     assert audit_log.success is True
+
+
+def test_iter_pending_events_filters_by_severity_and_notified_state(session: Session) -> None:
+    since = datetime(2026, 4, 25, 0, 0, tzinfo=UTC)
+    matching = _event(
+        occurred_at=since + timedelta(hours=1),
+        severity="critical",
+        subject="match",
+    )
+    wrong_severity = _event(
+        occurred_at=since + timedelta(hours=2),
+        severity="warning",
+        subject="wrong-severity",
+    )
+    already_notified = _event(
+        occurred_at=since + timedelta(hours=3),
+        severity="critical",
+        subject="already-notified",
+        notified_at=since + timedelta(hours=4),
+    )
+    session.add_all([matching, wrong_severity, already_notified])
+    session.commit()
+
+    pending = list(iter_pending_events(session, severity="critical", since=since))
+
+    assert [event.subject for event in pending] == ["match"]
+
+
+def test_iter_pending_events_excludes_events_older_than_since(session: Session) -> None:
+    since = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    older = _event(
+        occurred_at=since - timedelta(seconds=1),
+        severity="critical",
+        subject="too-old",
+    )
+    same_instant = _event(
+        occurred_at=since,
+        severity="critical",
+        subject="boundary",
+    )
+    newer = _event(
+        occurred_at=since + timedelta(minutes=1),
+        severity="critical",
+        subject="fresh",
+    )
+    session.add_all([older, same_instant, newer])
+    session.commit()
+
+    pending = list(iter_pending_events(session, severity="critical", since=since))
+
+    assert [event.subject for event in pending] == ["boundary", "fresh"]
+
+
+def test_iter_pending_events_orders_by_occurred_at_then_id(session: Session) -> None:
+    occurred_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    first = _event(occurred_at=occurred_at, severity="critical", subject="first")
+    second = _event(occurred_at=occurred_at, severity="critical", subject="second")
+    third = _event(occurred_at=occurred_at, severity="critical", subject="third")
+    session.add_all([first, second, third])
+    session.commit()
+
+    pending = list(
+        iter_pending_events(
+            session,
+            severity="critical",
+            since=occurred_at - timedelta(hours=1),
+        )
+    )
+
+    assert [event.id for event in pending] == sorted(event.id for event in pending)
+    assert [event.subject for event in pending] == ["first", "second", "third"]
+
+
+def test_iter_pending_events_rejects_naive_since(session: Session) -> None:
+    with pytest.raises(ValueError):
+        list(iter_pending_events(session, severity="critical", since=datetime(2026, 4, 25, 12, 0)))
+
+
+def test_mark_event_notified_sets_notified_at(session: Session) -> None:
+    event = record_event(
+        session,
+        severity="critical",
+        category="smart_alert",
+        subject="PD e252:s4",
+        summary="Drive predicts failure",
+    )
+    session.commit()
+    sent_at = datetime(2026, 4, 25, 12, 30, tzinfo=UTC)
+
+    mark_event_notified(session, event.id, sent_at)
+    session.commit()
+
+    refreshed = session.get(Event, event.id)
+    assert refreshed is not None
+    assert refreshed.notified_at == sent_at
+
+
+def test_mark_event_notified_raises_for_unknown_event(session: Session) -> None:
+    with pytest.raises(LookupError):
+        mark_event_notified(session, 12345, datetime(2026, 4, 25, 12, 0, tzinfo=UTC))
+
+
+def test_mark_event_notified_rejects_naive_sent_at(session: Session) -> None:
+    event = record_event(
+        session,
+        severity="warning",
+        category="temperature",
+        subject="PD e252:s4",
+        summary="Drive temperature is elevated",
+    )
+    session.commit()
+
+    with pytest.raises(ValueError):
+        mark_event_notified(session, event.id, datetime(2026, 4, 25, 12, 0))
+
+
+def test_mark_event_notified_does_not_commit(session: Session) -> None:
+    event = record_event(
+        session,
+        severity="critical",
+        category="smart_alert",
+        subject="PD e252:s4",
+        summary="Drive predicts failure",
+    )
+    session.commit()
+    sent_at = datetime(2026, 4, 25, 12, 30, tzinfo=UTC)
+
+    mark_event_notified(session, event.id, sent_at)
+    session.rollback()
+
+    refreshed = session.get(Event, event.id)
+    assert refreshed is not None
+    assert refreshed.notified_at is None
+
+
+def test_count_events_notified_since_empty_table(session: Session) -> None:
+    since = datetime(2026, 4, 25, 0, 0, tzinfo=UTC)
+
+    assert count_events_notified_since(session, since=since) == 0
+
+
+def test_count_events_notified_since_populated_table(session: Session) -> None:
+    since = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    inside = _event(
+        occurred_at=since,
+        severity="critical",
+        subject="inside-window",
+        notified_at=since + timedelta(minutes=5),
+    )
+    outside = _event(
+        occurred_at=since - timedelta(hours=1),
+        severity="critical",
+        subject="outside-window",
+        notified_at=since - timedelta(minutes=5),
+    )
+    pending = _event(
+        occurred_at=since + timedelta(minutes=1),
+        severity="critical",
+        subject="not-notified",
+    )
+    session.add_all([inside, outside, pending])
+    session.commit()
+
+    assert count_events_notified_since(session, since=since) == 1
+
+
+def test_count_events_notified_since_rejects_naive_since(session: Session) -> None:
+    with pytest.raises(ValueError):
+        count_events_notified_since(session, since=datetime(2026, 4, 25, 12, 0))
+
+
+def _event(
+    *,
+    occurred_at: datetime,
+    severity: str,
+    subject: str,
+    notified_at: datetime | None = None,
+) -> Event:
+    return Event(
+        occurred_at=occurred_at,
+        severity=severity,
+        category="test",
+        subject=subject,
+        summary=f"summary for {subject}",
+        notified_at=notified_at,
+    )
 
 
 def _controller_snapshot(captured_at: datetime, *, serial: str) -> ControllerSnapshot:
