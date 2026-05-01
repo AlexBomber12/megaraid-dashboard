@@ -129,6 +129,8 @@ def test_overview_navigation_and_assets_are_prefix_aware(
 
     assert response.status_code == 200
     assert "SERVER RAID Status" in response.text
+    assert 'class="data-block alert-status"' in response.text
+    assert "Notifier OK" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
     assert "/raid/static/vendor/chart.min.js" not in response.text
@@ -170,10 +172,15 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "Waiting for first metrics collection" in full_response.text
     assert "The collector has not yet completed its first run." in full_response.text
     assert "Metrics collection is disabled; no collection run is scheduled." in full_response.text
+    assert 'class="data-block alert-status"' in full_response.text
+    assert "Never" in full_response.text
+    assert "Notifier OK" in full_response.text
     assert "Waiting for first metrics collection" in partial_response.text
     assert (
         "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
     )
+    assert 'class="data-block alert-status"' in partial_response.text
+    assert "Never" in partial_response.text
     assert "<!doctype html>" not in partial_response.text
     assert "site-header" not in partial_response.text
 
@@ -192,6 +199,7 @@ def test_partial_endpoint_returns_data_block_fragment(
     assert "<!doctype html>" not in response.text
     assert "site-header" not in response.text
     assert "SERVER RAID Status" in response.text
+    assert 'class="data-block alert-status"' in response.text
 
 
 def test_data_block_has_auto_refresh_attributes() -> None:

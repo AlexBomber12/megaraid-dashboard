@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot
-from megaraid_dashboard.services.overview import OverviewViewModel, load_overview_view_model
+from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.services.overview import (
+    OverviewViewModel,
+    _load_alert_status,
+    load_overview_view_model,
+)
 from megaraid_dashboard.storcli import StorcliSnapshot
 
 
@@ -212,6 +217,11 @@ def test_overview_view_model_empty_database(session: Session) -> None:
     view_model = load_overview_view_model(session)
 
     assert view_model.has_snapshot is False
+    assert view_model.alert_status.last_alert_sent_at is None
+    assert view_model.alert_status.pending_count == 0
+    assert view_model.alert_status.sent_last_hour == 0
+    assert view_model.alert_status.health == "optimal"
+    assert view_model.alert_status.health_label == "Notifier OK"
     assert view_model.empty_title == "Waiting for first metrics collection"
     assert view_model.empty_next_run == "No collection run is currently scheduled."
 
@@ -246,6 +256,121 @@ def test_overview_view_model_empty_database_reports_next_scheduled_run(session: 
 
     assert view_model.empty_next_run.startswith("Next scheduled run in ")
     assert view_model.empty_next_run.endswith(" seconds.")
+
+
+def test_load_alert_status_empty_database(session: Session) -> None:
+    status = _load_alert_status(
+        session,
+        settings=get_settings(),
+        now=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+    )
+
+    assert status.last_alert_sent_at is None
+    assert status.pending_count == 0
+    assert status.sent_last_hour == 0
+    assert status.health == "optimal"
+    assert status.health_status == "optimal"
+    assert status.health_label == "Notifier OK"
+
+
+def test_load_alert_status_pending_never_sent_is_critical(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    session.add(_event(occurred_at=now - timedelta(minutes=5), notified_at=None))
+    session.flush()
+
+    status = _load_alert_status(session, settings=get_settings(), now=now)
+
+    assert status.last_alert_sent_at is None
+    assert status.pending_count == 1
+    assert status.sent_last_hour == 0
+    assert status.health == "critical"
+    assert status.health_label == "Notifier appears stuck"
+
+
+def test_load_alert_status_recently_notified_without_pending_is_optimal(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    notified_at = now - timedelta(seconds=30)
+    session.add(_event(occurred_at=now - timedelta(minutes=5), notified_at=notified_at))
+    session.flush()
+
+    status = _load_alert_status(session, settings=get_settings(), now=now)
+
+    assert status.last_alert_sent_at == notified_at
+    assert status.pending_count == 0
+    assert status.sent_last_hour == 1
+    assert status.health == "optimal"
+    assert status.health_label == "Notifier OK"
+
+
+def test_load_alert_status_pending_with_recent_send_is_warning(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    session.add_all(
+        [
+            _event(occurred_at=now - timedelta(minutes=5), notified_at=None),
+            _event(
+                occurred_at=now - timedelta(minutes=10),
+                notified_at=now - timedelta(minutes=3),
+            ),
+        ]
+    )
+    session.flush()
+
+    status = _load_alert_status(session, settings=get_settings(), now=now)
+
+    assert status.pending_count == 1
+    assert status.sent_last_hour == 1
+    assert status.health == "warning"
+    assert status.health_label == "Notifier catching up"
+
+
+def test_load_alert_status_pending_with_very_recent_send_is_optimal(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    session.add_all(
+        [
+            _event(occurred_at=now - timedelta(minutes=5), notified_at=None),
+            _event(
+                occurred_at=now - timedelta(minutes=10),
+                notified_at=now - timedelta(minutes=1),
+            ),
+        ]
+    )
+    session.flush()
+
+    status = _load_alert_status(session, settings=get_settings(), now=now)
+
+    assert status.pending_count == 1
+    assert status.health == "optimal"
+    assert status.health_label == "Notifier OK"
+
+
+def test_load_alert_status_pending_with_stale_send_is_critical(session: Session) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    session.add_all(
+        [
+            _event(occurred_at=now - timedelta(minutes=5), notified_at=None),
+            _event(
+                occurred_at=now - timedelta(minutes=40),
+                notified_at=now - timedelta(minutes=30),
+            ),
+        ]
+    )
+    session.flush()
+
+    status = _load_alert_status(session, settings=get_settings(), now=now)
+
+    assert status.pending_count == 1
+    assert status.sent_last_hour == 1
+    assert status.health == "critical"
+    assert status.health_label == "Notifier appears stuck"
+
+
+def test_load_alert_status_rejects_naive_now(session: Session) -> None:
+    with pytest.raises(ValueError, match="datetime must include a timezone"):
+        _load_alert_status(
+            session,
+            settings=get_settings(),
+            now=datetime(2026, 4, 25, 12, 0),
+        )
 
 
 def _insert(session: Session, snapshot: StorcliSnapshot) -> None:
@@ -302,6 +427,22 @@ def _card(view_model: OverviewViewModel, label: str):
         if card.label == label:
             return card
     raise AssertionError(f"missing card: {label}")
+
+
+def _event(
+    *,
+    occurred_at: datetime,
+    notified_at: datetime | None,
+    severity: str = "critical",
+) -> Event:
+    return Event(
+        occurred_at=occurred_at,
+        severity=severity,
+        category="physical_drive",
+        subject="e252:s4",
+        summary="Drive state changed",
+        notified_at=notified_at,
+    )
 
 
 @dataclass(frozen=True)

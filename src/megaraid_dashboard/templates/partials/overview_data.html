@@ -28,6 +28,8 @@
       {% endfor %}
     </section>
 
+    {% include "partials/alert_status.html" %}
+
     <section class="drives">
       <div class="section-heading">
         <h2>Physical Drives</h2>
@@ -42,5 +44,6 @@
       <p>{{ view_model.empty_body }}</p>
       <p>{{ view_model.empty_next_run }}</p>
     </section>
+    {% include "partials/alert_status.html" %}
   {% endif %}
 </div>
