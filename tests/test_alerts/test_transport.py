@@ -164,6 +164,13 @@ def test_send_reraises_ssl_error(settings: Settings) -> None:
         transport.send(AlertMessage(subject="s", body_text="b"), to="to@example.test")
 
 
+def test_send_reraises_os_error_on_connect(settings: Settings) -> None:
+    transport = SmtpAlertTransport(settings)
+    smtp_class = MagicMock(name="smtplib.SMTP", side_effect=TimeoutError("connect timed out"))
+    with patch("smtplib.SMTP", smtp_class), pytest.raises(TimeoutError):
+        transport.send(AlertMessage(subject="s", body_text="b"), to="to@example.test")
+
+
 def test_send_message_id_falls_back_when_from_has_no_at(monkeypatch: pytest.MonkeyPatch) -> None:
     set_required_env(monkeypatch)
     monkeypatch.setenv("ALERT_FROM", "noreply-no-at")

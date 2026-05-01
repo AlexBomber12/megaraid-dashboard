@@ -62,7 +62,7 @@ class SmtpAlertTransport:
                     smtp.ehlo()
                 smtp.login(self._user, self._password)
                 smtp.send_message(msg)
-        except (smtplib.SMTPException, ssl.SSLError) as exc:
+        except (smtplib.SMTPException, ssl.SSLError, OSError) as exc:
             _LOG.error(
                 "alert_smtp_failed",
                 subject=message.subject,

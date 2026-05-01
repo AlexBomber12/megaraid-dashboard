@@ -80,6 +80,17 @@ def test_ssl_error_returns_one(capsys: pytest.CaptureFixture[str]) -> None:
     assert "TLS error" in err
 
 
+def test_os_error_returns_one(capsys: pytest.CaptureFixture[str]) -> None:
+    transport = MagicMock()
+    transport.send.side_effect = TimeoutError("connect timed out")
+    with patch("megaraid_dashboard.alerts.build_default_transport", return_value=transport):
+        rc = _run(["test"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Connection error" in err
+    assert "TimeoutError" in err
+
+
 def test_unknown_subcommand_exits_two() -> None:
     with pytest.raises(SystemExit) as exc_info:
         _run(["bogus"])

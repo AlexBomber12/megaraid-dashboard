@@ -42,6 +42,9 @@ def _handle_test(args: argparse.Namespace) -> int:
     except ssl.SSLError as exc:
         print(f"TLS error: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        print(f"Connection error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
     print(f"Sent test alert to {to_address}")
     return 0
 
