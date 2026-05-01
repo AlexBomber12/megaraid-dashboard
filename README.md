@@ -302,6 +302,9 @@ A file lock at `/tmp/megaraid-dashboard-notifier.lock` prevents overlapping cycl
 a slow SMTP send pushes one cycle past 60 seconds; the next cycle logs
 `notifier_overlap_skipped` and returns early.
 
+The overview page shows the last alert sent timestamp, pending alert count, sent-in-last-hour
+count, and a notifier-health badge for quick operator checks.
+
 ### Example .env block
 
 ```

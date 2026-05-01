@@ -2,16 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from megaraid_dashboard.config import get_settings
-from megaraid_dashboard.db.dao import get_latest_snapshot
+from megaraid_dashboard.config import Settings, get_settings
+from megaraid_dashboard.db.dao import (
+    count_events_notified_since,
+    get_latest_snapshot,
+    iter_pending_events,
+)
 from megaraid_dashboard.db.models import (
     CacheVaultSnapshot,
     ControllerSnapshot,
+    Event,
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
 )
@@ -56,6 +62,16 @@ class PhysicalDriveRow:
 
 
 @dataclass(frozen=True)
+class AlertStatusSection:
+    last_alert_sent_at: datetime | None
+    pending_count: int
+    sent_last_hour: int
+    health: str
+    health_status: str
+    health_label: str
+
+
+@dataclass(frozen=True)
 class OverviewViewModel:
     has_snapshot: bool
     controller_label: str
@@ -65,6 +81,7 @@ class OverviewViewModel:
     max_temperature_celsius: int | None
     elevated_drive_count: int
     critical_drive_count: int
+    alert_status: AlertStatusSection
     empty_title: str
     empty_body: str
     empty_next_run: str
@@ -93,8 +110,11 @@ def load_overview_view_model(
     session: Session,
     *,
     scheduler: _Scheduler | None = None,
+    now: datetime | None = None,
 ) -> OverviewViewModel:
     settings = get_settings()
+    resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
+    alert_status = _load_alert_status(session, settings=settings, now=resolved_now)
     snapshot = get_latest_snapshot(session)
     if snapshot is None:
         return OverviewViewModel(
@@ -106,6 +126,7 @@ def load_overview_view_model(
             max_temperature_celsius=None,
             elevated_drive_count=0,
             critical_drive_count=0,
+            alert_status=alert_status,
             empty_title="Waiting for first metrics collection",
             empty_body="The collector has not yet completed its first run.",
             empty_next_run=_empty_next_run_text(
@@ -157,6 +178,7 @@ def load_overview_view_model(
         max_temperature_celsius=max_temp,
         elevated_drive_count=elevated_count,
         critical_drive_count=critical_count,
+        alert_status=alert_status,
         empty_title="Waiting for first metrics collection",
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
@@ -208,6 +230,71 @@ def load_drive_list_view_model(
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
     )
+
+
+def _load_alert_status(
+    session: Session,
+    *,
+    settings: Settings,
+    now: datetime,
+) -> AlertStatusSection:
+    now_utc = _require_aware_utc(now)
+    last_alert_sent_at = session.scalar(select(func.max(Event.notified_at)))
+    normalized_last_sent = (
+        None if last_alert_sent_at is None else _require_aware_utc(last_alert_sent_at)
+    )
+    pending_since = now_utc - timedelta(minutes=settings.alert_suppress_window_minutes)
+    pending_count = len(
+        list(
+            iter_pending_events(
+                session,
+                severity_threshold=settings.alert_severity_threshold,
+                since=pending_since,
+            )
+        )
+    )
+    sent_last_hour = count_events_notified_since(session, since=now_utc - timedelta(hours=1))
+    health = _alert_health(
+        pending_count=pending_count,
+        last_alert_sent_at=normalized_last_sent,
+        now=now_utc,
+    )
+    return AlertStatusSection(
+        last_alert_sent_at=normalized_last_sent,
+        pending_count=pending_count,
+        sent_last_hour=sent_last_hour,
+        health=health,
+        health_status=health,
+        health_label=_alert_health_label(health),
+    )
+
+
+def _alert_health(
+    *,
+    pending_count: int,
+    last_alert_sent_at: datetime | None,
+    now: datetime,
+) -> str:
+    if pending_count == 0:
+        return "optimal"
+    if last_alert_sent_at is None:
+        return "critical"
+
+    age = _require_aware_utc(now) - _require_aware_utc(last_alert_sent_at)
+    if age < timedelta(minutes=2):
+        return "optimal"
+    if age < timedelta(minutes=10):
+        return "warning"
+    return "critical"
+
+
+def _alert_health_label(health: str) -> str:
+    labels = {
+        "optimal": "Notifier OK",
+        "warning": "Notifier catching up",
+        "critical": "Notifier appears stuck",
+    }
+    return labels[health]
 
 
 def _empty_next_run_text(*, scheduler: _Scheduler | None, collector_enabled: bool) -> str:
@@ -482,3 +569,10 @@ def _worst_severity(current: str, candidate: str) -> str:
         "critical": 3,
     }
     return candidate if severity_rank[candidate] > severity_rank[current] else current
+
+
+def _require_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        msg = "datetime must include a timezone"
+        raise ValueError(msg)
+    return value.astimezone(UTC)
