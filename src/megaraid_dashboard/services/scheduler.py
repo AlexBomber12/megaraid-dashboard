@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import errno
+import fcntl
+import os
+import stat
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -10,6 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[impo
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from megaraid_dashboard.alerts import SmtpAlertTransport
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.dao import (
     clear_temp_state_for_slot,
@@ -28,6 +33,7 @@ from megaraid_dashboard.db.retention import (
 )
 from megaraid_dashboard.services.collector import collect_storcli_snapshot
 from megaraid_dashboard.services.event_detector import DetectedEvent, EventDetector
+from megaraid_dashboard.services.notifier import _LOCK_PATH_DEFAULT, run_notifier_cycle
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 
 LOGGER = structlog.get_logger(__name__)
@@ -191,6 +197,16 @@ class CollectorService:
             coalesce=True,
             max_instances=1,
         )
+        scheduler.add_job(
+            self._run_notifier_job,
+            "interval",
+            seconds=60,
+            id="event_notifier",
+            replace_existing=True,
+            misfire_grace_time=60,
+            coalesce=True,
+            max_instances=1,
+        )
         scheduler.start()
         return scheduler
 
@@ -209,6 +225,33 @@ class CollectorService:
 
     async def _run_retention_job(self) -> None:
         await self._run_tracked_job(self.run_retention_once)
+
+    async def _run_notifier_job(self) -> None:
+        await self._run_tracked_job(self._run_notifier_once)
+
+    async def _run_notifier_once(self) -> None:
+        async with self._write_lock:
+            await asyncio.to_thread(self._run_notifier_cycle_with_lock)
+
+    def _run_notifier_cycle_with_lock(self) -> None:
+        lock_fd = _try_acquire_notifier_lock(_LOCK_PATH_DEFAULT)
+        if lock_fd is None:
+            LOGGER.info("notifier_overlap_skipped", lock_path=_LOCK_PATH_DEFAULT)
+            return
+        try:
+            transport = SmtpAlertTransport(self.settings)
+            with self.session_factory() as session:
+                try:
+                    run_notifier_cycle(
+                        session,
+                        transport,
+                        settings=self.settings,
+                        now=self.clock(),
+                    )
+                except Exception:
+                    LOGGER.exception("notifier_cycle_failed")
+        finally:
+            _release_notifier_lock(lock_fd)
 
     async def _run_tracked_job(self, job: Callable[[], Awaitable[None]]) -> None:
         task = asyncio.current_task()
@@ -283,3 +326,47 @@ def _require_aware_utc(value: datetime) -> datetime:
         msg = "naive datetimes are not allowed; use timezone-aware UTC datetimes"
         raise ValueError(msg)
     return value.astimezone(UTC)
+
+
+def _try_acquire_notifier_lock(lock_path: str) -> int | None:
+    flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
+    try:
+        lock_fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            msg = f"notifier lock path must not be a symlink: {lock_path}"
+            raise RuntimeError(msg) from exc
+        raise
+    try:
+        _validate_notifier_lock_file(lock_fd, lock_path)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock_fd)
+        return None
+    except Exception:
+        os.close(lock_fd)
+        raise
+
+    os.ftruncate(lock_fd, 0)
+    os.write(lock_fd, str(os.getpid()).encode("ascii"))
+    return lock_fd
+
+
+def _validate_notifier_lock_file(lock_fd: int, lock_path: str) -> None:
+    lock_stat = os.fstat(lock_fd)
+    if not stat.S_ISREG(lock_stat.st_mode):
+        msg = f"notifier lock path must be a regular file: {lock_path}"
+        raise RuntimeError(msg)
+    if lock_stat.st_uid != os.getuid():
+        msg = f"notifier lock path must be owned by the current user: {lock_path}"
+        raise RuntimeError(msg)
+    if lock_stat.st_nlink != 1:
+        msg = f"notifier lock path must not have hard links: {lock_path}"
+        raise RuntimeError(msg)
+
+
+def _release_notifier_lock(lock_fd: int) -> None:
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)

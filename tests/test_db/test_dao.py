@@ -170,7 +170,7 @@ def test_iter_pending_events_filters_by_severity_and_notified_state(session: Ses
     session.add_all([matching, wrong_severity, already_notified])
     session.commit()
 
-    pending = list(iter_pending_events(session, severity="critical", since=since))
+    pending = list(iter_pending_events(session, severity_threshold="critical", since=since))
 
     assert [event.subject for event in pending] == ["match"]
 
@@ -195,7 +195,7 @@ def test_iter_pending_events_excludes_events_older_than_since(session: Session) 
     session.add_all([older, same_instant, newer])
     session.commit()
 
-    pending = list(iter_pending_events(session, severity="critical", since=since))
+    pending = list(iter_pending_events(session, severity_threshold="critical", since=since))
 
     assert [event.subject for event in pending] == ["boundary", "fresh"]
 
@@ -211,7 +211,7 @@ def test_iter_pending_events_orders_by_occurred_at_then_id(session: Session) -> 
     pending = list(
         iter_pending_events(
             session,
-            severity="critical",
+            severity_threshold="critical",
             since=occurred_at - timedelta(hours=1),
         )
     )
@@ -220,9 +220,67 @@ def test_iter_pending_events_orders_by_occurred_at_then_id(session: Session) -> 
     assert [event.subject for event in pending] == ["first", "second", "third"]
 
 
+def test_iter_pending_events_threshold_includes_higher_severities(session: Session) -> None:
+    since = datetime(2026, 4, 25, 0, 0, tzinfo=UTC)
+    info_event = _event(
+        occurred_at=since + timedelta(hours=1),
+        severity="info",
+        subject="info-below",
+    )
+    warning_event = _event(
+        occurred_at=since + timedelta(hours=2),
+        severity="warning",
+        subject="warning-at",
+    )
+    critical_event = _event(
+        occurred_at=since + timedelta(hours=3),
+        severity="critical",
+        subject="critical-above",
+    )
+    session.add_all([info_event, warning_event, critical_event])
+    session.commit()
+
+    pending = list(iter_pending_events(session, severity_threshold="warning", since=since))
+
+    assert [event.subject for event in pending] == ["warning-at", "critical-above"]
+
+
+def test_iter_pending_events_threshold_info_includes_all_severities(session: Session) -> None:
+    since = datetime(2026, 4, 25, 0, 0, tzinfo=UTC)
+    session.add_all(
+        [
+            _event(occurred_at=since + timedelta(hours=1), severity="info", subject="info"),
+            _event(occurred_at=since + timedelta(hours=2), severity="warning", subject="warning"),
+            _event(occurred_at=since + timedelta(hours=3), severity="critical", subject="critical"),
+        ]
+    )
+    session.commit()
+
+    pending = list(iter_pending_events(session, severity_threshold="info", since=since))
+
+    assert [event.subject for event in pending] == ["info", "warning", "critical"]
+
+
+def test_iter_pending_events_rejects_unknown_severity_threshold(session: Session) -> None:
+    with pytest.raises(ValueError):
+        list(
+            iter_pending_events(
+                session,
+                severity_threshold="bogus",
+                since=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+            )
+        )
+
+
 def test_iter_pending_events_rejects_naive_since(session: Session) -> None:
     with pytest.raises(ValueError):
-        list(iter_pending_events(session, severity="critical", since=datetime(2026, 4, 25, 12, 0)))
+        list(
+            iter_pending_events(
+                session,
+                severity_threshold="critical",
+                since=datetime(2026, 4, 25, 12, 0),
+            )
+        )
 
 
 def test_mark_event_notified_sets_notified_at(session: Session) -> None:
@@ -277,7 +335,7 @@ def test_mark_event_notified_flushes_for_subsequent_queries(session: Session) ->
 
     mark_event_notified(session, event.id, sent_at)
 
-    pending = list(iter_pending_events(session, severity="critical", since=since))
+    pending = list(iter_pending_events(session, severity_threshold="critical", since=since))
     assert pending == []
     assert count_events_notified_since(session, since=since) == 1
 

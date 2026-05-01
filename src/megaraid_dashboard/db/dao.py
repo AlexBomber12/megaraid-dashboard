@@ -135,23 +135,35 @@ def record_event(
     return event
 
 
+_SEVERITY_RANK: dict[str, int] = {"info": 0, "warning": 1, "critical": 2}
+
+
 def iter_pending_events(
     session: Session,
     *,
-    severity: str,
+    severity_threshold: str,
     since: datetime,
 ) -> Iterator[Event]:
     _require_aware_utc(since)
+    allowed = _severities_at_or_above(severity_threshold)
     statement = (
         select(Event)
         .where(
-            Event.severity == severity,
+            Event.severity.in_(allowed),
             Event.notified_at.is_(None),
             Event.occurred_at >= since,
         )
         .order_by(Event.occurred_at.asc(), Event.id.asc())
     )
     yield from session.execute(statement).scalars()
+
+
+def _severities_at_or_above(threshold: str) -> set[str]:
+    if threshold not in _SEVERITY_RANK:
+        msg = f"unknown severity threshold: {threshold!r}"
+        raise ValueError(msg)
+    minimum = _SEVERITY_RANK[threshold]
+    return {name for name, rank in _SEVERITY_RANK.items() if rank >= minimum}
 
 
 def mark_event_notified(session: Session, event_id: int, sent_at: datetime) -> None:
