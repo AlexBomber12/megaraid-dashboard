@@ -254,6 +254,7 @@ async def test_start_registers_jobs_and_shutdown_stops_scheduler(
         assert {job.id for job in scheduler.get_jobs()} == {
             "metrics_collector",
             "metrics_retention",
+            "event_notifier",
         }
     finally:
         await service.shutdown(scheduler)

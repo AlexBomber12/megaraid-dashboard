@@ -261,9 +261,9 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 | `ALERT_FROM` | str | required | Envelope and header `From` address. |
 | `ALERT_TO` | str | required | Default recipient address. |
 | `ALERT_SMTP_USE_STARTTLS` | bool | `true` | If true, the transport runs STARTTLS over the submission port after the initial EHLO. |
-| `ALERT_SEVERITY_THRESHOLD` | str | `critical` | Lowest severity that triggers an alert. One of `info`, `warning`, `critical`. Not consumed in this release. |
-| `ALERT_SUPPRESS_WINDOW_MINUTES` | int | `60` | Minutes to suppress duplicate alerts for the same event key. Not consumed in this release. |
-| `ALERT_THROTTLE_PER_HOUR` | int | `20` | Maximum alerts sent per hour. Not consumed in this release. |
+| `ALERT_SEVERITY_THRESHOLD` | str | `critical` | Lowest severity that triggers an alert. One of `info`, `warning`, `critical`. Consumed by the notifier. |
+| `ALERT_SUPPRESS_WINDOW_MINUTES` | int | `60` | Minutes to suppress duplicate alerts for the same `(severity, category, subject)`. Consumed by the notifier. |
+| `ALERT_THROTTLE_PER_HOUR` | int | `20` | Soft cap on alerts sent per trailing hour. The notifier logs a warning when exceeded but continues sending. |
 
 ### CLI
 
@@ -276,6 +276,29 @@ The `test` command sends one fixed test message synchronously and exits. It bypa
 any future suppression window or throttle, so operators can verify SMTP credentials,
 DNS records (SPF, DKIM, DMARC), and outbound network access without waiting for a
 real event.
+
+### Notifier
+
+The notifier runs inside the same APScheduler instance as the metrics collector and
+fires on a 60-second interval whenever `COLLECTOR_ENABLED=true`. Each cycle:
+
+- selects pending events whose `severity` matches `ALERT_SEVERITY_THRESHOLD` and whose
+  `occurred_at` is within the trailing `ALERT_SUPPRESS_WINDOW_MINUTES` window;
+- skips an event when a prior event with the same `(severity, category, subject)` was
+  already notified within that window — the current event is still marked notified so
+  it does not re-appear in the next cycle;
+- sends one plain-text email per remaining event to `ALERT_TO` via the SMTP transport,
+  marks the event notified, and commits once at the end of the cycle;
+- counts notifications already sent in the trailing hour and emits a single
+  `notifier_throttle_warning` log line when that count exceeds
+  `ALERT_THROTTLE_PER_HOUR`. The cap is soft: dedup is the primary defence and sends
+  continue regardless;
+- isolates per-event SMTP failures (events with a failed `transport.send` keep
+  `notified_at = NULL` and are retried on the next cycle).
+
+A file lock at `/tmp/megaraid-dashboard-notifier.lock` prevents overlapping cycles when
+a slow SMTP send pushes one cycle past 60 seconds; the next cycle logs
+`notifier_overlap_skipped` and returns early.
 
 ### Example .env block
 
@@ -296,12 +319,13 @@ ALERT_THROTTLE_PER_HOUR=20
 
 SMTP credentials live in `.env`, which must remain gitignored. The transport blocks the
 calling thread for up to 30 seconds on network IO and must NOT be invoked from a FastAPI
-request handler; the notifier integration in PR-003 will call it from an APScheduler
-executor. STARTTLS over port 587 is the only encryption mode supported in this PR; SMTPS
-over port 465 (implicit TLS) is out of scope. The CLI `test` command bypasses any future
-suppression window or throttle and sends unconditionally. The `ALERT_SEVERITY_THRESHOLD`,
-`ALERT_SUPPRESS_WINDOW_MINUTES`, and `ALERT_THROTTLE_PER_HOUR` settings are wired into
-config but **not consumed** in this PR; they are read by the notifier in PR-003.
+request handler; the notifier runs from an APScheduler executor. STARTTLS over port 587
+is the only encryption mode supported; SMTPS over port 465 (implicit TLS) is out of
+scope. The CLI `test` command bypasses the suppression window and throttle and sends
+unconditionally. `ALERT_SEVERITY_THRESHOLD` and `ALERT_SUPPRESS_WINDOW_MINUTES` are now
+consumed by the notifier cycle; `ALERT_THROTTLE_PER_HOUR` acts as a soft cap (warn on
+exceed, continue sending) so a multi-event incident is not dropped when dedup already
+collapses repeats.
 
 ## Roadmap
 
