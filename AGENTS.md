@@ -25,7 +25,7 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
 
 - Use `pytest` with asyncio mode `auto`.
 - Tests must never call real `storcli` or touch real hardware; mock the `storcli` wrapper at the boundary.
-- Unit test coverage gate is 100% line coverage. CI fails on any coverage drop.
+- Aim for coverage growth, with no hard percentage gate yet. (To enforce a gate, add `--cov-fail-under=N` to pyproject.toml `[tool.pytest.ini_options]` `addopts` and update `scripts/ci.sh` to mirror.)
 - Integration tests live under `tests/integration/` and are skipped by default with a marker.
 
 # Architecture Rules
@@ -77,7 +77,7 @@ Project-specific equivalents for orchestrator-level concepts:
 
 - Integration tests in this project: `tests/integration/`, skipped by default via marker.
 - This project has no external testbed repository.
-- CI workflow: `.github/workflows/ci.yml` running ruff + pytest with 100% coverage gate.
+- CI workflow: `.github/workflows/ci.yml` running `ruff check`, `ruff format --check`, `mypy src`, and `pytest`. No coverage threshold currently enforced (pyproject.toml has `--cov=src/megaraid_dashboard --cov-report=term-missing` but no `--cov-fail-under`).
 - This project has no `task_status.py` module; it is not part of pipeline-orchestrator.
 
 <!-- pipeline-orchestrator: managed BEGIN work_modes -->
