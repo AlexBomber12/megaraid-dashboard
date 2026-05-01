@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -132,6 +133,43 @@ def record_event(
     session.add(event)
     session.flush()
     return event
+
+
+def iter_pending_events(
+    session: Session,
+    *,
+    severity: str,
+    since: datetime,
+) -> Iterator[Event]:
+    _require_aware_utc(since)
+    statement = (
+        select(Event)
+        .where(
+            Event.severity == severity,
+            Event.notified_at.is_(None),
+            Event.occurred_at >= since,
+        )
+        .order_by(Event.occurred_at.asc(), Event.id.asc())
+    )
+    yield from session.execute(statement).scalars()
+
+
+def mark_event_notified(session: Session, event_id: int, sent_at: datetime) -> None:
+    _require_aware_utc(sent_at)
+    event = session.get(Event, event_id)
+    if event is None:
+        msg = f"event {event_id} not found"
+        raise LookupError(msg)
+    event.notified_at = sent_at.astimezone(UTC)
+    session.flush()
+
+
+def count_events_notified_since(session: Session, *, since: datetime) -> int:
+    _require_aware_utc(since)
+    result = session.execute(
+        select(func.count()).select_from(Event).where(Event.notified_at >= since)
+    ).scalar_one()
+    return int(result or 0)
 
 
 def get_temp_state(
