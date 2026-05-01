@@ -35,3 +35,7 @@ alembic/versions/__pycache__/
 .codex/
 .claude/
 tests/fixtures/storcli/raw/
+
+# pipeline-orchestrator artifacts (regenerated, do not commit)
+artifacts/
+tasks/QUEUE.md
