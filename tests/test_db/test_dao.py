@@ -263,6 +263,25 @@ def test_mark_event_notified_rejects_naive_sent_at(session: Session) -> None:
         mark_event_notified(session, event.id, datetime(2026, 4, 25, 12, 0))
 
 
+def test_mark_event_notified_flushes_for_subsequent_queries(session: Session) -> None:
+    since = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    event = record_event(
+        session,
+        severity="critical",
+        category="smart_alert",
+        subject="PD e252:s4",
+        summary="Drive predicts failure",
+    )
+    session.commit()
+    sent_at = since + timedelta(minutes=5)
+
+    mark_event_notified(session, event.id, sent_at)
+
+    pending = list(iter_pending_events(session, severity="critical", since=since))
+    assert pending == []
+    assert count_events_notified_since(session, since=since) == 1
+
+
 def test_mark_event_notified_does_not_commit(session: Session) -> None:
     event = record_event(
         session,

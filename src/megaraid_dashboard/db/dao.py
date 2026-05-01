@@ -161,6 +161,7 @@ def mark_event_notified(session: Session, event_id: int, sent_at: datetime) -> N
         msg = f"event {event_id} not found"
         raise LookupError(msg)
     event.notified_at = sent_at.astimezone(UTC)
+    session.flush()
 
 
 def count_events_notified_since(session: Session, *, since: datetime) -> int:
