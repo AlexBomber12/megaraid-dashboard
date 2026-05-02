@@ -113,7 +113,7 @@ def test_alembic_roc_temperature_downgrade_and_upgrade_round_trip() -> None:
                 },
             )
 
-            command.downgrade(config, "-1")
+            command.downgrade(config, "0003_events_notified_at")
             downgraded_columns = {
                 column["name"] for column in inspect(connection).get_columns("controller_snapshots")
             }
