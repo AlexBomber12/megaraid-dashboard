@@ -79,6 +79,11 @@ Physical drive temperature warning, critical, and hysteresis thresholds default 
 60 C, and 5 C. Configure them with `TEMP_WARNING_CELSIUS`, `TEMP_CRITICAL_CELSIUS`, and
 `TEMP_HYSTERESIS_CELSIUS`.
 
+RoC temperature warning, critical, and hysteresis thresholds default to 95 C, 105 C, and
+5 C. Configure them with `ROC_TEMP_WARNING_CELSIUS`, `ROC_TEMP_CRITICAL_CELSIUS`, and
+`ROC_TEMP_HYSTERESIS_CELSIUS`. After the heatsink mod, expected thresholds are 80 C and
+95 C.
+
 ## Web UI
 
 The read-only server-side rendered UI has no frontend build step and no npm dependency.
@@ -264,6 +269,12 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 | `ALERT_SEVERITY_THRESHOLD` | str | `critical` | Lowest severity that triggers an alert. One of `info`, `warning`, `critical`. Consumed by the notifier. |
 | `ALERT_SUPPRESS_WINDOW_MINUTES` | int | `60` | Minutes to suppress duplicate alerts for the same `(severity, category, subject)`. Consumed by the notifier. |
 | `ALERT_THROTTLE_PER_HOUR` | int | `20` | Soft cap on alerts sent per trailing hour. The notifier logs a warning when exceeded but continues sending. |
+| `ROC_TEMP_WARNING_CELSIUS` | int | `95` | RoC warning threshold in C; must be in `[40, 130]` and below critical. |
+| `ROC_TEMP_CRITICAL_CELSIUS` | int | `105` | RoC critical threshold in C; must be in `[40, 130]` and above warning. |
+| `ROC_TEMP_HYSTERESIS_CELSIUS` | int | `5` | RoC hysteresis in C; must be at least 1 and below warning. |
+
+After the RoC heatsink mod, set `ROC_TEMP_WARNING_CELSIUS=80` and
+`ROC_TEMP_CRITICAL_CELSIUS=95`.
 
 ### CLI
 
