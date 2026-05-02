@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     temp_warning_celsius: int = 55
     temp_critical_celsius: int = 60
     temp_hysteresis_celsius: int = 5
+    roc_temp_warning_celsius: int = 95
+    roc_temp_critical_celsius: int = 105
+    roc_temp_hysteresis_celsius: int = 5
     cv_capacitance_warning_percent: int = 70
     database_url: str = "sqlite:///./megaraid.db"
     log_level: str = Field(...)
@@ -65,6 +68,21 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.temp_hysteresis_celsius >= self.temp_warning_celsius:
             msg = "temp_hysteresis_celsius must be less than temp_warning_celsius"
+            raise ValueError(msg)
+        if not 40 <= self.roc_temp_warning_celsius <= 130:
+            msg = "roc_temp_warning_celsius must be between 40 and 130"
+            raise ValueError(msg)
+        if not 40 <= self.roc_temp_critical_celsius <= 130:
+            msg = "roc_temp_critical_celsius must be between 40 and 130"
+            raise ValueError(msg)
+        if self.roc_temp_critical_celsius <= self.roc_temp_warning_celsius:
+            msg = "roc_temp_critical_celsius must be greater than roc_temp_warning_celsius"
+            raise ValueError(msg)
+        if self.roc_temp_hysteresis_celsius < 1:
+            msg = "roc_temp_hysteresis_celsius must be at least 1"
+            raise ValueError(msg)
+        if self.roc_temp_hysteresis_celsius >= self.roc_temp_warning_celsius:
+            msg = "roc_temp_hysteresis_celsius must be less than roc_temp_warning_celsius"
             raise ValueError(msg)
         if self.alert_smtp_port <= 0:
             msg = "alert_smtp_port must be positive"

@@ -80,6 +80,9 @@ def test_temperature_threshold_defaults_validate(monkeypatch: pytest.MonkeyPatch
     assert settings.temp_warning_celsius == 55
     assert settings.temp_critical_celsius == 60
     assert settings.temp_hysteresis_celsius == 5
+    assert settings.roc_temp_warning_celsius == 95
+    assert settings.roc_temp_critical_celsius == 105
+    assert settings.roc_temp_hysteresis_celsius == 5
     assert settings.cv_capacitance_warning_percent == 70
     assert settings.collector_enabled is True
     assert settings.collector_lock_path == "/tmp/megaraid-dashboard-collector.lock"
@@ -109,6 +112,93 @@ def test_temperature_hysteresis_must_be_below_warning_threshold(
     monkeypatch.setenv("TEMP_HYSTERESIS_CELSIUS", "55")
 
     with pytest.raises(ValidationError, match="temp_hysteresis_celsius"):
+        Settings()
+
+
+@pytest.mark.parametrize("value", ["39", "131"])
+def test_roc_temperature_warning_must_be_plausible_range(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("ROC_TEMP_WARNING_CELSIUS", value)
+
+    with pytest.raises(
+        ValidationError,
+        match="roc_temp_warning_celsius must be between 40 and 130",
+    ):
+        Settings()
+
+
+@pytest.mark.parametrize("value", ["39", "131"])
+def test_roc_temperature_critical_must_be_plausible_range(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("ROC_TEMP_CRITICAL_CELSIUS", value)
+
+    with pytest.raises(
+        ValidationError,
+        match="roc_temp_critical_celsius must be between 40 and 130",
+    ):
+        Settings()
+
+
+def test_roc_temperature_critical_must_exceed_warning_when_equal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("ROC_TEMP_WARNING_CELSIUS", "95")
+    monkeypatch.setenv("ROC_TEMP_CRITICAL_CELSIUS", "95")
+
+    with pytest.raises(
+        ValidationError,
+        match="roc_temp_critical_celsius must be greater than roc_temp_warning_celsius",
+    ):
+        Settings()
+
+
+def test_roc_temperature_critical_must_exceed_warning_when_lower(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("ROC_TEMP_WARNING_CELSIUS", "95")
+    monkeypatch.setenv("ROC_TEMP_CRITICAL_CELSIUS", "90")
+
+    with pytest.raises(
+        ValidationError,
+        match="roc_temp_critical_celsius must be greater than roc_temp_warning_celsius",
+    ):
+        Settings()
+
+
+def test_roc_temperature_hysteresis_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("ROC_TEMP_HYSTERESIS_CELSIUS", "0")
+
+    with pytest.raises(
+        ValidationError,
+        match="roc_temp_hysteresis_celsius must be at least 1",
+    ):
+        Settings()
+
+
+@pytest.mark.parametrize("value", ["95", "96"])
+def test_roc_temperature_hysteresis_must_be_below_warning_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("ROC_TEMP_WARNING_CELSIUS", "95")
+    monkeypatch.setenv("ROC_TEMP_HYSTERESIS_CELSIUS", value)
+
+    with pytest.raises(
+        ValidationError,
+        match="roc_temp_hysteresis_celsius must be less than roc_temp_warning_celsius",
+    ):
         Settings()
 
 
