@@ -82,6 +82,23 @@ def _parse_temperature(value: Any) -> int | None:
     return int(float(celsius_text))
 
 
+def _parse_optional_int(value: Any) -> int | None:
+    if value in (None, "", "N/A", "-"):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if not isinstance(value, str):
+        msg = f"expected integer string, got {type(value).__name__}"
+        raise TypeError(msg)
+
+    try:
+        return int(float(value.strip()))
+    except ValueError:
+        return None
+
+
 def _parse_percent(value: Any) -> int | None:
     if value in (None, "", "N/A", "-"):
         return None
@@ -120,6 +137,10 @@ class ControllerInfo(StorcliModel):
     alarm_state: str = Field(alias="Alarm")
     cv_present: bool = Field(alias="Cachevault_Info")
     bbu_present: bool = Field(alias="BBU")
+    roc_temperature_celsius: int | None = Field(
+        default=None,
+        alias="ROC temperature(Degree Celsius)",
+    )
 
     @field_validator("system_time", mode="before")
     @classmethod
@@ -137,6 +158,11 @@ class ControllerInfo(StorcliModel):
     @classmethod
     def parse_bbu_present(cls, value: Any) -> bool:
         return _yes_no_to_bool(value)
+
+    @field_validator("roc_temperature_celsius", mode="before")
+    @classmethod
+    def parse_roc_temperature_celsius(cls, value: Any) -> int | None:
+        return _parse_optional_int(value)
 
 
 class VirtualDrive(StorcliModel):

@@ -18,7 +18,7 @@ async def test_collect_storcli_snapshot_assembles_snapshot(
 ) -> None:
     calls: list[tuple[list[str], bool, str]] = []
     payloads = {
-        "/c0 show all": _load_fixture("c0_show_all.json"),
+        "/c0 show all": _load_fixture("controller_show_all_with_roc.json"),
         "/c0/vall show all": _load_fixture("vall_show_all.json"),
         "/c0/eall/sall show all": _load_fixture("eall_sall_show_all.json"),
         "/c0/cv show all": _load_fixture("cv_show_all.json"),
@@ -44,6 +44,7 @@ async def test_collect_storcli_snapshot_assembles_snapshot(
     snapshot, raw_payload = await collect_storcli_snapshot(settings=_settings())
 
     assert isinstance(snapshot, StorcliSnapshot)
+    assert snapshot.controller.roc_temperature_celsius == 78
     assert len(snapshot.virtual_drives) == 1
     assert len(snapshot.physical_drives) == 8
     assert snapshot.cachevault is not None

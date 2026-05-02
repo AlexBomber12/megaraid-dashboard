@@ -39,6 +39,7 @@ def insert_snapshot(
         alarm_state=controller.alarm_state,
         cv_present=controller.cv_present,
         bbu_present=controller.bbu_present,
+        roc_temperature_celsius=controller.roc_temperature_celsius,
         raw_json=raw_payload if store_raw else None,
     )
     controller_snapshot.virtual_drives = [

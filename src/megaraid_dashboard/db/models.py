@@ -33,6 +33,7 @@ class ControllerSnapshot(TimestampedMixin, Base):
     alarm_state: Mapped[str] = mapped_column(String, nullable=False)
     cv_present: Mapped[bool] = mapped_column(Boolean, nullable=False)
     bbu_present: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    roc_temperature_celsius: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     virtual_drives: Mapped[list[VirtualDriveSnapshot]] = relationship(

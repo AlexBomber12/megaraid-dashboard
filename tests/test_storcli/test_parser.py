@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,33 @@ def test_parse_controller_show_all() -> None:
     assert "9270CV" in controller.model_name
     assert controller.serial_number == "SV00000001"
     assert controller.bbu_present is True
+
+
+def test_parse_controller_show_all_with_roc_temperature() -> None:
+    controller = parse_controller_show_all(load_fixture("controller_show_all_with_roc.json"))
+
+    assert controller.roc_temperature_celsius == 78
+
+
+def test_parse_controller_show_all_without_roc_temperature() -> None:
+    controller = parse_controller_show_all(load_fixture("controller_show_all_no_roc.json"))
+
+    assert controller.roc_temperature_celsius is None
+
+
+def test_parse_controller_show_all_with_roc_temperature_na() -> None:
+    controller = parse_controller_show_all(load_fixture("controller_show_all_roc_na.json"))
+
+    assert controller.roc_temperature_celsius is None
+
+
+def test_parse_controller_show_all_raises_for_structural_roc_temperature() -> None:
+    payload = deepcopy(load_fixture("controller_show_all_with_roc.json"))
+    hwcfg = payload["Controllers"][0]["Response Data"]["HwCfg"]
+    hwcfg["ROC temperature(Degree Celsius)"] = {"value": 78}
+
+    with pytest.raises(StorcliParseError):
+        parse_controller_show_all(payload)
 
 
 def test_parse_virtual_drives() -> None:

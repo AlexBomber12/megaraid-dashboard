@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect
@@ -39,6 +40,90 @@ def test_alembic_upgrade_downgrade_upgrade_is_idempotent() -> None:
 
             command.upgrade(config, "head")
             assert set(inspect(connection).get_table_names()) >= EXPECTED_TABLES
+    finally:
+        engine.dispose()
+
+
+def test_alembic_adds_nullable_roc_temperature_column() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+
+            command.upgrade(config, "head")
+
+            columns = {
+                column["name"]: column
+                for column in inspect(connection).get_columns("controller_snapshots")
+            }
+            roc_column = columns["roc_temperature_celsius"]
+            assert isinstance(roc_column["type"], sa.Integer)
+            assert roc_column["nullable"] is True
+    finally:
+        engine.dispose()
+
+
+def test_alembic_roc_temperature_downgrade_and_upgrade_round_trip() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+
+            command.upgrade(config, "head")
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO controller_snapshots (
+                        captured_at,
+                        model_name,
+                        serial_number,
+                        firmware_version,
+                        bios_version,
+                        driver_version,
+                        alarm_state,
+                        cv_present,
+                        bbu_present,
+                        roc_temperature_celsius
+                    )
+                    VALUES (
+                        :captured_at,
+                        :model_name,
+                        :serial_number,
+                        :firmware_version,
+                        :bios_version,
+                        :driver_version,
+                        :alarm_state,
+                        :cv_present,
+                        :bbu_present,
+                        :roc_temperature_celsius
+                    )
+                    """
+                ),
+                {
+                    "captured_at": "2026-05-02 00:00:00",
+                    "model_name": "LSI MegaRAID SAS 9270CV-8i",
+                    "serial_number": "SV00000001",
+                    "firmware_version": "23.34.0-0019",
+                    "bios_version": "5.50.03.0_4.17.08.00_0x06110200",
+                    "driver_version": "07.727.03.00-rc1",
+                    "alarm_state": "On",
+                    "cv_present": True,
+                    "bbu_present": True,
+                    "roc_temperature_celsius": 85,
+                },
+            )
+
+            command.downgrade(config, "0003_events_notified_at")
+            downgraded_columns = {
+                column["name"] for column in inspect(connection).get_columns("controller_snapshots")
+            }
+            assert "roc_temperature_celsius" not in downgraded_columns
+
+            command.upgrade(config, "head")
+            upgraded_columns = {
+                column["name"] for column in inspect(connection).get_columns("controller_snapshots")
+            }
+            assert "roc_temperature_celsius" in upgraded_columns
     finally:
         engine.dispose()
 
