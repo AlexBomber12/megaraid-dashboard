@@ -5,7 +5,7 @@ import base64
 import bcrypt
 import httpx
 import pytest
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.web.auth import BasicAuthMiddleware, _is_whitelisted, _verify_credentials
@@ -84,6 +84,10 @@ def test_verify_credentials_accepts_correct_credentials(settings: Settings) -> N
     assert _verify_credentials(_basic_header("admin", _TEST_PASSWORD), settings) is True
 
 
+def test_verify_credentials_accepts_case_insensitive_basic_scheme(settings: Settings) -> None:
+    assert _verify_credentials(_basic_header("admin", _TEST_PASSWORD, scheme="basic"), settings)
+
+
 async def test_middleware_returns_401_for_missing_header(settings: Settings) -> None:
     async with _auth_client(settings) as client:
         response = await client.get("/")
@@ -138,6 +142,34 @@ async def test_middleware_allows_correct_credentials(settings: Settings) -> None
     assert response.content == b"ok"
 
 
+async def test_middleware_reads_authorization_header_case_insensitively(
+    settings: Settings,
+) -> None:
+    app = BasicAuthMiddleware(_ok_app, settings=settings)
+    messages: list[Message] = []
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        messages.append(message)
+
+    await app(
+        {
+            "type": "http",
+            "path": "/",
+            "headers": [
+                (b"Authorization", _basic_header("admin", _TEST_PASSWORD).encode("latin-1")),
+            ],
+        },
+        receive,
+        send,
+    )
+
+    assert messages[0]["type"] == "http.response.start"
+    assert messages[0]["status"] == 200
+
+
 @pytest.mark.parametrize("path", ["/healthz", "/favicon.ico", "/static/css/app.css"])
 async def test_middleware_bypasses_whitelisted_paths_without_header(
     settings: Settings,
@@ -162,9 +194,9 @@ async def test_middleware_bypasses_whitelisted_paths_with_wrong_header(
     assert response.content == b"ok"
 
 
-def _basic_header(username: str, password: str) -> str:
+def _basic_header(username: str, password: str, *, scheme: str = "Basic") -> str:
     token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
-    return f"Basic {token}"
+    return f"{scheme} {token}"
 
 
 def _auth_client(settings: Settings) -> httpx.AsyncClient:
