@@ -4,15 +4,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "==> ruff check ."
-ruff check .
+python -m ruff check .
 
 echo "==> ruff format --check ."
-ruff format --check .
+python -m ruff format --check .
 
 echo "==> mypy src"
-mypy src
+python -m mypy src
 
 echo "==> pytest"
-pytest
+python -m pytest
 
 echo "==> ci.sh OK"

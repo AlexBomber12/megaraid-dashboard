@@ -3,8 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
+
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
 from megaraid_dashboard.storcli import CacheVault, PhysicalDrive, StorcliSnapshot, VirtualDrive
+
+_LOG = structlog.get_logger(__name__)
 
 DriveKey = tuple[int, int, str]
 SlotKey = tuple[int, int]
@@ -45,11 +49,17 @@ class EventDetector:
         temp_warning: int,
         temp_critical: int,
         temp_hysteresis: int,
+        roc_temp_warning: int,
+        roc_temp_critical: int,
+        roc_temp_hysteresis: int,
         cv_capacitance_warning_percent: int = 70,
     ) -> None:
         self.temp_warning = temp_warning
         self.temp_critical = temp_critical
         self.temp_hysteresis = temp_hysteresis
+        self.roc_temp_warning = roc_temp_warning
+        self.roc_temp_critical = roc_temp_critical
+        self.roc_temp_hysteresis = roc_temp_hysteresis
         self.cv_capacitance_warning_percent = cv_capacitance_warning_percent
         self._temperature_states: dict[DriveKey, str] = {}
         self._temperature_updates: dict[DriveKey, str] = {}
@@ -91,6 +101,7 @@ class EventDetector:
 
         if previous is not None:
             events.extend(self._detect_controller(previous, current))
+            events.extend(self._detect_roc_temperature(previous, current))
             events.extend(self._detect_virtual_drives(previous, current))
             replacement_events, replaced_slots = self._detect_drive_replacements(
                 previous,
@@ -146,6 +157,72 @@ class EventDetector:
                 after={"alarm_state": current_alarm},
             )
         ]
+
+    def _detect_roc_temperature(
+        self,
+        previous: ControllerSnapshot,
+        current: StorcliSnapshot,
+    ) -> list[DetectedEvent]:
+        previous_temperature = previous.roc_temperature_celsius
+        current_temperature = current.controller.roc_temperature_celsius
+        if previous_temperature is None or current_temperature is None:
+            _LOG.info(
+                "roc_temperature_unavailable",
+                previous_roc_temperature_celsius=previous_temperature,
+                current_roc_temperature_celsius=current_temperature,
+            )
+            return []
+
+        events: list[DetectedEvent] = []
+        if previous_temperature < self.roc_temp_warning <= current_temperature:
+            events.append(
+                _roc_temperature_event(
+                    severity="warning",
+                    summary=(
+                        f"RoC temperature {current_temperature} C crossed warning "
+                        f"threshold ({self.roc_temp_warning} C)"
+                    ),
+                    previous_temperature=previous_temperature,
+                    current_temperature=current_temperature,
+                )
+            )
+        if previous_temperature < self.roc_temp_critical <= current_temperature:
+            events.append(
+                _roc_temperature_event(
+                    severity="critical",
+                    summary=(
+                        f"RoC temperature {current_temperature} C crossed critical "
+                        f"threshold ({self.roc_temp_critical} C)"
+                    ),
+                    previous_temperature=previous_temperature,
+                    current_temperature=current_temperature,
+                )
+            )
+        if (
+            previous_temperature >= self.roc_temp_critical
+            and current_temperature <= self.roc_temp_critical - self.roc_temp_hysteresis
+        ):
+            events.append(
+                _roc_temperature_event(
+                    severity="info",
+                    summary=f"RoC temperature {current_temperature} C cleared critical threshold",
+                    previous_temperature=previous_temperature,
+                    current_temperature=current_temperature,
+                )
+            )
+        if (
+            previous_temperature >= self.roc_temp_warning
+            and current_temperature <= self.roc_temp_warning - self.roc_temp_hysteresis
+        ):
+            events.append(
+                _roc_temperature_event(
+                    severity="info",
+                    summary=f"RoC temperature {current_temperature} C cleared warning threshold",
+                    previous_temperature=previous_temperature,
+                    current_temperature=current_temperature,
+                )
+            )
+        return events
 
     def _detect_virtual_drives(
         self,
@@ -525,6 +602,23 @@ def _new_virtual_drive_event(virtual_drive: VirtualDrive) -> DetectedEvent | Non
         summary=f"VD {virtual_drive.vd_id} state is {virtual_drive.state}",
         before=None,
         after={"state": virtual_drive.state},
+    )
+
+
+def _roc_temperature_event(
+    *,
+    severity: str,
+    summary: str,
+    previous_temperature: int,
+    current_temperature: int,
+) -> DetectedEvent:
+    return DetectedEvent(
+        severity=severity,
+        category="controller_temperature",
+        subject="Controller",
+        summary=summary,
+        before={"roc_temperature_celsius": previous_temperature},
+        after={"roc_temperature_celsius": current_temperature},
     )
 
 

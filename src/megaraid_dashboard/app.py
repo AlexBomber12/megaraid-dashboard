@@ -129,6 +129,9 @@ async def _start_collector_scheduler(
             temp_warning=settings.temp_warning_celsius,
             temp_critical=settings.temp_critical_celsius,
             temp_hysteresis=settings.temp_hysteresis_celsius,
+            roc_temp_warning=settings.roc_temp_warning_celsius,
+            roc_temp_critical=settings.roc_temp_critical_celsius,
+            roc_temp_hysteresis=settings.roc_temp_hysteresis_celsius,
             cv_capacitance_warning_percent=settings.cv_capacitance_warning_percent,
         )
         collector = CollectorService(
