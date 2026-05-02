@@ -20,6 +20,7 @@ from megaraid_dashboard.db.dao import insert_snapshot
 from megaraid_dashboard.db.models import PhysicalDriveMetricsHourly
 from megaraid_dashboard.storcli import StorcliSnapshot
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
+from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +32,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("ALERT_FROM", "alert@example.test")
     monkeypatch.setenv("ALERT_TO", "ops@example.test")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "test-bcrypt-hash")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
@@ -122,7 +123,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/", headers={"X-Forwarded-Prefix": "/raid"})
@@ -146,7 +147,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/")
@@ -164,7 +165,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
 
 def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         full_response = client.get("/")
         partial_response = client.get("/partials/overview")
 
@@ -185,11 +186,20 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "site-header" not in partial_response.text
 
 
+def test_dashboard_requires_authentication() -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == 'Basic realm="megaraid-dashboard"'
+
+
 def test_partial_endpoint_returns_data_block_fragment(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/partials/overview")
@@ -204,7 +214,7 @@ def test_partial_endpoint_returns_data_block_fragment(
 
 def test_data_block_has_auto_refresh_attributes() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
     assert 'id="data-block"' in response.text
@@ -218,7 +228,7 @@ def test_vendored_htmx_exists_and_is_referenced() -> None:
     assert Path("src/megaraid_dashboard/static/vendor/htmx.min.js").exists()
 
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
     assert "/static/vendor/htmx.min.js" in response.text
@@ -226,7 +236,7 @@ def test_vendored_htmx_exists_and_is_referenced() -> None:
 
 def test_static_assets_are_served_with_far_future_cache_header() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         css_response = client.get("/static/css/app.css")
         chart_response = client.get("/static/vendor/chart.min.js")
 
@@ -243,7 +253,7 @@ def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives", headers={"X-Forwarded-Prefix": "/raid"})
@@ -262,7 +272,7 @@ def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
 
 def test_drive_list_slot_column_links_to_drive_detail(sample_snapshot: StorcliSnapshot) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives")
@@ -273,7 +283,7 @@ def test_drive_list_slot_column_links_to_drive_detail(sample_snapshot: StorcliSn
 
 def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/drives/252/4")
 
     assert response.status_code == 404
@@ -283,7 +293,7 @@ def test_drive_detail_returns_404_when_latest_snapshot_lacks_requested_slot(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives/252/99")
@@ -295,7 +305,7 @@ def test_drive_detail_renders_attributes_and_chart_area(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives/252/4")
@@ -314,7 +324,7 @@ def test_drive_charts_partial_returns_only_chart_area(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives/252/4/charts?range_days=30")
@@ -334,7 +344,7 @@ def test_drive_charts_range_changes_dataset_labels(sample_snapshot: StorcliSnaps
         update={"captured_at": sample_snapshot.captured_at.replace(day=10)}
     )
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, older_snapshot)
         _insert_app_snapshot(test_app, sample_snapshot)
 
@@ -375,7 +385,7 @@ def test_drive_charts_pins_refresh_to_detail_serial_and_captured_at(
         }
     )
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
         _insert_app_snapshot(test_app, replaced_snapshot)
 
@@ -422,7 +432,7 @@ def test_drive_charts_aligns_duplicate_points_when_temperature_is_missing(
         update={"physical_drives": present_temperature_drives}
     )
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, missing_temperature_snapshot)
         _insert_app_snapshot(test_app, present_temperature_snapshot)
 
@@ -447,7 +457,7 @@ def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives/252/4/charts?range_days=7")
@@ -471,7 +481,7 @@ def test_drive_charts_y_axis_includes_high_configured_thresholds(
     monkeypatch.setenv("TEMP_CRITICAL_CELSIUS", "90")
     get_settings.cache_clear()
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives/252/4/charts?range_days=7")
@@ -498,7 +508,7 @@ def test_drive_charts_replacement_markers_use_point_index_for_duplicate_labels(
         }
     )
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, old_snapshot)
         _insert_app_snapshot(test_app, sample_snapshot)
 
@@ -525,7 +535,7 @@ def test_drive_charts_preserves_same_bucket_replacement_metrics(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
         _insert_hourly_metric(
             test_app,
@@ -560,7 +570,7 @@ def test_drive_charts_anchors_replacement_marker_to_surviving_raw_point(
         update={"captured_at": datetime(2026, 4, 25, 12, 10, tzinfo=UTC)}
     )
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, current_snapshot)
         _insert_hourly_metric(
             test_app,
@@ -597,7 +607,7 @@ def test_drive_charts_preserves_multiple_replacement_markers_in_same_bucket(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
         _insert_hourly_metric(
             test_app,
@@ -645,7 +655,7 @@ def test_drive_charts_preserves_multiple_replacement_markers_in_same_bucket(
 
 def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapshot) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
         response = client.get("/drives/252/4", headers={"X-Forwarded-Prefix": "/raid"})
@@ -683,7 +693,7 @@ def test_static_asset_version_includes_chartjs_bytes(
 
 def test_events_route_returns_read_only_empty_state() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/events")
 
     assert response.status_code == 200
@@ -693,7 +703,7 @@ def test_events_route_returns_read_only_empty_state() -> None:
 
 def test_health_response_is_unchanged() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/health")
 
     assert response.status_code == 200

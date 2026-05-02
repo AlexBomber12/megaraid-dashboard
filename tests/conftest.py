@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import bcrypt
 import pytest
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -21,6 +23,22 @@ from megaraid_dashboard.storcli import (
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "storcli" / "redacted"
+TEST_ADMIN_PASSWORD = "test-password"
+TEST_ADMIN_PASSWORD_HASH = bcrypt.hashpw(TEST_ADMIN_PASSWORD.encode(), bcrypt.gensalt()).decode()
+TEST_AUTH_HEADER = {
+    "Authorization": "Basic "
+    + base64.b64encode(f"admin:{TEST_ADMIN_PASSWORD}".encode()).decode("ascii")
+}
+
+
+@pytest.fixture
+def admin_password_hash() -> str:
+    return TEST_ADMIN_PASSWORD_HASH
+
+
+@pytest.fixture
+def auth_header() -> dict[str, str]:
+    return dict(TEST_AUTH_HEADER)
 
 
 @pytest.fixture

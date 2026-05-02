@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from megaraid_dashboard import __version__
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
+from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +20,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("ALERT_FROM", "alert@example.test")
     monkeypatch.setenv("ALERT_TO", "ops@example.test")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "test-bcrypt-hash")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
@@ -31,7 +32,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def test_health_returns_ok() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), headers=TEST_AUTH_HEADER)
 
     response = client.get("/health")
 
@@ -40,7 +41,7 @@ def test_health_returns_ok() -> None:
 
 
 def test_health_returns_package_version() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(), headers=TEST_AUTH_HEADER)
 
     response = client.get("/health")
 
@@ -48,7 +49,7 @@ def test_health_returns_package_version() -> None:
 
 
 def test_index_contains_dashboard_title() -> None:
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(), headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
         assert response.status_code == 200

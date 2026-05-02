@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [{name = "Aleksei Ratnikov"}]
 dependencies = [
+  "bcrypt>=4.1,<5.0",
   "fastapi>=0.110,<1.0",
   "uvicorn[standard]>=0.27,<1.0",
   "apscheduler>=3.10,<4.0",
