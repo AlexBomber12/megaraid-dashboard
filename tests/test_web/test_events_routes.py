@@ -15,6 +15,7 @@ from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot, record_event
 from megaraid_dashboard.storcli import StorcliSnapshot
+from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         "ALERT_FROM": "alert@example.test",
         "ALERT_TO": "ops@example.test",
         "ADMIN_USERNAME": "admin",
-        "ADMIN_PASSWORD_HASH": "test-bcrypt-hash",
+        "ADMIN_PASSWORD_HASH": TEST_ADMIN_PASSWORD_HASH,
         "STORCLI_PATH": "/usr/local/sbin/storcli64",
         "METRICS_INTERVAL_SECONDS": "300",
         "COLLECTOR_ENABLED": "false",
@@ -50,7 +51,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
 
 def test_events_empty_database_renders_empty_state_without_load_more() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/events")
         partial_response = client.get("/partials/events")
 
@@ -66,6 +67,15 @@ def test_events_empty_database_renders_empty_state_without_load_more() -> None:
     assert "No events recorded yet." in partial_response.text
 
 
+def test_events_route_requires_authentication() -> None:
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/events")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == 'Basic realm="megaraid-dashboard"'
+
+
 @pytest.mark.parametrize(
     ("count", "expected_subject", "expect_load_more"),
     [(51, "event-50", True), (50, "event-49", False)],
@@ -76,7 +86,7 @@ def test_events_page_renders_table_and_load_more_state(
     expect_load_more: bool,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_events(test_app, count=count)
 
         headers = {"X-Forwarded-Prefix": "/raid"} if expect_load_more else {}
@@ -94,7 +104,7 @@ def test_events_page_renders_table_and_load_more_state(
 
 def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_events(test_app, count=51)
         response = client.get("/partials/events")
 
@@ -116,7 +126,7 @@ def test_events_partial_without_cursor_refreshes_header_timestamp(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
         _insert_app_events(test_app, count=1)
         response = client.get("/partials/events")
@@ -130,7 +140,7 @@ def test_events_partial_without_cursor_refreshes_header_timestamp(
 
 def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         inserted = _insert_app_events(test_app, count=51)
         cursor_event = inserted[1]
 
@@ -170,7 +180,7 @@ def test_events_partial_rejects_invalid_cursors(
     expected_detail: str,
 ) -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/partials/events", params=params)
 
     assert response.status_code == 400
@@ -179,7 +189,7 @@ def test_events_partial_rejects_invalid_cursors(
 
 def test_events_page_formats_time_and_severity_badges() -> None:
     test_app = create_app()
-    with TestClient(test_app) as client:
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         occurred_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
         for index, severity in enumerate(("info", "warning", "critical", "other")):
             _insert_app_event(

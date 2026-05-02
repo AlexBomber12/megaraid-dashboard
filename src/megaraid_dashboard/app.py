@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db import get_engine, get_sessionmaker
 from megaraid_dashboard.services import CollectorService, EventDetector
+from megaraid_dashboard.web.auth import BasicAuthMiddleware
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from megaraid_dashboard.web.routes import router
 from megaraid_dashboard.web.static import CacheControlStaticFiles
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="MegaRAID Dashboard", lifespan=_lifespan)
     app.state.settings = get_settings()
     app.add_middleware(ForwardedPrefixMiddleware)
+    app.add_middleware(BasicAuthMiddleware, settings=app.state.settings)
     app.mount(
         "/static",
         CacheControlStaticFiles(directory=_STATIC_DIR),

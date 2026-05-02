@@ -13,6 +13,7 @@ from sqlalchemy import inspect
 from megaraid_dashboard import app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db import get_engine, get_sessionmaker
+from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
 def _set_required_app_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -23,7 +24,7 @@ def _set_required_app_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.setenv("ALERT_FROM", "alert@example.test")
     monkeypatch.setenv("ALERT_TO", "ops@example.test")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "test-bcrypt-hash")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "true")
@@ -123,7 +124,7 @@ def test_lifespan_skips_collector_when_lock_is_already_held(
     test_app = app.create_app()
 
     try:
-        with TestClient(test_app) as client:
+        with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
             response = client.get("/health")
 
         assert response.status_code == 200
@@ -164,7 +165,7 @@ def test_lifespan_retries_collector_lock_after_holder_releases(
     test_app = app.create_app()
 
     try:
-        with TestClient(test_app) as client:
+        with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
             response = client.get("/health")
             assert response.status_code == 200
             assert test_app.state.collector is None
