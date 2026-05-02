@@ -41,6 +41,7 @@ def test_insert_snapshot_creates_expected_child_rows(
     assert session.scalar(select(func.count()).select_from(PhysicalDriveSnapshot)) == 8
     assert session.scalar(select(func.count()).select_from(CacheVaultSnapshot)) == 1
     assert session.scalars(select(ControllerSnapshot)).one().raw_json == {"Controllers": []}
+    assert session.scalars(select(ControllerSnapshot)).one().roc_temperature_celsius == 110
     assert session.scalars(select(CacheVaultSnapshot)).one().capacitance_percent == 89
 
 

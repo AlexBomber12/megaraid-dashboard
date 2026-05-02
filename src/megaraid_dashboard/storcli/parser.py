@@ -29,6 +29,7 @@ def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
             "Alarm": hwcfg["Alarm"],
             "Cachevault_Info": response.get("Cachevault_Info", []),
             "BBU": hwcfg["BBU"],
+            "ROC temperature(Degree Celsius)": hwcfg.get("ROC temperature(Degree Celsius)"),
         }
         return ControllerInfo.model_validate(data)
     except (KeyError, TypeError, ValidationError) as exc:
