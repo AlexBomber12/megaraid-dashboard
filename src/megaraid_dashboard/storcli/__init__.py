@@ -14,10 +14,11 @@ from megaraid_dashboard.storcli.models import (
     size_string_to_bytes,
 )
 from megaraid_dashboard.storcli.parser import (
+    DriveShow,
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
-    parse_drive_state,
+    parse_drive_show,
     parse_physical_drives,
     parse_virtual_drives,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "BbuInfo",
     "CacheVault",
     "ControllerInfo",
+    "DriveShow",
     "PhysicalDrive",
     "StorcliCommandFailed",
     "StorcliError",
@@ -37,7 +39,7 @@ __all__ = [
     "parse_bbu",
     "parse_cachevault",
     "parse_controller_show_all",
-    "parse_drive_state",
+    "parse_drive_show",
     "parse_physical_drives",
     "parse_virtual_drives",
     "run_storcli",

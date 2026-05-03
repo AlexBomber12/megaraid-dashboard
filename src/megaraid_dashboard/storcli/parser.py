@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -13,6 +14,14 @@ from megaraid_dashboard.storcli.models import (
     PhysicalDrive,
     VirtualDrive,
 )
+
+
+@dataclass(frozen=True)
+class DriveShow:
+    """Live drive state and serial number from a `/c0/eX/sY show all J` payload."""
+
+    state: str
+    serial_number: str
 
 
 def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
@@ -58,10 +67,17 @@ def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
         raise StorcliParseError("virtual drive payload does not match expected schema") from exc
 
 
-def parse_drive_state(payload: dict[str, Any]) -> str:
-    """Extract the live drive state from a `/c0/eX/sY show all J` payload."""
+def parse_drive_show(payload: dict[str, Any]) -> DriveShow:
+    """Extract live state and serial number from a `/c0/eX/sY show all J` payload."""
     controller = _ensure_success(payload)
-    response = _response_data(controller)
+    try:
+        response = _response_data(controller)
+        return _extract_drive_show(response)
+    except (KeyError, TypeError) as exc:
+        raise StorcliParseError("drive show payload does not match expected schema") from exc
+
+
+def _extract_drive_show(response: Mapping[str, Any]) -> DriveShow:
     for key, value in response.items():
         if not key.startswith("Drive ") or key.endswith(" - Detailed Information"):
             continue
@@ -71,9 +87,16 @@ def parse_drive_state(payload: dict[str, Any]) -> str:
         if not isinstance(first, Mapping):
             continue
         state = first.get("State")
-        if isinstance(state, str):
-            return state
-    raise StorcliParseError("drive show payload does not contain a State field")
+        if not isinstance(state, str):
+            continue
+        detail = _mapping(response[f"{key} - Detailed Information"])
+        attributes = _mapping(detail[f"{key} Device attributes"])
+        serial_number = attributes["SN"]
+        if not isinstance(serial_number, str):
+            msg = "SN must be a string"
+            raise TypeError(msg)
+        return DriveShow(state=state, serial_number=serial_number.strip())
+    raise StorcliParseError("drive show payload does not contain a Drive State and SN")
 
 
 def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:

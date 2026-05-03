@@ -15,7 +15,7 @@ from megaraid_dashboard.storcli import (
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
-    parse_drive_state,
+    parse_drive_show,
     parse_physical_drives,
     parse_virtual_drives,
 )
@@ -141,6 +141,7 @@ def test_parse_bbu_raises_on_unexpected_failure() -> None:
         parse_physical_drives,
         parse_cachevault,
         parse_bbu,
+        parse_drive_show,
     ],
 )
 def test_successful_parsers_wrap_malformed_response_data(
@@ -151,29 +152,25 @@ def test_successful_parsers_wrap_malformed_response_data(
 
 
 @pytest.mark.parametrize("state", ["Onln", "Offln", "Failed", "UBad", "UGood", "Rbld"])
-def test_parse_drive_state_returns_summary_state(state: str) -> None:
-    payload = success_payload(
-        {
-            "Drive /c0/e2/s0": [
-                {
-                    "EID:Slt": "2:0",
-                    "DID": 14,
-                    "State": state,
-                    "Intf": "SATA",
-                }
-            ],
-        }
-    )
+def test_parse_drive_show_returns_state_and_serial(state: str) -> None:
+    result = parse_drive_show(drive_show_payload(state=state, serial_number="WD-SN-0001"))
 
-    assert parse_drive_state(payload) == state
+    assert result.state == state
+    assert result.serial_number == "WD-SN-0001"
 
 
-def test_parse_drive_state_raises_on_failure() -> None:
+def test_parse_drive_show_strips_serial_whitespace() -> None:
+    result = parse_drive_show(drive_show_payload(state="Onln", serial_number="  WD-SN-0001  "))
+
+    assert result.serial_number == "WD-SN-0001"
+
+
+def test_parse_drive_show_raises_on_failure() -> None:
     with pytest.raises(StorcliCommandFailed, match="device removed"):
-        parse_drive_state(unexpected_failure_payload("device removed"))
+        parse_drive_show(unexpected_failure_payload("device removed"))
 
 
-def test_parse_drive_state_raises_when_state_field_missing() -> None:
+def test_parse_drive_show_raises_when_state_field_missing() -> None:
     payload = success_payload(
         {
             "Drive /c0/e2/s0": [
@@ -187,7 +184,81 @@ def test_parse_drive_state_raises_when_state_field_missing() -> None:
     )
 
     with pytest.raises(StorcliParseError, match="State"):
-        parse_drive_state(payload)
+        parse_drive_show(payload)
+
+
+def test_parse_drive_show_raises_when_detailed_information_missing() -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {
+                    "EID:Slt": "2:0",
+                    "DID": 14,
+                    "State": "Onln",
+                    "Intf": "SATA",
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(StorcliParseError, match="schema"):
+        parse_drive_show(payload)
+
+
+def test_parse_drive_show_raises_when_sn_missing() -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {"EID:Slt": "2:0", "State": "Onln"},
+            ],
+            "Drive /c0/e2/s0 - Detailed Information": {
+                "Drive /c0/e2/s0 Device attributes": {
+                    "Model Number": "WDC WD30EFRX",
+                },
+            },
+        }
+    )
+
+    with pytest.raises(StorcliParseError, match="schema"):
+        parse_drive_show(payload)
+
+
+def test_parse_drive_show_raises_when_sn_not_string() -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {"EID:Slt": "2:0", "State": "Onln"},
+            ],
+            "Drive /c0/e2/s0 - Detailed Information": {
+                "Drive /c0/e2/s0 Device attributes": {
+                    "SN": 12345,
+                },
+            },
+        }
+    )
+
+    with pytest.raises(StorcliParseError, match="schema"):
+        parse_drive_show(payload)
+
+
+def drive_show_payload(*, state: str, serial_number: str) -> dict[str, Any]:
+    return success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {
+                    "EID:Slt": "2:0",
+                    "DID": 14,
+                    "State": state,
+                    "Intf": "SATA",
+                }
+            ],
+            "Drive /c0/e2/s0 - Detailed Information": {
+                "Drive /c0/e2/s0 State": {"Media Error Count": 0},
+                "Drive /c0/e2/s0 Device attributes": {"SN": serial_number},
+                "Drive /c0/e2/s0 Policies/Settings": {},
+            },
+        }
+    )
 
 
 def success_payload(response_data: Any) -> dict[str, Any]:

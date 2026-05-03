@@ -124,6 +124,8 @@ def test_drive_replace_offline_dry_run_query_param_false_executes_runner(
     ) -> dict[str, Any]:
         del use_sudo, binary_path
         runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln")
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -140,7 +142,10 @@ def test_drive_replace_offline_dry_run_query_param_false_executes_runner(
 
         assert response.status_code == 200
         assert "result" in response.json()
-        assert runner_calls == [["/c0/e2/s0", "set", "offline", "J"]]
+        assert runner_calls == [
+            ["/c0/e2/s0", "show", "all", "J"],
+            ["/c0/e2/s0", "set", "offline", "J"],
+        ]
 
 
 def test_drive_replace_offline_dry_run_query_param_invalid_returns_400(
@@ -207,6 +212,8 @@ def test_drive_replace_offline_success_invokes_runner_and_audits(
         assert use_sudo is False
         assert binary_path == "/usr/local/sbin/storcli64"
         runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln")
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -230,7 +237,10 @@ def test_drive_replace_offline_success_invokes_runner_and_audits(
             "argv": ["/c0/e2/s0", "set", "offline", "J"],
             "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
         }
-        assert runner_calls == [["/c0/e2/s0", "set", "offline", "J"]]
+        assert runner_calls == [
+            ["/c0/e2/s0", "show", "all", "J"],
+            ["/c0/e2/s0", "set", "offline", "J"],
+        ]
         event = _read_single_event(test_app)
         assert event.category == "operator_action"
         assert event.severity == "info"
@@ -412,7 +422,7 @@ def test_drive_replace_offline_returns_409_on_serial_mismatch(
         _assert_no_audit_event(test_app)
 
 
-def test_drive_replace_offline_returns_409_on_invalid_state(
+def test_drive_replace_offline_dry_run_returns_409_on_invalid_state(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
@@ -428,6 +438,45 @@ def test_drive_replace_offline_returns_409_on_invalid_state(
         response = client.post(
             "/drives/2:0/replace/offline",
             headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL, "dry_run": True},
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["state"] == "Rbld"
+        assert body["step"] == "offline"
+        assert "cannot offline" in body["error"]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_offline_rejects_when_live_state_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Rbld")
+        raise AssertionError("set offline must not run when live state forbids it")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Persisted snapshot says Onln but the live disk reports Rbld.
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
             json={"serial_number": _DEFAULT_SERIAL},
         )
 
@@ -436,6 +485,87 @@ def test_drive_replace_offline_returns_409_on_invalid_state(
         assert body["state"] == "Rbld"
         assert body["step"] == "offline"
         assert "cannot offline" in body["error"]
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_offline_rejects_when_live_serial_mismatches(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln", serial_number="OTHER-DRIVE-SN")
+        raise AssertionError("set offline must not run on live serial mismatch")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Persisted snapshot still names the original drive but the slot now
+        # contains a different physical disk. Typed confirmation must reject.
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"] == "live serial mismatch"
+        assert body["expected"] == _DEFAULT_SERIAL
+        assert body["live"] == "OTHER-DRIVE-SN"
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_missing_rejects_when_live_serial_mismatches(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Offln", serial_number="OTHER-DRIVE-SN")
+        raise AssertionError("set missing must not run on live serial mismatch")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"] == "live serial mismatch"
+        assert body["expected"] == _DEFAULT_SERIAL
+        assert body["live"] == "OTHER-DRIVE-SN"
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
         _assert_no_audit_event(test_app)
 
 
@@ -642,7 +772,15 @@ def test_drive_replace_offline_audit_failure_returns_500(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln")
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
@@ -821,7 +959,7 @@ def _seed_drive(
         session.commit()
 
 
-def _drive_show_payload(*, state: str) -> dict[str, Any]:
+def _drive_show_payload(*, state: str, serial_number: str = _DEFAULT_SERIAL) -> dict[str, Any]:
     return {
         "Controllers": [
             {
@@ -839,6 +977,11 @@ def _drive_show_payload(*, state: str) -> dict[str, Any]:
                             "Model": "WDC WD30EFRX-68EUZN0",
                         }
                     ],
+                    "Drive /c0/e2/s0 - Detailed Information": {
+                        "Drive /c0/e2/s0 State": {"Media Error Count": 0},
+                        "Drive /c0/e2/s0 Device attributes": {"SN": serial_number},
+                        "Drive /c0/e2/s0 Policies/Settings": {},
+                    },
                 },
             }
         ]
