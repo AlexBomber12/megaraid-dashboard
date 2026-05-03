@@ -15,13 +15,14 @@ INSTALL_USER="${INSTALL_USER:-raid-monitor}"
 INSTALL_PREFIX="${INSTALL_PREFIX:-/opt/megaraid-dashboard}"
 DATA_DIR="${DATA_DIR:-/var/lib/megaraid-dashboard}"
 ETC_DIR="${ETC_DIR:-/etc/megaraid-dashboard}"
+SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/megaraid-dashboard}"
 
 [[ ${EUID} -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 
 systemctl stop megaraid-dashboard.service 2>/dev/null || true
 systemctl disable megaraid-dashboard.service 2>/dev/null || true
 rm -f /etc/systemd/system/megaraid-dashboard.service
-rm -f /etc/sudoers.d/megaraid-dashboard
+rm -f "${SUDOERS_FILE}"
 rm -f /etc/systemd/journald@megaraid-dashboard.conf.d/00-retention.conf
 systemctl daemon-reload
 

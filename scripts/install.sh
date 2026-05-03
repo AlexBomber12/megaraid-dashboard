@@ -437,10 +437,14 @@ phase_systemd() {
   unit_template="${INSTALL_PREFIX}/src/deploy/megaraid-dashboard.service"
   unit_tmp="$(mktemp /tmp/megaraid-dashboard.service.XXXXXXXX)"
 
+  install -d -m 0750 -o root -g "${INSTALL_USER}" "${INSTALL_PREFIX}/scripts"
+  install -m 0750 -o root -g "${INSTALL_USER}" \
+    "${INSTALL_PREFIX}/src/scripts/preflight.sh" \
+    "${INSTALL_PREFIX}/scripts/preflight.sh"
+
   if ! sed \
     -e "s|User=raid-monitor|User=$(sed_replacement_escape "${INSTALL_USER}")|" \
     -e "s|Group=raid-monitor|Group=$(sed_replacement_escape "${INSTALL_USER}")|" \
-    -e "s|ExecStartPre=/opt/megaraid-dashboard/scripts/preflight.sh|ExecStartPre=/opt/megaraid-dashboard/src/scripts/preflight.sh|" \
     -e "s|/opt/megaraid-dashboard|$(sed_replacement_escape "${INSTALL_PREFIX}")|g" \
     -e "s|/var/lib/megaraid-dashboard|$(sed_replacement_escape "${DATA_DIR}")|g" \
     -e "s|/etc/megaraid-dashboard/env|$(sed_replacement_escape "${ENV_FILE}")|g" \

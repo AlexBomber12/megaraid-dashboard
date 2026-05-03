@@ -87,6 +87,9 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     unit_template = prefix / "src" / "deploy" / "megaraid-dashboard.service"
     unit_template.parent.mkdir(parents=True)
     shutil.copy2(REPO_ROOT / "deploy" / "megaraid-dashboard.service", unit_template)
+    preflight_source = prefix / "src" / "scripts" / "preflight.sh"
+    preflight_source.parent.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "scripts" / "preflight.sh", preflight_source)
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -96,14 +99,21 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
         bin_dir / "install",
         "#!/bin/sh\n"
         f"printf 'install %s\\n' \"$*\" >> {log}\n"
+        "make_dir=false\n"
         'while [ "$#" -gt 0 ]; do\n'
         '  case "$1" in\n'
+        "    -d) make_dir=true; shift ;;\n"
         "    -m|-o|-g) shift 2 ;;\n"
         "    *) break ;;\n"
         "  esac\n"
         "done\n"
-        'cp "$1" '
-        f"{installed_unit}\n",
+        'if [ "$make_dir" = true ]; then\n'
+        '  mkdir -p "$1"\n'
+        'elif [ "$2" = /etc/systemd/system/megaraid-dashboard.service ]; then\n'
+        f'  cp "$1" {installed_unit}\n'
+        "else\n"
+        '  cp "$1" "$2"\n'
+        "fi\n",
     )
     _write_executable(
         bin_dir / "systemctl",
@@ -132,11 +142,20 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     assert "User=raid-special" in unit
     assert "Group=raid-special" in unit
     assert f"EnvironmentFile={tmp_path / 'etc' / 'env'}" in unit
-    assert f"ExecStartPre={prefix}/src/scripts/preflight.sh" in unit
+    assert f"ExecStartPre={prefix}/scripts/preflight.sh" in unit
     assert f"ReadWritePaths={tmp_path / 'data'}" in unit
     assert "--port 18123" in unit
     assert "scripts/preflight.sh" in unit
+    assert (prefix / "scripts" / "preflight.sh").read_text() == preflight_source.read_text()
     assert "systemctl daemon-reload" in log.read_text()
+
+
+def test_uninstall_removes_configured_sudoers_file() -> None:
+    script = UNINSTALL_SCRIPT.read_text()
+
+    assert 'SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/megaraid-dashboard}"' in script
+    assert 'rm -f "${SUDOERS_FILE}"' in script
+    assert "rm -f /etc/sudoers.d/megaraid-dashboard" not in script
 
 
 def _write_executable(path: Path, content: str) -> None:
