@@ -491,7 +491,16 @@ phase_finalize() {
     log_fail "service failed to become active"
 
   local healthz
-  healthz="$(curl -fs "http://127.0.0.1:${APP_PORT}/healthz" || true)"
+  healthz=""
+  for ((attempt = 1; attempt <= 30; attempt++)); do
+    healthz="$(curl -fs "http://127.0.0.1:${APP_PORT}/healthz" || true)"
+    if [[ -n "${healthz}" ]]; then
+      break
+    fi
+    if [[ "${attempt}" -lt 30 ]]; then
+      sleep 1
+    fi
+  done
   if [[ -z "${healthz}" ]]; then
     log_fail "healthz did not respond"
   fi
