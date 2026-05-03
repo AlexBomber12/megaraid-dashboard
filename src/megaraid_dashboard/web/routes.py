@@ -15,7 +15,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -690,9 +690,6 @@ def _record_replace_operator_action_sync(
 
 class InsertRequest(BaseModel):
     serial_number: str
-    dg: int
-    array: int
-    row: int
     dry_run: bool = False
 
 
@@ -815,9 +812,25 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             status_code=409,
         )
 
+    topology = await run_in_threadpool(
+        _compute_slot_topology,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if topology is None:
+        return JSONResponse(
+            {
+                "error": "unable to derive insert topology for slot",
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+            },
+            status_code=409,
+        )
+
     try:
         argv = build_insert_replacement_command(
-            enclosure_id, slot_id, body.dg, body.array, body.row
+            enclosure_id, slot_id, topology.dg, topology.array, topology.row
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
@@ -830,9 +843,9 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
                 "enclosure": enclosure_id,
                 "slot": slot_id,
                 "serial_number": body.serial_number,
-                "dg": body.dg,
-                "array": body.array,
-                "row": body.row,
+                "dg": topology.dg,
+                "array": topology.array,
+                "row": topology.row,
                 "argv": argv,
             }
         )
@@ -868,9 +881,9 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             enclosure_id=enclosure_id,
             slot_id=slot_id,
             serial_number=body.serial_number,
-            dg=body.dg,
-            array=body.array,
-            row=body.row,
+            dg=topology.dg,
+            array=topology.array,
+            row=topology.row,
             outcome=outcome,
         )
     except SQLAlchemyError:
@@ -908,9 +921,9 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             "enclosure": enclosure_id,
             "slot": slot_id,
             "serial_number": body.serial_number,
-            "dg": body.dg,
-            "array": body.array,
-            "row": body.row,
+            "dg": topology.dg,
+            "array": topology.array,
+            "row": topology.row,
             "argv": argv,
             "result": result,
         }
@@ -937,12 +950,21 @@ def _load_last_operator_action_for_slot(
     enclosure_id: int,
     slot_id: int,
 ) -> Event | None:
-    needle = f"drive {enclosure_id}:{slot_id}"
+    # Use word-boundary matching so e.g. ``drive 2:1`` does not match
+    # ``drive 2:10``. Operator-action summaries always render the slot as
+    # ``drive {enc}:{slot}`` followed by either whitespace (further fields)
+    # or end-of-string (e.g. ``locate start drive 2:0``).
+    slot_token = f"drive {enclosure_id}:{slot_id}"
     with _session(request) as session:
         return session.scalars(
             select(Event)
             .where(Event.category == "operator_action")
-            .where(Event.summary.contains(needle))
+            .where(
+                or_(
+                    Event.summary.like(f"%{slot_token} %"),
+                    Event.summary.like(f"%{slot_token}"),
+                )
+            )
             .order_by(Event.occurred_at.desc(), Event.id.desc())
             .limit(1)
         ).one_or_none()
@@ -956,6 +978,9 @@ def _extract_serial_from_audit(message: str) -> str | None:
     return None
 
 
+_ARRAY_MEMBER_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Rbld", "Failed"})
+
+
 def _compute_slot_topology(
     *,
     request: Request,
@@ -964,10 +989,15 @@ def _compute_slot_topology(
 ) -> _SlotTopology | None:
     """Derive ``dg`` / ``array`` / ``row`` for a slot from the latest snapshot.
 
-    Without a controller-level topology table in the schema the row is
-    approximated as the slot's ordinal position among physical drives in the
-    snapshot. ``dg`` defaults to the lowest ``vd_id`` (production has a single
-    DG) and ``array`` defaults to ``0`` (single-span arrays). The PR description
+    The schema does not store per-drive DG membership, so the row is
+    approximated as the target slot's position among slots whose state
+    indicates array membership (``Onln``/``Offln``/``Rbld``/``Failed``).
+    Hot spares (``GHS``/``DHS``) and unconfigured drives (``UGood``/``UBad``)
+    are excluded so gaps and spares do not skew the row index. The target
+    slot itself is always counted, since after the physical swap it holds a
+    fresh ``UGood`` drive that still occupies the failed member's position.
+    ``dg`` defaults to the lowest ``vd_id`` (production has a single DG) and
+    ``array`` defaults to ``0`` (single-span arrays). The PR description
     documents that hand-verification on real hardware is the source of truth.
     """
     with _session(request) as session:
@@ -981,15 +1011,17 @@ def _compute_slot_topology(
                 .limit(1)
                 .scalar_subquery()
             )
-            .order_by(PhysicalDriveSnapshot.enclosure_id, PhysicalDriveSnapshot.slot_id)
         ).all()
         if not physical_slots:
             return None
         target = (enclosure_id, slot_id)
-        slot_keys = [(pd.enclosure_id, pd.slot_id) for pd in physical_slots]
-        if target not in slot_keys:
+        slot_states = {(pd.enclosure_id, pd.slot_id): pd.state for pd in physical_slots}
+        if target not in slot_states:
             return None
-        row = slot_keys.index(target)
+        member_keys = {key for key, state in slot_states.items() if state in _ARRAY_MEMBER_STATES}
+        member_keys.add(target)
+        ordered = sorted(member_keys)
+        row = ordered.index(target)
         dg = session.scalar(
             select(VirtualDriveSnapshot.vd_id)
             .join(ControllerSnapshot, VirtualDriveSnapshot.snapshot_id == ControllerSnapshot.id)

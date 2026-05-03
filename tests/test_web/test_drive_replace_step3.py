@@ -68,15 +68,15 @@ def test_drive_replace_insert_dry_run_returns_argv_and_skips_runner(
             headers=headers,
             json={
                 "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
                 "dry_run": True,
             },
         )
 
         assert response.status_code == 200
         body = response.json()
+        # Topology is server-derived; the only seeded drive is the target slot,
+        # so it sits at row=0 of the (sole) array member. ``dg`` defaults to 0
+        # because no virtual drive was seeded.
         assert body == {
             "dry_run": True,
             "step": "insert",
@@ -85,13 +85,13 @@ def test_drive_replace_insert_dry_run_returns_argv_and_skips_runner(
             "serial_number": _NEW_SERIAL,
             "dg": 0,
             "array": 0,
-            "row": 4,
+            "row": 0,
             "argv": [
                 "/c0/e2/s0",
                 "insert",
                 "dg=0",
                 "array=0",
-                "row=4",
+                "row=0",
                 "J",
             ],
         }
@@ -99,6 +99,52 @@ def test_drive_replace_insert_dry_run_returns_argv_and_skips_runner(
         events = _all_events(test_app)
         assert len(events) == 1
         assert "replace step missing" in events[0].summary
+
+
+def test_drive_replace_insert_ignores_client_supplied_topology(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    """A crafted request that supplies dg/array/row must not influence the
+    storcli command — the server always derives topology from its own snapshot.
+    """
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for dry runs")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_NEW_SERIAL, state="UGood")
+        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            headers=headers,
+            json={
+                "serial_number": _NEW_SERIAL,
+                # Crafted values that disagree with the server-derived topology.
+                "dg": 31,
+                "array": 17,
+                "row": 99,
+                "dry_run": True,
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["dg"] == 0
+        assert body["array"] == 0
+        assert body["row"] == 0
+        assert body["argv"] == [
+            "/c0/e2/s0",
+            "insert",
+            "dg=0",
+            "array=0",
+            "row=0",
+            "J",
+        ]
 
 
 def test_drive_replace_insert_returns_404_when_no_snapshot(
@@ -116,12 +162,7 @@ def test_drive_replace_insert_returns_404_when_no_snapshot(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
         assert response.status_code == 404
@@ -148,9 +189,6 @@ def test_drive_replace_insert_returns_409_on_replacement_serial_mismatch(
             headers=headers,
             json={
                 "serial_number": "WD-WRONG",
-                "dg": 0,
-                "array": 0,
-                "row": 4,
                 "dry_run": True,
             },
         )
@@ -182,9 +220,6 @@ def test_drive_replace_insert_returns_409_when_serial_matches_outgoing(
             headers=headers,
             json={
                 "serial_number": _OUTGOING_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
                 "dry_run": True,
             },
         )
@@ -213,9 +248,6 @@ def test_drive_replace_insert_returns_409_when_no_prior_missing_audit(
             headers=headers,
             json={
                 "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
                 "dry_run": True,
             },
         )
@@ -255,9 +287,6 @@ def test_drive_replace_insert_returns_409_when_intervening_action(
             headers=headers,
             json={
                 "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
                 "dry_run": True,
             },
         )
@@ -293,12 +322,7 @@ def test_drive_replace_insert_success_invokes_runner_and_audits(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
         assert response.status_code == 200
@@ -309,12 +333,12 @@ def test_drive_replace_insert_success_invokes_runner_and_audits(
             "insert",
             "dg=0",
             "array=0",
-            "row=4",
+            "row=0",
             "J",
         ]
         assert body["result"] == {"Controllers": [{"Command Status": {"Status": "Success"}}]}
         assert runner_calls == [
-            ["/c0/e2/s0", "insert", "dg=0", "array=0", "row=4", "J"],
+            ["/c0/e2/s0", "insert", "dg=0", "array=0", "row=0", "J"],
         ]
         events = sorted(_all_events(test_app), key=lambda event: event.id)
         assert len(events) == 2
@@ -322,7 +346,7 @@ def test_drive_replace_insert_success_invokes_runner_and_audits(
         assert insert_event.category == "operator_action"
         assert insert_event.severity == "info"
         assert insert_event.summary == (
-            f"replace step insert drive 2:0 serial {_NEW_SERIAL} dg=0 array=0 row=4 succeeded"
+            f"replace step insert drive 2:0 serial {_NEW_SERIAL} dg=0 array=0 row=0 succeeded"
         )
         assert insert_event.operator_username == "admin"
 
@@ -348,12 +372,7 @@ def test_drive_replace_insert_blocked_without_modes(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
         assert response.status_code == 403
@@ -380,12 +399,7 @@ def test_drive_replace_insert_records_audit_when_storcli_fails(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
         assert response.status_code == 502
@@ -395,7 +409,7 @@ def test_drive_replace_insert_records_audit_when_storcli_fails(
         events = sorted(_all_events(test_app), key=lambda event: event.id)
         insert_event = events[-1]
         assert insert_event.summary.startswith(
-            f"replace step insert drive 2:0 serial {_NEW_SERIAL} dg=0 array=0 row=4 failed"
+            f"replace step insert drive 2:0 serial {_NEW_SERIAL} dg=0 array=0 row=0 failed"
         )
         assert "StorcliCommandFailed" in insert_event.summary
 
@@ -424,12 +438,7 @@ def test_drive_replace_insert_audit_failure_returns_500(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
         assert response.status_code == 500
@@ -440,7 +449,7 @@ def test_drive_replace_insert_audit_failure_returns_500(
             "insert",
             "dg=0",
             "array=0",
-            "row=4",
+            "row=0",
             "J",
         ]
 
@@ -459,12 +468,7 @@ def test_drive_replace_insert_without_csrf_returns_403(
         _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
         response = client.post(
             "/drives/2:0/replace/insert",
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
     assert response.status_code == 403
@@ -489,12 +493,7 @@ def test_drive_replace_insert_without_auth_returns_401(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
     assert response.status_code == 401
@@ -509,12 +508,7 @@ def test_drive_replace_insert_rejects_non_integer_path(
         response = client.post(
             "/drives/abc:0/replace/insert",
             headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 0,
-                "array": 0,
-                "row": 4,
-            },
+            json={"serial_number": _NEW_SERIAL},
         )
 
     assert response.status_code == 400
@@ -531,35 +525,11 @@ def test_drive_replace_insert_rejects_invalid_body(
         response = client.post(
             "/drives/2:0/replace/insert",
             headers=headers,
-            json={"serial_number": _NEW_SERIAL},
+            json={},
         )
 
     assert response.status_code == 400
     assert response.json()["error"] == "invalid request body"
-
-
-def test_drive_replace_insert_rejects_out_of_range_dg(
-    csrf_headers: Callable[[TestClient], dict[str, str]],
-) -> None:
-    test_app = create_app()
-    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
-        _seed_drive(test_app, serial_number=_NEW_SERIAL, state="UGood")
-        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
-        headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(
-            "/drives/2:0/replace/insert",
-            headers=headers,
-            json={
-                "serial_number": _NEW_SERIAL,
-                "dg": 64,
-                "array": 0,
-                "row": 4,
-                "dry_run": True,
-            },
-        )
-
-    assert response.status_code == 400
-    assert "dg" in response.json()["error"]
 
 
 def test_drive_replace_topology_returns_derivation_for_seeded_slot(
@@ -581,6 +551,130 @@ def test_drive_replace_topology_returns_derivation_for_seeded_slot(
             "array": 0,
             "row": 0,
         }
+
+
+def test_drive_replace_topology_skips_hot_spare_when_computing_row() -> None:
+    """A hot spare slot before the target must not bump the row index.
+
+    Without this filter, a 4-member array with a Global Hot Spare at slot 4
+    and a fresh drive at slot 5 would compute row=5 (global ordinal) instead
+    of row=4 (the failed member's row in the array).
+    """
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drives(
+            test_app,
+            drives=[
+                # Four array members.
+                (2, 0, "WD-A0", "Onln"),
+                (2, 1, "WD-A1", "Onln"),
+                (2, 2, "WD-A2", "Onln"),
+                (2, 3, "WD-A3", "Onln"),
+                # Global hot spare sits in slot 4.
+                (2, 4, "WD-GHS", "GHS"),
+                # The target slot: the new replacement drive has just been
+                # inserted physically, so it shows as UGood.
+                (2, 5, _NEW_SERIAL, "UGood"),
+                # More array members after the target.
+                (2, 6, "WD-A5", "Onln"),
+                (2, 7, "WD-A6", "Onln"),
+            ],
+        )
+        response = client.get("/drives/2:5/replace/topology")
+
+        assert response.status_code == 200
+        body = response.json()
+        # Members ordered by slot: 0, 1, 2, 3, 5(target), 6, 7 → row=4.
+        assert body["row"] == 4
+
+
+def test_drive_replace_insert_skips_substring_slot_audit(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    """An audit for ``drive 2:10`` must not satisfy the gate for ``drive 2:1``."""
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli must not run when no real prior step missing audit exists")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(
+            test_app,
+            serial_number=_NEW_SERIAL,
+            state="UGood",
+            enclosure_id=2,
+            slot_id=1,
+        )
+        # Audit for slot 2:10 — must not gate slot 2:1.
+        _insert_event(
+            test_app,
+            summary=(f"replace step missing drive 2:10 serial {_OUTGOING_SERIAL} succeeded"),
+            occurred_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
+        )
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:1/replace/insert",
+            headers=headers,
+            json={
+                "serial_number": _NEW_SERIAL,
+                "dry_run": True,
+            },
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert "must complete replace step missing" in body["error"]
+        assert body["last_audit"] is None
+
+
+def test_drive_replace_insert_matches_slot_when_audit_ends_at_slot(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    """A locate audit ending at ``drive 2:1`` (no trailing space) clobbers the gate."""
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli must not run when latest audit is locate")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(
+            test_app,
+            serial_number=_NEW_SERIAL,
+            state="UGood",
+            enclosure_id=2,
+            slot_id=1,
+        )
+        _insert_event(
+            test_app,
+            summary=(f"replace step missing drive 2:1 serial {_OUTGOING_SERIAL} succeeded"),
+            occurred_at=datetime(2026, 5, 3, 10, 0, tzinfo=UTC),
+        )
+        # Later locate audit for slot 2:1 — summary ends with the slot token.
+        _insert_event(
+            test_app,
+            summary="locate start drive 2:1",
+            occurred_at=datetime(2026, 5, 3, 11, 0, tzinfo=UTC),
+        )
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:1/replace/insert",
+            headers=headers,
+            json={
+                "serial_number": _NEW_SERIAL,
+                "dry_run": True,
+            },
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert "must complete replace step missing" in body["error"]
+        assert body["last_audit"] == "locate start drive 2:1"
 
 
 def test_drive_replace_topology_returns_404_when_no_snapshot() -> None:
@@ -663,6 +757,58 @@ def _seed_drive(
                 smart_alert=False,
                 sas_address="0x4433221100000000",
             )
+        ]
+        session.add(controller)
+        session.commit()
+
+
+def _seed_drives(
+    test_app: FastAPI,
+    *,
+    drives: list[tuple[int, int, str, str]],
+    captured_at: datetime | None = None,
+) -> None:
+    """Seed a single controller snapshot containing multiple physical drives.
+
+    Each tuple is ``(enclosure_id, slot_id, serial_number, state)``.
+    """
+    session_factory = test_app.state.session_factory
+    assert isinstance(session_factory, sessionmaker)
+    timestamp = captured_at or datetime.now(UTC)
+    with session_factory() as session:
+        assert isinstance(session, Session)
+        controller = ControllerSnapshot(
+            captured_at=timestamp,
+            model_name="LSI 9270CV-8i",
+            serial_number="ctrl-serial",
+            firmware_version="23.34.0-0019",
+            bios_version="6.36.00.0",
+            driver_version="07.727",
+            alarm_state="off",
+            cv_present=True,
+            bbu_present=False,
+            roc_temperature_celsius=55,
+        )
+        controller.physical_drives = [
+            PhysicalDriveSnapshot(
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                device_id=10 + index,
+                model="WDC WD30EFRX-68EUZN0",
+                serial_number=serial_number,
+                firmware_version="82.00A82",
+                size_bytes=3_000_000_000_000,
+                interface="SATA",
+                media_type="HDD",
+                state=state,
+                temperature_celsius=40,
+                media_errors=0,
+                other_errors=0,
+                predictive_failures=0,
+                smart_alert=False,
+                sas_address=f"0x4433221100000{index:03d}",
+            )
+            for index, (enclosure_id, slot_id, serial_number, state) in enumerate(drives)
         ]
         session.add(controller)
         session.commit()

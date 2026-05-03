@@ -229,9 +229,6 @@
 
         const body = {
           serial_number: newSerialInput.value.trim(),
-          dg: topology.dg,
-          array: topology.array,
-          row: topology.row,
           dry_run: dryRunStep3Input.checked,
         };
         try {

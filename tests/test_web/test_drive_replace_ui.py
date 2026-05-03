@@ -176,7 +176,7 @@ def test_replace_wizard_js_validates_serial_and_posts_steps_in_order() -> None:
     assert '"X-CSRF-Token": getCookie("__Host-csrf") || ""' in source
 
 
-def test_replace_wizard_js_step3_posts_insert_with_topology_payload() -> None:
+def test_replace_wizard_js_step3_posts_insert_without_client_topology() -> None:
     source = Path("src/megaraid_dashboard/static/js/replace-wizard.js").read_text(encoding="utf-8")
 
     assert "const topologyUrl = root.dataset.replaceTopologyUrl;" in source
@@ -186,9 +186,12 @@ def test_replace_wizard_js_step3_posts_insert_with_topology_payload() -> None:
     assert "await loadTopology();" in source
     assert "if (topology === null) return;" in source
     assert "dry_run: dryRunStep3Input.checked," in source
-    assert "dg: topology.dg," in source
-    assert "array: topology.array," in source
-    assert "row: topology.row," in source
+    # Topology is server-derived; the client must NOT send dg/array/row in
+    # the insert request body (otherwise a crafted request could overwrite
+    # the server's view of the topology).
+    assert "dg: topology.dg," not in source
+    assert "array: topology.array," not in source
+    assert "row: topology.row," not in source
     assert "postJson(insertUrl, body)" in source
 
 
