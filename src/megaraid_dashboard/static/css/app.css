@@ -178,6 +178,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   min-height: 38px;
   padding: 0 var(--space-4);
   border: 1px solid var(--color-border);
@@ -200,6 +201,28 @@ a:hover {
 
 .button:hover {
   background: var(--surface-hover);
+}
+
+.button__icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  flex: 0 0 auto;
+}
+
+.button__icon--busy,
+.button[aria-busy="true"] .button__icon--idle {
+  display: none;
+}
+
+.button[aria-busy="true"] .button__icon--busy {
+  display: block;
+  animation: spin var(--transition-fast) linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .content {
@@ -608,6 +631,49 @@ a:hover {
 .chart-area {
   display: grid;
   gap: var(--space-6);
+}
+
+.drive-actions {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-section);
+}
+
+.drive-actions__title {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
+.drive-actions__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.drive-actions[data-locate-state="start"] [data-locate-action="start"],
+.drive-actions[data-locate-state="stop"] [data-locate-action="stop"] {
+  border-color: rgba(88, 214, 141, 0.58);
+  color: var(--color-optimal);
+}
+
+.drive-actions__feedback {
+  min-width: 72px;
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+}
+
+.drive-actions__feedback--ok {
+  color: var(--color-optimal);
+}
+
+.drive-actions__feedback--error {
+  color: var(--color-critical);
 }
 
 .attribute-grid {

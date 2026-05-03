@@ -33,6 +33,50 @@
     </dl>
   </section>
 
+  <section class="drive-actions" aria-label="Drive actions" data-locate-state="unknown">
+    <h2 class="drive-actions__title">Locate</h2>
+    <div class="drive-actions__controls">
+      <button
+        type="button"
+        class="button button--primary"
+        hx-post="{{ request.url_for('drive_locate_start', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+        hx-swap="none"
+        hx-target="this"
+        hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+        hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+        data-confirm="Blink the locate LED on slot {{ view_model.enclosure_id }}:{{ view_model.slot_id }}?"
+        data-locate-action="start"
+      >
+        <svg class="button__icon button__icon--idle" aria-hidden="true">
+          <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-lightbulb"/>
+        </svg>
+        <svg class="button__icon button__icon--busy" aria-hidden="true">
+          <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-refresh-cw"/>
+        </svg>
+        Start locate
+      </button>
+      <button
+        type="button"
+        class="button"
+        hx-post="{{ request.url_for('drive_locate_stop', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+        hx-swap="none"
+        hx-target="this"
+        hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+        hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+        data-locate-action="stop"
+      >
+        <svg class="button__icon button__icon--idle" aria-hidden="true">
+          <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-lightbulb"/>
+        </svg>
+        <svg class="button__icon button__icon--busy" aria-hidden="true">
+          <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-refresh-cw"/>
+        </svg>
+        Stop locate
+      </button>
+      <span class="drive-actions__feedback" data-action-feedback aria-live="polite"></span>
+    </div>
+  </section>
+
   <section class="history-section" aria-label="Drive history">
     <div class="range-tabs" role="tablist" aria-label="History range">
       {% for tab in view_model.range_tabs %}
