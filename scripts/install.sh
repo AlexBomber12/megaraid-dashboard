@@ -132,7 +132,8 @@ phase_venv() {
 
   local venv="${INSTALL_PREFIX}/.venv"
   if [[ ! -d "${venv}" ]]; then
-    sudo -u "${INSTALL_USER}" python3 -m venv "${venv}"
+    python3 -m venv "${venv}"
+    chown -R "${INSTALL_USER}:${INSTALL_USER}" "${venv}"
     log_info "created venv at ${venv}"
   else
     log_info "venv exists, skip"

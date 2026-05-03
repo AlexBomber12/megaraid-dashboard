@@ -214,6 +214,55 @@ def test_phase_venv_reuses_existing_venv_and_upgrades_pip(tmp_path: Path) -> Non
     assert log.read_text() == "pip install --upgrade pip>=24\n"
 
 
+def test_phase_venv_creates_root_bootstrapped_venv_then_fixes_ownership(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    prefix.mkdir(mode=0o750)
+    log = tmp_path / "commands.log"
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(
+        bin_dir / "python3",
+        "#!/bin/sh\n"
+        f"printf 'python3 %s\\n' \"$*\" >> {log}\n"
+        'if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then\n'
+        '  mkdir -p "$3/bin"\n'
+        "  cat > \"$3/bin/pip\" <<'PIP'\n"
+        "#!/bin/sh\n"
+        f"printf 'pip %s\\n' \"$*\" >> {log}\n"
+        "PIP\n"
+        '  chmod 755 "$3/bin/pip"\n'
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "chown",
+        f"#!/bin/sh\nprintf 'chown %s\\n' \"$*\" >> {log}\n",
+    )
+    _write_executable(
+        bin_dir / "sudo",
+        f"#!/bin/sh\nprintf 'sudo %s\\n' \"$*\" >> {log}\n"
+        'if [ "$1" = "-u" ]; then\n'
+        "  shift 2\n"
+        "fi\n"
+        'exec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_venv",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"created venv at {prefix}/.venv" in result.stdout
+    assert log.read_text() == (
+        f"python3 -m venv {prefix}/.venv\n"
+        f"chown -R raid-monitor:raid-monitor {prefix}/.venv\n"
+        f"sudo -u raid-monitor {prefix}/.venv/bin/pip install --upgrade pip>=24\n"
+        "pip install --upgrade pip>=24\n"
+    )
+
+
 def test_phase_pip_fails_fast_when_pypi_unreachable(tmp_path: Path) -> None:
     bin_dir = _stub_bin(tmp_path)
     _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 7\n")
