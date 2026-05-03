@@ -7,11 +7,16 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+SQLITE_BUSY_TIMEOUT_MS = 5000
 
-def get_engine(url: str) -> Engine:
+
+def get_engine(url: str, *, sqlite_busy_timeout_ms: int = SQLITE_BUSY_TIMEOUT_MS) -> Engine:
     engine_kwargs: dict[str, Any] = {}
     if _is_sqlite_url(url):
-        engine_kwargs["connect_args"] = {"check_same_thread": False}
+        engine_kwargs["connect_args"] = {
+            "check_same_thread": False,
+            "timeout": sqlite_busy_timeout_ms / 1000,
+        }
         if _is_sqlite_memory_url(url):
             engine_kwargs["poolclass"] = StaticPool
 
@@ -27,7 +32,7 @@ def get_engine(url: str) -> Engine:
                     cursor.execute("PRAGMA journal_mode=WAL")
                 cursor.execute("PRAGMA synchronous=NORMAL")
                 cursor.execute("PRAGMA foreign_keys=ON")
-                cursor.execute("PRAGMA busy_timeout=5000")
+                cursor.execute(f"PRAGMA busy_timeout={sqlite_busy_timeout_ms}")
             finally:
                 cursor.close()
 
