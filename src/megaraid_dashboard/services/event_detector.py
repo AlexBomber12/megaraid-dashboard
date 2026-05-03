@@ -165,7 +165,7 @@ class EventDetector:
     ) -> list[DetectedEvent]:
         previous_temperature = previous.roc_temperature_celsius
         current_temperature = current.controller.roc_temperature_celsius
-        if previous_temperature is None or current_temperature is None:
+        if current_temperature is None:
             _LOG.info(
                 "roc_temperature_unavailable",
                 previous_roc_temperature_celsius=previous_temperature,
@@ -174,6 +174,33 @@ class EventDetector:
             return []
 
         events: list[DetectedEvent] = []
+        if previous_temperature is None:
+            if current_temperature >= self.roc_temp_warning:
+                events.append(
+                    _roc_temperature_event(
+                        severity="warning",
+                        summary=(
+                            f"RoC temperature {current_temperature} C reached warning "
+                            f"threshold ({self.roc_temp_warning} C) after unavailable sample"
+                        ),
+                        previous_temperature=previous_temperature,
+                        current_temperature=current_temperature,
+                    )
+                )
+            if current_temperature >= self.roc_temp_critical:
+                events.append(
+                    _roc_temperature_event(
+                        severity="critical",
+                        summary=(
+                            f"RoC temperature {current_temperature} C reached critical "
+                            f"threshold ({self.roc_temp_critical} C) after unavailable sample"
+                        ),
+                        previous_temperature=previous_temperature,
+                        current_temperature=current_temperature,
+                    )
+                )
+            return events
+
         if previous_temperature < self.roc_temp_warning <= current_temperature:
             events.append(
                 _roc_temperature_event(
@@ -609,7 +636,7 @@ def _roc_temperature_event(
     *,
     severity: str,
     summary: str,
-    previous_temperature: int,
+    previous_temperature: int | None,
     current_temperature: int,
 ) -> DetectedEvent:
     return DetectedEvent(
