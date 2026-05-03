@@ -72,6 +72,15 @@ class AlertStatusSection:
 
 
 @dataclass(frozen=True)
+class RocTemperatureSection:
+    value: int | None
+    status: str
+    label: str
+    warning_threshold: int
+    critical_threshold: int
+
+
+@dataclass(frozen=True)
 class OverviewViewModel:
     has_snapshot: bool
     controller_label: str
@@ -82,6 +91,7 @@ class OverviewViewModel:
     elevated_drive_count: int
     critical_drive_count: int
     alert_status: AlertStatusSection
+    roc_temperature: RocTemperatureSection
     empty_title: str
     empty_body: str
     empty_next_run: str
@@ -116,6 +126,7 @@ def load_overview_view_model(
     resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
     alert_status = _load_alert_status(session, settings=settings, now=resolved_now)
     snapshot = get_latest_snapshot(session)
+    roc_temperature = _load_roc_temperature(session, settings=settings, latest_snapshot=snapshot)
     if snapshot is None:
         return OverviewViewModel(
             has_snapshot=False,
@@ -127,6 +138,7 @@ def load_overview_view_model(
             elevated_drive_count=0,
             critical_drive_count=0,
             alert_status=alert_status,
+            roc_temperature=roc_temperature,
             empty_title="Waiting for first metrics collection",
             empty_body="The collector has not yet completed its first run.",
             empty_next_run=_empty_next_run_text(
@@ -179,6 +191,7 @@ def load_overview_view_model(
         elevated_drive_count=elevated_count,
         critical_drive_count=critical_count,
         alert_status=alert_status,
+        roc_temperature=roc_temperature,
         empty_title="Waiting for first metrics collection",
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
@@ -266,6 +279,40 @@ def _load_alert_status(
         health=health,
         health_status=health,
         health_label=_alert_health_label(health),
+    )
+
+
+def _load_roc_temperature(
+    session: Session,
+    *,
+    settings: Settings,
+    latest_snapshot: ControllerSnapshot | None,
+) -> RocTemperatureSection:
+    del session
+    warning_threshold = settings.roc_temp_warning_celsius
+    critical_threshold = settings.roc_temp_critical_celsius
+    if latest_snapshot is None or latest_snapshot.roc_temperature_celsius is None:
+        return RocTemperatureSection(
+            value=None,
+            status="neutral",
+            label="Unknown",
+            warning_threshold=warning_threshold,
+            critical_threshold=critical_threshold,
+        )
+
+    value = latest_snapshot.roc_temperature_celsius
+    status = temperature_severity(
+        value,
+        temp_warning=warning_threshold,
+        temp_critical=critical_threshold,
+    )
+    label = f"{value} C" if status == "optimal" else f"{value} C ({status})"
+    return RocTemperatureSection(
+        value=value,
+        status=status,
+        label=label,
+        warning_threshold=warning_threshold,
+        critical_threshold=critical_threshold,
     )
 
 

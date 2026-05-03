@@ -26,6 +26,13 @@
           {% endif %}
         </article>
       {% endfor %}
+      <article class="stat-card stat-card--{{ view_model.roc_temperature.status }}">
+        <span class="stat-card__label">RoC temp</span>
+        <strong class="stat-card__value status-text status-text--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.label }}</strong>
+        <div class="stat-card__badges">
+          <span class="status-badge status-badge--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.status }}</span>
+        </div>
+      </article>
     </section>
 
     {% include "partials/alert_status.html" %}
@@ -39,6 +46,15 @@
       {% endwith %}
     </section>
   {% else %}
+    <section class="stat-grid" aria-label="RAID summary">
+      <article class="stat-card stat-card--{{ view_model.roc_temperature.status }}">
+        <span class="stat-card__label">RoC temp</span>
+        <strong class="stat-card__value status-text status-text--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.label }}</strong>
+        <div class="stat-card__badges">
+          <span class="status-badge status-badge--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.status }}</span>
+        </div>
+      </article>
+    </section>
     <section class="empty-state empty-state--centered">
       <h1>{{ view_model.empty_title }}</h1>
       <p>{{ view_model.empty_body }}</p>
