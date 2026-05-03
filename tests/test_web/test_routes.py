@@ -130,8 +130,10 @@ def test_overview_navigation_and_assets_are_prefix_aware(
 
     assert response.status_code == 200
     assert "SERVER RAID Status" in response.text
-    assert "RoC temp" in response.text
-    assert "status-badge--optimal" in response.text
+    assert response.text.count('class="status-tile status-tile--') == 6
+    for label in ("Controller", "VD", "RAID", "BBU", "MaxTemp", "RoC"):
+        assert label in response.text
+    assert "status-tile--optimal" in response.text
     assert 'class="data-block alert-status"' in response.text
     assert "Notifier OK" in response.text
     assert "/raid/static/css/app.css" in response.text
@@ -148,6 +150,10 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert 'data-local-time-clock aria-live="off" hidden' in response.text
     assert "/raid/partials/overview" in response.text
     assert {"/raid/", "/raid/drives", "/raid/events"}.issubset(_anchor_hrefs(response.text))
+    status_tile_hrefs = _status_tile_hrefs(response.text)
+    assert status_tile_hrefs
+    assert all(href.startswith("/raid/") for href in status_tile_hrefs)
+    assert "/raid/drives?sort=temperature-desc" not in status_tile_hrefs
 
 
 def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
@@ -171,6 +177,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
+    assert "/drives?sort=temperature-desc" not in _status_tile_hrefs(response.text)
     assert "/raid/" not in response.text
 
 
@@ -181,8 +188,9 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
         partial_response = client.get("/partials/overview")
 
     assert full_response.status_code == 200
-    assert "RoC temp" in full_response.text
-    assert "status-badge--neutral" in full_response.text
+    assert full_response.text.count('class="status-tile status-tile--') == 6
+    assert "RoC" in full_response.text
+    assert "status-tile--neutral" in full_response.text
     assert "Unknown" in full_response.text
     assert "Waiting for first metrics collection" in full_response.text
     assert "The collector has not yet completed its first run." in full_response.text
@@ -191,8 +199,9 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "Never" in full_response.text
     assert "Notifier OK" in full_response.text
     assert "Waiting for first metrics collection" in partial_response.text
-    assert "RoC temp" in partial_response.text
-    assert "status-badge--neutral" in partial_response.text
+    assert partial_response.text.count('class="status-tile status-tile--') == 6
+    assert "RoC" in partial_response.text
+    assert "status-tile--neutral" in partial_response.text
     assert (
         "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
     )
@@ -225,8 +234,9 @@ def test_partial_endpoint_returns_data_block_fragment(
     assert "<!doctype html>" not in response.text
     assert "site-header" not in response.text
     assert "SERVER RAID Status" in response.text
-    assert "RoC temp" in response.text
-    assert "status-badge--optimal" in response.text
+    assert response.text.count('class="status-tile status-tile--') == 6
+    assert "RoC" in response.text
+    assert "status-tile--optimal" in response.text
     assert 'class="data-block alert-status"' in response.text
 
 
@@ -810,6 +820,16 @@ def _anchor_hrefs(html: str) -> set[str]:
     parser = _AnchorParser()
     parser.feed(html)
     return parser.hrefs
+
+
+def _status_tile_hrefs(html: str) -> set[str]:
+    return set(
+        re.findall(
+            r'<a\s+class="status-tile[^"]*"\s+href="([^"]+)"',
+            html,
+            flags=re.MULTILINE,
+        )
+    )
 
 
 def _json_scripts(html: str) -> dict[str, dict[str, object]]:

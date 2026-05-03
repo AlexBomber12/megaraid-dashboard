@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,9 @@ _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 _VD_OPTIMAL_STATES = {"Optl", "Optimal"}
 _PD_OPTIMAL_STATES = {"Onln"}
 _CACHEVAULT_OPTIMAL_STATES = {"Optl", "Optimal"}
+_VD_DEGRADED_STATES = {"Dgrd", "Degraded"}
+_VD_PARTIALLY_DEGRADED_STATES = {"Pdgd", "Partially Degraded"}
+_VD_CRITICAL_STATES = {"Failed", "Offln", "Offline"}
 
 
 @dataclass(frozen=True)
@@ -81,11 +85,31 @@ class RocTemperatureSection:
 
 
 @dataclass(frozen=True)
+class StripTileViewModel:
+    label: str
+    value: str
+    status: str
+    icon: str
+    href: str
+
+
+@dataclass(frozen=True)
+class OverviewStripSection:
+    controller: StripTileViewModel
+    vd: StripTileViewModel
+    raid: StripTileViewModel
+    bbu: StripTileViewModel
+    max_temp: StripTileViewModel
+    roc: StripTileViewModel
+
+
+@dataclass(frozen=True)
 class OverviewViewModel:
     has_snapshot: bool
     controller_label: str
     captured_at: datetime | None
     cards: tuple[StatCard, ...]
+    strip: OverviewStripSection
     physical_drives: tuple[PhysicalDriveRow, ...]
     max_temperature_celsius: int | None
     elevated_drive_count: int
@@ -121,18 +145,28 @@ def load_overview_view_model(
     *,
     scheduler: _Scheduler | None = None,
     now: datetime | None = None,
+    overview_url: str = "/",
+    drives_url: str = "/drives",
 ) -> OverviewViewModel:
     settings = get_settings()
     resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
     alert_status = _load_alert_status(session, settings=settings, now=resolved_now)
     snapshot = get_latest_snapshot(session)
     roc_temperature = _load_roc_temperature(session, settings=settings, latest_snapshot=snapshot)
+    strip = _load_overview_strip(
+        latest_snapshot=snapshot,
+        settings=settings,
+        roc=roc_temperature,
+        overview_url=overview_url,
+        drives_url=drives_url,
+    )
     if snapshot is None:
         return OverviewViewModel(
             has_snapshot=False,
             controller_label=_CONTROLLER_LABEL,
             captured_at=None,
             cards=(),
+            strip=strip,
             physical_drives=(),
             max_temperature_celsius=None,
             elevated_drive_count=0,
@@ -179,6 +213,7 @@ def load_overview_view_model(
                 temp_critical=temp_critical,
             ),
         ),
+        strip=strip,
         physical_drives=tuple(
             _physical_drive_row(
                 drive,
@@ -195,6 +230,151 @@ def load_overview_view_model(
         empty_title="Waiting for first metrics collection",
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
+    )
+
+
+def _load_overview_strip(
+    *,
+    latest_snapshot: ControllerSnapshot | None,
+    settings: Settings,
+    roc: RocTemperatureSection,
+    overview_url: str = "/",
+    drives_url: str = "/drives",
+) -> OverviewStripSection:
+    return OverviewStripSection(
+        controller=_load_controller_tile(latest_snapshot, overview_url=overview_url),
+        vd=_load_vd_tile(latest_snapshot, overview_url=overview_url),
+        raid=_load_raid_tile(latest_snapshot, overview_url=overview_url),
+        bbu=_load_bbu_tile(latest_snapshot, overview_url=overview_url, drives_url=drives_url),
+        max_temp=_load_max_temp_tile(latest_snapshot, settings=settings, drives_url=drives_url),
+        roc=_load_roc_tile(roc, overview_url=overview_url),
+    )
+
+
+def _load_controller_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
+    status = "neutral"
+    value = "Unknown"
+    if latest_snapshot is not None:
+        alarm_state = latest_snapshot.alarm_state.casefold()
+        status = "optimal" if alarm_state in {"none", "off"} else "critical"
+        value = "Optimal" if status == "optimal" else "Alarm"
+
+    return StripTileViewModel(
+        label="Controller",
+        value=value,
+        status=status,
+        icon="cpu",
+        href=overview_url,
+    )
+
+
+def _load_vd_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
+    virtual_drives = () if latest_snapshot is None else tuple(latest_snapshot.virtual_drives)
+    status = _virtual_drive_aggregate_status(virtual_drives)
+    return StripTileViewModel(
+        label="VD",
+        value=_virtual_drive_aggregate_value(virtual_drives),
+        status=status,
+        icon="hard-drive",
+        href=overview_url,
+    )
+
+
+def _load_raid_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
+    virtual_drives = () if latest_snapshot is None else tuple(latest_snapshot.virtual_drives)
+    return StripTileViewModel(
+        label="RAID",
+        value=_dominant_raid_level(virtual_drives),
+        status=_virtual_drive_aggregate_status(virtual_drives),
+        icon="hard-drive",
+        href=overview_url,
+    )
+
+
+def _load_bbu_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+    drives_url: str = "/drives",
+) -> StripTileViewModel:
+    status = "neutral"
+    value = "Unknown"
+    href = overview_url
+    if latest_snapshot is not None and latest_snapshot.cachevault is not None:
+        cachevault = latest_snapshot.cachevault
+        href = drives_url
+        if cachevault.replacement_required:
+            status = "critical"
+            value = "Replace"
+        elif cachevault.state not in _CACHEVAULT_OPTIMAL_STATES:
+            status = "warning"
+            value = "Warning"
+        else:
+            status = "optimal"
+            value = "Optimal"
+    elif latest_snapshot is not None and not latest_snapshot.bbu_present:
+        value = "None"
+
+    return StripTileViewModel(
+        label="BBU",
+        value=value,
+        status=status,
+        icon="lightbulb",
+        href=href,
+    )
+
+
+def _load_max_temp_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    settings: Settings,
+    drives_url: str = "/drives",
+) -> StripTileViewModel:
+    physical_drives = () if latest_snapshot is None else tuple(latest_snapshot.physical_drives)
+    hottest_drive = _hottest_drive(physical_drives)
+    max_temp = None if hottest_drive is None else hottest_drive.temperature_celsius
+    value = "Unknown" if max_temp is None else f"{max_temp} C"
+    status = (
+        "neutral"
+        if max_temp is None
+        else temperature_severity(
+            max_temp,
+            temp_warning=settings.temp_warning_celsius,
+            temp_critical=settings.temp_critical_celsius,
+        )
+    )
+    return StripTileViewModel(
+        label="MaxTemp",
+        value=value,
+        status=status,
+        icon="thermometer",
+        href=drives_url if hottest_drive is None else _drive_detail_url(drives_url, hottest_drive),
+    )
+
+
+def _load_roc_tile(
+    roc: RocTemperatureSection,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
+    return StripTileViewModel(
+        label="RoC",
+        value=roc.label,
+        status=roc.status,
+        icon="thermometer",
+        href=overview_url,
     )
 
 
@@ -526,6 +706,53 @@ def _select_overview_virtual_drive(
     return min(virtual_drives, key=lambda virtual_drive: virtual_drive.vd_id)
 
 
+def _virtual_drive_aggregate_status(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
+    if not virtual_drives:
+        return "neutral"
+    states = {virtual_drive.state for virtual_drive in virtual_drives}
+    if states & _VD_CRITICAL_STATES:
+        return "critical"
+    if states & (_VD_DEGRADED_STATES | _VD_PARTIALLY_DEGRADED_STATES):
+        return "warning"
+    if states <= _VD_OPTIMAL_STATES:
+        return "optimal"
+    return "warning"
+
+
+def _virtual_drive_aggregate_value(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
+    if not virtual_drives:
+        return "Unknown"
+
+    critical_count = sum(
+        1 for virtual_drive in virtual_drives if virtual_drive.state in _VD_CRITICAL_STATES
+    )
+    if critical_count > 0:
+        return f"{critical_count} failed"
+
+    degraded_count = sum(
+        1
+        for virtual_drive in virtual_drives
+        if virtual_drive.state in (_VD_DEGRADED_STATES | _VD_PARTIALLY_DEGRADED_STATES)
+    )
+    if degraded_count > 0:
+        return f"{degraded_count} degraded"
+
+    optimal_count = sum(
+        1 for virtual_drive in virtual_drives if virtual_drive.state in _VD_OPTIMAL_STATES
+    )
+    if optimal_count == len(virtual_drives):
+        return f"{optimal_count}/{len(virtual_drives)} OK"
+
+    return f"{len(virtual_drives) - optimal_count} unknown"
+
+
+def _dominant_raid_level(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
+    if not virtual_drives:
+        return "Unknown"
+    raid_levels = Counter(virtual_drive.raid_level for virtual_drive in virtual_drives)
+    return sorted(raid_levels.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
 def _virtual_drive_state_label(state: str) -> str:
     labels = {
         "Optl": "Optimal",
@@ -597,6 +824,31 @@ def _max_temperature(physical_drives: Sequence[PhysicalDriveSnapshot]) -> int | 
         if drive.temperature_celsius is not None
     ]
     return max(temperatures) if temperatures else None
+
+
+def _hottest_drive(
+    physical_drives: Sequence[PhysicalDriveSnapshot],
+) -> PhysicalDriveSnapshot | None:
+    drives_with_temperature = [
+        drive for drive in physical_drives if drive.temperature_celsius is not None
+    ]
+    if not drives_with_temperature:
+        return None
+    return sorted(
+        drives_with_temperature,
+        key=lambda drive: (-_require_temperature(drive), drive.enclosure_id, drive.slot_id),
+    )[0]
+
+
+def _require_temperature(drive: PhysicalDriveSnapshot) -> int:
+    if drive.temperature_celsius is None:
+        msg = "drive temperature is required"
+        raise ValueError(msg)
+    return drive.temperature_celsius
+
+
+def _drive_detail_url(drives_url: str, drive: PhysicalDriveSnapshot) -> str:
+    return f"{drives_url.rstrip('/')}/{drive.enclosure_id}/{drive.slot_id}"
 
 
 def format_tb(size_bytes: int) -> str:

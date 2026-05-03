@@ -263,9 +263,10 @@ a:hover {
 }
 
 .status-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--tile-min-width), 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-tight);
+  align-items: stretch;
 }
 
 .status-tile {
