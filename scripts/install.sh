@@ -262,27 +262,24 @@ prompt_config_value() {
   local current
   current="$(env_file_value "${var}")"
 
-  # target is a nameref; assignments update the requested config variable.
-  # shellcheck disable=SC2034
-  local -n target="${var}"
   if [[ -n "${current}" && "${FORCE_RECONFIG}" != "true" ]]; then
     log_info "${var} already set, keep"
-    target="${current}"
+    printf -v "${var}" "%s" "${current}"
     return
   fi
 
   local env_var="MEGARAID_INSTALL_${var}"
   if [[ -n "${!env_var:-}" ]]; then
-    target="${!env_var}"
+    printf -v "${var}" "%s" "${!env_var}"
     return
   fi
 
   if [[ "${NON_INTERACTIVE}" == "true" ]]; then
     if [[ -n "${default}" ]]; then
-      target="${default}"
+      printf -v "${var}" "%s" "${default}"
     else
       MISSING_CONFIG_VARS+=("${env_var}")
-      target=""
+      printf -v "${var}" "%s" ""
     fi
     return
   fi
@@ -296,7 +293,7 @@ prompt_config_value() {
   fi
   [[ -n "${input}" ]] || input="${default}"
   [[ -n "${input}" ]] || log_fail "${var} required"
-  target="${input}"
+  printf -v "${var}" "%s" "${input}"
 }
 
 bcrypt_hash() {
