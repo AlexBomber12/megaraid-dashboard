@@ -33,6 +33,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_set_missing_command,
     build_set_offline_command,
     can_transition,
+    validate_enclosure_slot,
 )
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
@@ -388,6 +389,11 @@ async def _run_replace_step(
         slot_id = int(slot)
     except ValueError:
         return JSONResponse({"error": "enclosure and slot must be integers"}, status_code=400)
+
+    try:
+        validate_enclosure_slot(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     query_dry_run = _parse_query_dry_run(request)
     if isinstance(query_dry_run, JSONResponse):

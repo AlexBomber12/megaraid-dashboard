@@ -15,7 +15,7 @@ _MISSING_ALLOWED_STATES: frozenset[str] = frozenset({"Offln"})
 
 
 def build_locate_command(enclosure: int, slot: int, action: LocateAction) -> list[str]:
-    _validate_es(enclosure, slot)
+    validate_enclosure_slot(enclosure, slot)
     if action not in _LOCATE_VERB:
         raise ValueError(f"unknown locate action: {action!r}")
     verb = _LOCATE_VERB[action]
@@ -23,12 +23,12 @@ def build_locate_command(enclosure: int, slot: int, action: LocateAction) -> lis
 
 
 def build_set_offline_command(enclosure: int, slot: int) -> list[str]:
-    _validate_es(enclosure, slot)
+    validate_enclosure_slot(enclosure, slot)
     return [f"/c0/e{enclosure}/s{slot}", "set", "offline", "J"]
 
 
 def build_set_missing_command(enclosure: int, slot: int) -> list[str]:
-    _validate_es(enclosure, slot)
+    validate_enclosure_slot(enclosure, slot)
     return [f"/c0/e{enclosure}/s{slot}", "set", "missing", "J"]
 
 
@@ -40,7 +40,7 @@ def can_transition(current_state: str, requested_step: ReplaceStep) -> bool:
     return False
 
 
-def _validate_es(enclosure: int, slot: int) -> None:
+def validate_enclosure_slot(enclosure: int, slot: int) -> None:
     if not isinstance(enclosure, int) or isinstance(enclosure, bool):
         raise ValueError("enclosure must be int in [0, 255]")
     if enclosure < 0 or enclosure > 255:

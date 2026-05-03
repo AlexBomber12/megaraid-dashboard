@@ -483,6 +483,50 @@ def test_drive_replace_offline_rejects_non_integer_path(
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize(
+    ("path", "expected_field"),
+    [
+        ("/drives/999:0/replace/offline", "enclosure"),
+        ("/drives/-1:0/replace/offline", "enclosure"),
+        ("/drives/2:999/replace/offline", "slot"),
+        ("/drives/2:-1/replace/offline", "slot"),
+        ("/drives/999:0/replace/missing", "enclosure"),
+        ("/drives/2:999/replace/missing", "slot"),
+    ],
+)
+def test_drive_replace_rejects_out_of_range_es_before_snapshot_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    path: str,
+    expected_field: str,
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for out-of-range es")
+
+    def fail_load_latest_drive(*_args: object, **_kwargs: object) -> Any:
+        raise AssertionError("snapshot lookup must not run for out-of-range es")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    monkeypatch.setattr(
+        "megaraid_dashboard.web.routes._load_latest_drive_for_slot",
+        fail_load_latest_drive,
+    )
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            path,
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 400
+        assert expected_field in response.json()["error"]
+        _assert_no_audit_event(test_app)
+
+
 def test_drive_replace_offline_rejects_missing_body_fields(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
