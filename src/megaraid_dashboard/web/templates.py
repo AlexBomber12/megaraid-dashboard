@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -17,6 +19,8 @@ def create_templates(directory: Path) -> Jinja2Templates:
     )
     environment.filters["utc_to_cest"] = utc_to_cest
     environment.filters["iso_utc"] = iso_utc
+    environment.globals["app_version"] = _app_version()
+    environment.globals["build_sha"] = os.environ.get("GIT_SHA", "unknown")
     return Jinja2Templates(env=environment)
 
 
@@ -42,3 +46,10 @@ def _to_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _app_version() -> str:
+    try:
+        return version("megaraid-dashboard")
+    except PackageNotFoundError:
+        return "dev"

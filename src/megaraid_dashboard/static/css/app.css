@@ -1,4 +1,27 @@
 :root {
+  --tile-padding: 12px;
+  --tile-radius: 8px;
+  --tile-border-width: 1px;
+  --tile-min-width: 180px;
+  --tile-height: 72px;
+  --icon-size-sm: 16px;
+  --icon-size-md: 20px;
+  --badge-padding: 2px 8px;
+  --badge-radius: 12px;
+  --font-size-label: 0.75rem;
+  --font-size-body: 1rem;
+  --font-size-value: 1.5rem;
+  --font-weight-label: 500;
+  --font-weight-value: 600;
+  --letter-spacing-label: 0.04em;
+  --text-transform-label: uppercase;
+  --color-info: #6cb4ff;
+  --color-neutral: #6e7782;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --transition-fast: 120ms ease-out;
+  --space-tight: 8px;
+  --space-section: 24px;
+  --content-max-width: 1320px;
   --color-bg: #050608;
   --color-surface: #11151b;
   --color-surface-raised: #151a21;
@@ -44,7 +67,7 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: 16px;
+  font-size: var(--font-size-body);
   line-height: 1.5;
 }
 
@@ -70,19 +93,27 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-section);
   min-height: 72px;
-  padding: var(--space-4) var(--space-8);
+  padding: var(--space-4) var(--space-section);
   border-bottom: 1px solid var(--color-border-soft);
   background: rgba(5, 6, 8, 0.96);
   backdrop-filter: blur(16px);
 }
 
+.site-header__inner,
 .site-header__left,
-.site-header__right,
+.site-header__actions,
 .site-nav {
   display: flex;
   align-items: center;
+}
+
+.site-header__inner {
+  width: min(var(--content-max-width), 100%);
+  margin: 0 auto;
+  justify-content: space-between;
+  gap: var(--space-section);
 }
 
 .site-header__left {
@@ -90,15 +121,17 @@ a:hover {
   min-width: 0;
 }
 
-.site-header__right {
+.site-header__actions {
   gap: var(--space-3);
   flex-shrink: 0;
 }
 
 .brand {
   color: var(--color-text);
-  font-size: 1.05rem;
-  font-weight: 750;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
   white-space: nowrap;
 }
 
@@ -117,7 +150,11 @@ a:hover {
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--color-muted-strong);
-  font-weight: 650;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-value);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .site-nav__link:hover,
@@ -131,7 +168,7 @@ a:hover {
   min-width: 108px;
   color: var(--color-muted);
   font-family: var(--font-mono);
-  font-size: 0.88rem;
+  font-size: var(--font-size-label);
   text-align: right;
   white-space: nowrap;
 }
@@ -148,7 +185,11 @@ a:hover {
   color: var(--color-text);
   cursor: pointer;
   font: inherit;
-  font-weight: 700;
+  font-weight: var(--font-weight-value);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .button--primary {
@@ -157,45 +198,80 @@ a:hover {
 }
 
 .button:hover {
-  background: #1b222b;
+  background: var(--surface-hover);
 }
 
 .content {
-  width: min(1240px, 100%);
+  width: min(var(--content-max-width), 100%);
   margin: 0 auto;
-  padding: var(--space-8);
+  padding: var(--space-section);
   flex: 1;
 }
 
 .data-block {
   min-height: 360px;
+  display: grid;
+  gap: var(--space-section);
 }
 
 .page-title {
-  margin-bottom: var(--space-6);
+  display: grid;
+  gap: var(--space-tight);
+  margin-bottom: var(--space-section);
 }
 
 .page-title h1,
 .empty-state h1 {
   margin: 0;
   color: var(--color-text);
-  font-size: clamp(2rem, 4vw, 4rem);
-  line-height: 1.05;
-  font-weight: 800;
+  font-size: var(--font-size-value);
+  line-height: 1.2;
+  font-weight: var(--font-weight-value);
 }
 
 .page-title p,
 .empty-state p {
-  margin: var(--space-3) 0 0;
+  margin: 0;
   color: var(--color-muted);
-  font-size: 1rem;
+  font-size: var(--font-size-body);
+}
+
+.text-label {
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
+.text-body {
+  font-size: var(--font-size-body);
+}
+
+.value-large {
+  font-size: var(--font-size-value);
+  font-weight: var(--font-weight-value);
+}
+
+.stack-tight {
+  display: grid;
+  gap: var(--space-tight);
+}
+
+.stack-section {
+  display: grid;
+  gap: var(--space-section);
+}
+
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--tile-min-width), 1fr));
+  gap: var(--space-tight);
 }
 
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-4);
-  margin-bottom: var(--space-10);
 }
 
 .stat-card {
@@ -210,17 +286,18 @@ a:hover {
 .stat-card__label {
   display: block;
   color: var(--color-muted);
-  font-size: 0.78rem;
-  font-weight: 750;
-  text-transform: uppercase;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
 }
 
 .stat-card__value {
   display: block;
   margin-top: var(--space-3);
-  font-size: 1.8rem;
+  font-size: var(--font-size-value);
   line-height: 1.15;
-  font-weight: 800;
+  font-weight: var(--font-weight-value);
   overflow-wrap: anywhere;
 }
 
@@ -235,11 +312,13 @@ a:hover {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  padding: 0 var(--space-2);
+  padding: var(--badge-padding);
   border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
-  font-size: 0.78rem;
-  font-weight: 800;
+  border-radius: var(--badge-radius);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
 }
 
 .status-text--optimal,
@@ -264,8 +343,14 @@ a:hover {
 }
 
 .status-text--neutral,
+.status-badge--neutral,
 .smart--neutral {
-  color: var(--color-text);
+  color: var(--color-neutral);
+}
+
+.status-text--info,
+.status-badge--info {
+  color: var(--color-info);
 }
 
 .smart--critical {
@@ -296,16 +381,17 @@ a:hover {
 
 .attribute-grid dt {
   color: var(--color-muted);
-  font-size: 0.74rem;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
 }
 
 .attribute-grid dd {
   margin: var(--space-2) 0 0;
   color: var(--color-text);
-  font-size: 1rem;
-  font-weight: 750;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-value);
   overflow-wrap: anywhere;
 }
 
@@ -324,7 +410,7 @@ a:hover {
   color: var(--color-muted-strong);
   cursor: pointer;
   font: inherit;
-  font-weight: 800;
+  font-weight: var(--font-weight-value);
 }
 
 .range-tabs__button:hover,
@@ -375,9 +461,10 @@ a:hover {
 
 .history-table th {
   color: var(--color-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
 }
 
 .history-table tbody tr:last-child td {
@@ -395,8 +482,8 @@ a:hover {
 .section-heading h2 {
   margin: 0;
   color: var(--color-text);
-  font-size: 1.25rem;
-  font-weight: 800;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-value);
 }
 
 .table-frame {
@@ -424,9 +511,10 @@ a:hover {
 
 .drive-table th {
   color: var(--color-muted);
-  font-size: 0.74rem;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
 }
 
 .drive-table tbody tr:last-child td {
@@ -434,7 +522,7 @@ a:hover {
 }
 
 .drive-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--surface-hover);
 }
 
 .numeric {
@@ -443,7 +531,7 @@ a:hover {
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: var(--font-size-body);
 }
 
 .empty-state {
@@ -461,10 +549,16 @@ a:hover {
 }
 
 .site-footer {
-  padding: var(--space-6) var(--space-8);
+  padding: var(--space-section);
   border-top: 1px solid var(--color-border-soft);
   color: var(--color-muted);
-  font-size: 0.9rem;
+  font-size: var(--font-size-label);
+  text-align: center;
+}
+
+.site-footer__inner {
+  width: min(var(--content-max-width), 100%);
+  margin: 0 auto;
   text-align: center;
 }
 
@@ -475,6 +569,7 @@ a:hover {
     padding: var(--space-4);
   }
 
+  .site-header__inner,
   .site-header__left {
     align-items: flex-start;
     flex-direction: column;
@@ -482,7 +577,7 @@ a:hover {
     width: 100%;
   }
 
-  .site-header__right {
+  .site-header__actions {
     width: 100%;
     justify-content: space-between;
   }
@@ -495,11 +590,6 @@ a:hover {
 
   .content {
     padding: var(--space-5) var(--space-4);
-  }
-
-  .page-title h1,
-  .empty-state h1 {
-    font-size: 2rem;
   }
 
   .empty-state {
