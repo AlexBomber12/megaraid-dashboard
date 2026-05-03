@@ -319,8 +319,8 @@ def _load_bbu_tile(
             status = "critical"
             value = "Replace"
         elif cachevault.state not in _CACHEVAULT_OPTIMAL_STATES:
-            status = "critical"
-            value = "Critical"
+            status = "warning"
+            value = "Warning"
         else:
             status = "optimal"
             value = "Optimal"
@@ -710,9 +710,9 @@ def _virtual_drive_aggregate_status(virtual_drives: Sequence[VirtualDriveSnapsho
     if not virtual_drives:
         return "neutral"
     states = {virtual_drive.state for virtual_drive in virtual_drives}
-    if states & (_VD_CRITICAL_STATES | _VD_PARTIALLY_DEGRADED_STATES):
+    if states & _VD_CRITICAL_STATES:
         return "critical"
-    if states & _VD_DEGRADED_STATES:
+    if states & (_VD_DEGRADED_STATES | _VD_PARTIALLY_DEGRADED_STATES):
         return "warning"
     if states <= _VD_OPTIMAL_STATES:
         return "optimal"

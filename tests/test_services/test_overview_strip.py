@@ -82,7 +82,7 @@ def test_vd_and_raid_tiles_warn_for_one_degraded_drive(
 
 
 @pytest.mark.parametrize("state", ["Pdgd", "Partially Degraded"])
-def test_vd_and_raid_tiles_are_critical_for_partially_degraded_drive(
+def test_vd_and_raid_tiles_are_warning_for_partially_degraded_drive(
     session: Session,
     sample_snapshot: StorcliSnapshot,
     state: str,
@@ -93,9 +93,9 @@ def test_vd_and_raid_tiles_are_critical_for_partially_degraded_drive(
     raid_tile = _load_raid_tile(snapshot)
 
     assert vd_tile.value == "1 degraded"
-    assert vd_tile.status == "critical"
+    assert vd_tile.status == "warning"
     assert raid_tile.value == "RAID6"
-    assert raid_tile.status == "critical"
+    assert raid_tile.status == "warning"
 
 
 def test_raid_tile_uses_stable_tie_break_for_equally_common_levels(
@@ -142,7 +142,7 @@ def test_bbu_tile_is_neutral_when_bbu_is_absent(
 @pytest.mark.parametrize(
     ("cv_state", "cv_replacement_required", "expected_value", "expected_status"),
     [
-        ("Degraded", False, "Critical", "critical"),
+        ("Degraded", False, "Warning", "warning"),
         ("Optimal", True, "Replace", "critical"),
     ],
 )
@@ -171,7 +171,7 @@ def test_bbu_tile_uses_cachevault_state_when_bbu_is_absent(
     assert tile.href == "/drives"
 
 
-def test_bbu_tile_is_critical_for_present_degraded_cachevault(
+def test_bbu_tile_is_warning_for_present_degraded_cachevault(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -179,8 +179,8 @@ def test_bbu_tile_is_critical_for_present_degraded_cachevault(
 
     tile = _load_bbu_tile(snapshot)
 
-    assert tile.value == "Critical"
-    assert tile.status == "critical"
+    assert tile.value == "Warning"
+    assert tile.status == "warning"
     assert tile.href == "/drives"
 
 
