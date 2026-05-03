@@ -31,7 +31,7 @@ _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 _VD_OPTIMAL_STATES = {"Optl", "Optimal"}
 _PD_OPTIMAL_STATES = {"Onln"}
 _CACHEVAULT_OPTIMAL_STATES = {"Optl", "Optimal"}
-_VD_DEGRADED_STATES = {"Degraded"}
+_VD_DEGRADED_STATES = {"Dgrd", "Degraded"}
 _VD_PARTIALLY_DEGRADED_STATES = {"Pdgd", "Partially Degraded"}
 _VD_CRITICAL_STATES = {"Failed", "Offln", "Offline"}
 
@@ -319,8 +319,8 @@ def _load_bbu_tile(
             status = "critical"
             value = "Replace"
         elif cachevault.state not in _CACHEVAULT_OPTIMAL_STATES:
-            status = "warning"
-            value = "Warning"
+            status = "critical"
+            value = "Critical"
         else:
             status = "optimal"
             value = "Optimal"

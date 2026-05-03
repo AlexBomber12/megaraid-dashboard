@@ -70,7 +70,7 @@ def test_vd_and_raid_tiles_warn_for_one_degraded_drive(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    snapshot = _latest(session, _snapshot(sample_snapshot, vd_states=("Optl", "Degraded")))
+    snapshot = _latest(session, _snapshot(sample_snapshot, vd_states=("Optl", "Dgrd")))
 
     vd_tile = _load_vd_tile(snapshot)
     raid_tile = _load_raid_tile(snapshot)
@@ -117,7 +117,7 @@ def test_bbu_tile_is_neutral_when_bbu_is_absent(
 @pytest.mark.parametrize(
     ("cv_state", "cv_replacement_required", "expected_value", "expected_status"),
     [
-        ("Degraded", False, "Warning", "warning"),
+        ("Degraded", False, "Critical", "critical"),
         ("Optimal", True, "Replace", "critical"),
     ],
 )
@@ -146,7 +146,7 @@ def test_bbu_tile_uses_cachevault_state_when_bbu_is_absent(
     assert tile.href == "/drives"
 
 
-def test_bbu_tile_warns_for_present_degraded_cachevault(
+def test_bbu_tile_is_critical_for_present_degraded_cachevault(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -154,8 +154,8 @@ def test_bbu_tile_warns_for_present_degraded_cachevault(
 
     tile = _load_bbu_tile(snapshot)
 
-    assert tile.value == "Warning"
-    assert tile.status == "warning"
+    assert tile.value == "Critical"
+    assert tile.status == "critical"
     assert tile.href == "/drives"
 
 
