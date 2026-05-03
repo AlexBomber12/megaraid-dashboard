@@ -28,6 +28,14 @@ Before editing nginx, confirm these pieces are already true on the NAS:
 - The wildcard certificate for `*.alexbomber.com` is present on disk.
 - You can run `sudo nginx -t` and `sudo systemctl reload nginx`.
 
+By default, the app-level auth rate limiter ignores `X-Forwarded-For` and keys proxied
+requests by the direct peer address. Set `TRUSTED_PROXY_IPS` only when the FastAPI listener is
+restricted so traffic from those IPs is known to be proxy-originated:
+
+```dotenv
+TRUSTED_PROXY_IPS=127.0.0.1
+```
+
 Local app check:
 
 ```bash

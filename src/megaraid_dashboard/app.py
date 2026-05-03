@@ -28,6 +28,7 @@ from megaraid_dashboard.services import CollectorService, EventDetector
 from megaraid_dashboard.web.auth import BasicAuthMiddleware
 from megaraid_dashboard.web.csrf import CsrfMiddleware
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
+from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
 from megaraid_dashboard.web.routes import router
 from megaraid_dashboard.web.static import CacheControlStaticFiles
 
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.add_middleware(ForwardedPrefixMiddleware)
     app.add_middleware(CsrfMiddleware)
     app.add_middleware(BasicAuthMiddleware, settings=app.state.settings)
+    app.add_middleware(AuthRateLimitMiddleware, settings=app.state.settings)
     app.mount(
         "/static",
         CacheControlStaticFiles(directory=_STATIC_DIR),
