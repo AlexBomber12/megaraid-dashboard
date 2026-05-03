@@ -6,6 +6,7 @@ import fcntl
 import os
 import stat
 from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ from megaraid_dashboard.web.static import CacheControlStaticFiles
 
 LOGGER = structlog.get_logger(__name__)
 _COLLECTOR_LOCK_RETRY_SECONDS = 30.0
+_HEALTH_CHECK_SQLITE_BUSY_TIMEOUT_MS = 250
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 _STATIC_DIR = _PACKAGE_ROOT / "static"
 
@@ -59,11 +61,19 @@ def create_app() -> FastAPI:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     engine = get_engine(settings.database_url)
+    health_engine = get_engine(
+        settings.database_url,
+        sqlite_busy_timeout_ms=_HEALTH_CHECK_SQLITE_BUSY_TIMEOUT_MS,
+    )
+    health_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="healthz-db")
     with engine.begin() as connection:
         _upgrade_database(settings.database_url, connection=connection)
     session_factory = get_sessionmaker(engine)
     collector_runtime = _CollectorRuntime()
     app.state.engine = engine
+    app.state.health_engine = health_engine
+    app.state.health_executor = health_executor
+    app.state.health_probe_lock = asyncio.Lock()
     app.state.session_factory = session_factory
     app.state.collector = None
     app.state.collector_lock_fd = None
@@ -106,6 +116,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         finally:
             if collector_runtime.lock_fd is not None:
                 _release_collector_lock(collector_runtime.lock_fd)
+            health_executor.shutdown(wait=False, cancel_futures=True)
+            health_engine.dispose()
             engine.dispose()
 
 

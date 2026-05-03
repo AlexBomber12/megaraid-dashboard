@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from concurrent.futures import Executor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import ceil
@@ -52,7 +53,6 @@ TEMPLATES = create_templates(_PACKAGE_ROOT / "templates")
 STATIC_ASSET_VERSION = ""
 _DEFAULT_CHART_RANGE_DAYS = 7
 _ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
-_DATABASE_HEALTH_TIMEOUT_SECONDS = 0.25
 
 HealthStatus = Literal["ok", "degraded"]
 DatabaseHealth = Literal["ok", "error"]
@@ -140,8 +140,7 @@ async def health() -> dict[str, str]:
 
 @router.get("/healthz", name="healthz")
 async def healthz(request: Request) -> JSONResponse:
-    engine = cast(Engine, request.app.state.engine)
-    database_status = await _database_health_with_timeout(engine)
+    database_status = await _database_health_for_request(request)
     collector_status = _collector_health(request)
     status: HealthStatus = "ok" if database_status == "ok" else "degraded"
     response = JSONResponse(
@@ -345,18 +344,19 @@ def _session(request: Request) -> Session:
     return session_factory()
 
 
-async def _database_health_with_timeout(engine: Engine) -> DatabaseHealth:
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(_database_health, engine),
-            timeout=_DATABASE_HEALTH_TIMEOUT_SECONDS,
-        )
-    except TimeoutError:
+async def _database_health_for_request(request: Request) -> DatabaseHealth:
+    probe_lock = cast(asyncio.Lock, request.app.state.health_probe_lock)
+    if probe_lock.locked():
         LOGGER.warning(
-            "healthz_database_check_timed_out",
-            timeout_seconds=_DATABASE_HEALTH_TIMEOUT_SECONDS,
+            "healthz_database_check_already_running",
         )
         return "error"
+
+    async with probe_lock:
+        engine = cast(Engine, request.app.state.health_engine)
+        executor = cast(Executor, request.app.state.health_executor)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(executor, _database_health, engine)
 
 
 def _database_health(engine: Engine) -> DatabaseHealth:
