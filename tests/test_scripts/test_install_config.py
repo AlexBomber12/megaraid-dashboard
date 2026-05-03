@@ -69,6 +69,10 @@ def test_phase_config_preserves_existing_values_without_force(tmp_path: Path) ->
         args=["--non-interactive"],
         install_env=_install_env(tmp_path),
     )
+    env_file = tmp_path / "etc" / "env"
+    with env_file.open("a") as file:
+        file.write("ALERT_THROTTLE_SECONDS=900\n")
+
     second = _run_phase_config(
         tmp_path,
         args=["--non-interactive"],
@@ -80,13 +84,31 @@ def test_phase_config_preserves_existing_values_without_force(tmp_path: Path) ->
         ),
     )
 
-    values = _read_env_file(tmp_path / "etc" / "env")
+    values = _read_env_file(env_file)
 
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
     assert values["ADMIN_USERNAME"] == "admin"
     assert values["ADMIN_PASSWORD_HASH"] == "$2b$secret-admin-password"
     assert values["ALERT_SMTP_HOST"] == "smtp.example.test"
+    assert values["ALERT_THROTTLE_SECONDS"] == "900"
+
+
+def test_phase_config_defaults_storcli_path_from_install_env(tmp_path: Path) -> None:
+    install_env = _install_env(tmp_path)
+    install_env.pop("MEGARAID_INSTALL_STORCLI_PATH")
+    install_env["STORCLI_PATH"] = f"{tmp_path}/custom/storcli64"
+
+    result = _run_phase_config(
+        tmp_path,
+        args=["--non-interactive"],
+        install_env=install_env,
+    )
+
+    values = _read_env_file(tmp_path / "etc" / "env")
+
+    assert result.returncode == 0, result.stderr
+    assert values["STORCLI_PATH"] == f"{tmp_path}/custom/storcli64"
 
 
 def test_phase_config_force_reconfigure_overwrites_existing_values(tmp_path: Path) -> None:

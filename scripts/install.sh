@@ -296,6 +296,42 @@ prompt_config_value() {
   printf -v "${var}" "%s" "${input}"
 }
 
+managed_config_keys() {
+  cat <<EOF
+ADMIN_USERNAME
+ADMIN_PASSWORD_HASH
+ALERT_SMTP_HOST
+ALERT_SMTP_PORT
+ALERT_SMTP_USER
+ALERT_SMTP_PASSWORD
+ALERT_SMTP_USE_STARTTLS
+ALERT_FROM
+ALERT_TO
+STORCLI_PATH
+STORCLI_USE_SUDO
+LOG_LEVEL
+METRICS_INTERVAL_SECONDS
+DATABASE_URL
+EOF
+}
+
+write_preserved_env_lines() {
+  local target="$1"
+  local managed_keys
+  managed_keys="$(managed_config_keys)"
+
+  awk -F= -v managed_keys="${managed_keys}" '
+    BEGIN {
+      split(managed_keys, keys, "\n")
+      for (idx in keys) {
+        managed[keys[idx]] = 1
+      }
+    }
+    $1 in managed { next }
+    { print }
+  ' "${ENV_FILE}" >"${target}"
+}
+
 bcrypt_hash() {
   local plain="$1"
 
@@ -328,7 +364,7 @@ phase_config() {
   prompt_config_value ALERT_SMTP_PASSWORD "SMTP password / app token" "" "secret"
   prompt_config_value ALERT_FROM "from address"
   prompt_config_value ALERT_TO "to address"
-  prompt_config_value STORCLI_PATH "storcli path" "/usr/local/sbin/storcli64"
+  prompt_config_value STORCLI_PATH "storcli path" "${STORCLI_PATH}"
   prompt_config_value LOG_LEVEL "log level" "info"
   prompt_config_value METRICS_INTERVAL_SECONDS "collector interval seconds" "300"
 
@@ -341,7 +377,8 @@ phase_config() {
   fi
 
   install -m 0600 -o root -g "${INSTALL_USER}" /dev/null "${ENV_FILE}.tmp"
-  cat >"${ENV_FILE}.tmp" <<EOF
+  write_preserved_env_lines "${ENV_FILE}.tmp"
+  cat >>"${ENV_FILE}.tmp" <<EOF
 ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
 ALERT_SMTP_HOST=${ALERT_SMTP_HOST}
