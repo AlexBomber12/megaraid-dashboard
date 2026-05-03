@@ -735,6 +735,7 @@ def test_static_asset_version_includes_js_bytes(
     (tmp_path / "static" / "vendor").mkdir()
     (tmp_path / "static" / "css" / "app.css").write_text("css", encoding="utf-8")
     (tmp_path / "static" / "js" / "local-time.js").write_text("local-time", encoding="utf-8")
+    (tmp_path / "static" / "icons.svg").write_text("icons", encoding="utf-8")
     (tmp_path / "static" / "vendor" / "htmx.min.js").write_text("htmx", encoding="utf-8")
     (tmp_path / "static" / "vendor" / "chart.min.js").write_text("chart", encoding="utf-8")
     changed_path = tmp_path / asset_relative_path

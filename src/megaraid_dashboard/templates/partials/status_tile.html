@@ -1,4 +1,4 @@
-{% set tile_status = status | default('neutral') %}
+{% set tile_status = status | default('neutral', true) %}
 {% set tile_tag = 'a' if href else 'div' %}
 <{{ tile_tag }}
   class="status-tile status-tile--{{ tile_status }}"
@@ -7,7 +7,7 @@
 >
   {% if icon %}
     <svg class="status-tile__icon" aria-hidden="true">
-      <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-{{ icon }}"/>
+      <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ icon }}"/>
     </svg>
   {% endif %}
   <div class="status-tile__body">

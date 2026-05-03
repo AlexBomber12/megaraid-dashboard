@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from megaraid_dashboard.web.templates import create_templates
 
 TEMPLATE_DIR = Path("src/megaraid_dashboard/templates")
@@ -41,6 +43,7 @@ def render_status_tile(**context: object) -> str:
         "href": None,
         "icon": None,
         "aria_label": None,
+        "static_asset_version": "asset123",
     }
     defaults.update(context)
     return template.render(defaults)
@@ -67,11 +70,18 @@ def test_status_tile_renders_icon_reference() -> None:
     rendered = render_status_tile(status="neutral", icon="hard-drive")
 
     assert '<svg class="status-tile__icon" aria-hidden="true">' in rendered
-    assert '<use href="/static/icons.svg#icon-hard-drive"/>' in rendered
+    assert '<use href="/static/icons.svg?v=asset123#icon-hard-drive"/>' in rendered
 
 
 def test_status_tile_defaults_to_neutral_status() -> None:
     rendered = render_status_tile()
+
+    assert 'class="status-tile status-tile--neutral"' in rendered
+
+
+@pytest.mark.parametrize("status", [None, ""])
+def test_status_tile_coerces_falsey_status_to_neutral(status: object) -> None:
+    rendered = render_status_tile(status=status)
 
     assert 'class="status-tile status-tile--neutral"' in rendered
 
