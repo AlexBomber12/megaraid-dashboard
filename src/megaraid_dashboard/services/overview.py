@@ -144,13 +144,21 @@ def load_overview_view_model(
     *,
     scheduler: _Scheduler | None = None,
     now: datetime | None = None,
+    overview_url: str = "/",
+    drives_url: str = "/drives",
 ) -> OverviewViewModel:
     settings = get_settings()
     resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
     alert_status = _load_alert_status(session, settings=settings, now=resolved_now)
     snapshot = get_latest_snapshot(session)
     roc_temperature = _load_roc_temperature(session, settings=settings, latest_snapshot=snapshot)
-    strip = _load_overview_strip(latest_snapshot=snapshot, settings=settings, roc=roc_temperature)
+    strip = _load_overview_strip(
+        latest_snapshot=snapshot,
+        settings=settings,
+        roc=roc_temperature,
+        overview_url=overview_url,
+        drives_url=drives_url,
+    )
     if snapshot is None:
         return OverviewViewModel(
             has_snapshot=False,
@@ -229,18 +237,24 @@ def _load_overview_strip(
     latest_snapshot: ControllerSnapshot | None,
     settings: Settings,
     roc: RocTemperatureSection,
+    overview_url: str = "/",
+    drives_url: str = "/drives",
 ) -> OverviewStripSection:
     return OverviewStripSection(
-        controller=_load_controller_tile(latest_snapshot),
-        vd=_load_vd_tile(latest_snapshot),
-        raid=_load_raid_tile(latest_snapshot),
-        bbu=_load_bbu_tile(latest_snapshot),
-        max_temp=_load_max_temp_tile(latest_snapshot, settings=settings),
-        roc=_load_roc_tile(roc),
+        controller=_load_controller_tile(latest_snapshot, overview_url=overview_url),
+        vd=_load_vd_tile(latest_snapshot, overview_url=overview_url),
+        raid=_load_raid_tile(latest_snapshot, overview_url=overview_url),
+        bbu=_load_bbu_tile(latest_snapshot, overview_url=overview_url, drives_url=drives_url),
+        max_temp=_load_max_temp_tile(latest_snapshot, settings=settings, drives_url=drives_url),
+        roc=_load_roc_tile(roc, overview_url=overview_url),
     )
 
 
-def _load_controller_tile(latest_snapshot: ControllerSnapshot | None) -> StripTileViewModel:
+def _load_controller_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
     status = "neutral"
     value = "Unknown"
     if latest_snapshot is not None:
@@ -253,11 +267,15 @@ def _load_controller_tile(latest_snapshot: ControllerSnapshot | None) -> StripTi
         value=value,
         status=status,
         icon="cpu",
-        href="/",
+        href=overview_url,
     )
 
 
-def _load_vd_tile(latest_snapshot: ControllerSnapshot | None) -> StripTileViewModel:
+def _load_vd_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
     virtual_drives = () if latest_snapshot is None else tuple(latest_snapshot.virtual_drives)
     status = _virtual_drive_aggregate_status(virtual_drives)
     return StripTileViewModel(
@@ -265,25 +283,34 @@ def _load_vd_tile(latest_snapshot: ControllerSnapshot | None) -> StripTileViewMo
         value=_virtual_drive_aggregate_value(virtual_drives),
         status=status,
         icon="hard-drive",
-        href="/",
+        href=overview_url,
     )
 
 
-def _load_raid_tile(latest_snapshot: ControllerSnapshot | None) -> StripTileViewModel:
+def _load_raid_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
     virtual_drives = () if latest_snapshot is None else tuple(latest_snapshot.virtual_drives)
     return StripTileViewModel(
         label="RAID",
         value=_dominant_raid_level(virtual_drives),
         status=_virtual_drive_aggregate_status(virtual_drives),
         icon="hard-drive",
-        href="/",
+        href=overview_url,
     )
 
 
-def _load_bbu_tile(latest_snapshot: ControllerSnapshot | None) -> StripTileViewModel:
+def _load_bbu_tile(
+    latest_snapshot: ControllerSnapshot | None,
+    *,
+    overview_url: str = "/",
+    drives_url: str = "/drives",
+) -> StripTileViewModel:
     status = "neutral"
     value = "Unknown"
-    href = "/"
+    href = overview_url
     if latest_snapshot is not None and not latest_snapshot.bbu_present:
         value = "None"
     elif latest_snapshot is not None and latest_snapshot.cachevault is not None:
@@ -294,7 +321,7 @@ def _load_bbu_tile(latest_snapshot: ControllerSnapshot | None) -> StripTileViewM
         else:
             status = "optimal"
             value = "Optimal"
-            href = "/drives"
+            href = drives_url
 
     return StripTileViewModel(
         label="BBU",
@@ -309,6 +336,7 @@ def _load_max_temp_tile(
     latest_snapshot: ControllerSnapshot | None,
     *,
     settings: Settings,
+    drives_url: str = "/drives",
 ) -> StripTileViewModel:
     physical_drives = () if latest_snapshot is None else tuple(latest_snapshot.physical_drives)
     max_temp = _max_temperature(physical_drives)
@@ -327,17 +355,21 @@ def _load_max_temp_tile(
         value=value,
         status=status,
         icon="thermometer",
-        href="/drives?sort=temperature-desc",
+        href=drives_url,
     )
 
 
-def _load_roc_tile(roc: RocTemperatureSection) -> StripTileViewModel:
+def _load_roc_tile(
+    roc: RocTemperatureSection,
+    *,
+    overview_url: str = "/",
+) -> StripTileViewModel:
     return StripTileViewModel(
         label="RoC",
         value=roc.label,
         status=roc.status,
         icon="thermometer",
-        href="/",
+        href=overview_url,
     )
 
 

@@ -116,7 +116,7 @@ def test_max_temp_tile_uses_hottest_drive_and_thresholds(
 
     assert tile.value == "58 C"
     assert tile.status == "warning"
-    assert tile.href == "/drives?sort=temperature-desc"
+    assert tile.href == "/drives"
 
 
 def test_max_temp_tile_is_neutral_without_physical_drives(

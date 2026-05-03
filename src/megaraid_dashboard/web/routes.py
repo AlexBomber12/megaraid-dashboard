@@ -389,7 +389,12 @@ def _task_is_alive(task: object) -> bool:
 def _load_overview(request: Request) -> OverviewViewModel:
     scheduler = getattr(request.app.state, "scheduler", None)
     with _session(request) as session:
-        return load_overview_view_model(session, scheduler=scheduler)
+        return load_overview_view_model(
+            session,
+            scheduler=scheduler,
+            overview_url=str(request.url_for("overview").path),
+            drives_url=str(request.url_for("drives").path),
+        )
 
 
 def _load_drive_list(request: Request) -> DriveListViewModel:

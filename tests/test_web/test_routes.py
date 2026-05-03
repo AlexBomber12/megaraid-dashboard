@@ -150,6 +150,10 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert 'data-local-time-clock aria-live="off" hidden' in response.text
     assert "/raid/partials/overview" in response.text
     assert {"/raid/", "/raid/drives", "/raid/events"}.issubset(_anchor_hrefs(response.text))
+    status_tile_hrefs = _status_tile_hrefs(response.text)
+    assert status_tile_hrefs
+    assert all(href.startswith("/raid/") for href in status_tile_hrefs)
+    assert "/raid/drives?sort=temperature-desc" not in status_tile_hrefs
 
 
 def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
@@ -173,6 +177,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
+    assert "/drives?sort=temperature-desc" not in _status_tile_hrefs(response.text)
     assert "/raid/" not in response.text
 
 
@@ -815,6 +820,16 @@ def _anchor_hrefs(html: str) -> set[str]:
     parser = _AnchorParser()
     parser.feed(html)
     return parser.hrefs
+
+
+def _status_tile_hrefs(html: str) -> set[str]:
+    return set(
+        re.findall(
+            r'<a\s+class="status-tile[^"]*"\s+href="([^"]+)"',
+            html,
+            flags=re.MULTILINE,
+        )
+    )
 
 
 def _json_scripts(html: str) -> dict[str, dict[str, object]]:
