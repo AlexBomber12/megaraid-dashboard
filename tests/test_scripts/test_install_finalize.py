@@ -72,7 +72,14 @@ def test_phase_sudoers_writes_valid_fragment(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert sudoers.read_text() == f"raid-monitor ALL=(root) NOPASSWD: {storcli}\n"
+    assert sudoers.read_text() == (
+        f"Cmnd_Alias MEGARAID_DASHBOARD_STORCLI = {storcli} /c0 show all J, "
+        f"  {storcli} /c0/vall show all J, "
+        f"  {storcli} /c0/eall/sall show all J, "
+        f"  {storcli} /c0/cv show all J, "
+        f"  {storcli} /c0/bbu show all J\n"
+        "raid-monitor ALL=(root) NOPASSWD: MEGARAID_DASHBOARD_STORCLI\n"
+    )
     assert stat.S_IMODE(sudoers.stat().st_mode) == 0o440
 
 
@@ -124,6 +131,10 @@ def test_phase_finalize_retries_healthz_until_ready(tmp_path: Path) -> None:
     _write_executable(
         bin_dir / "curl",
         "#!/bin/sh\n"
+        'case "$*" in\n'
+        '  *"--connect-timeout 2"*"--max-time 5"*"/healthz"*) ;;\n'
+        '  *) printf "unexpected curl args: %s\\n" "$*" >&2; exit 2 ;;\n'
+        "esac\n"
         f"attempts={curl_attempts}\n"
         "count=0\n"
         '[ -f "$attempts" ] && count="$(cat "$attempts")"\n'

@@ -450,7 +450,12 @@ phase_sudoers() {
 
   install -d -m 0755 "${sudoers_dir}"
   cat >"${sudoers_tmp}" <<EOF
-${INSTALL_USER} ALL=(root) NOPASSWD: ${STORCLI_PATH}
+Cmnd_Alias MEGARAID_DASHBOARD_STORCLI = ${STORCLI_PATH} /c0 show all J, \
+  ${STORCLI_PATH} /c0/vall show all J, \
+  ${STORCLI_PATH} /c0/eall/sall show all J, \
+  ${STORCLI_PATH} /c0/cv show all J, \
+  ${STORCLI_PATH} /c0/bbu show all J
+${INSTALL_USER} ALL=(root) NOPASSWD: MEGARAID_DASHBOARD_STORCLI
 EOF
   chmod 0440 "${sudoers_tmp}"
   if visudo -c -f "${sudoers_tmp}" >/dev/null 2>&1; then
@@ -525,7 +530,8 @@ phase_finalize() {
   local healthz
   healthz=""
   for ((attempt = 1; attempt <= 30; attempt++)); do
-    healthz="$(curl -fs "http://127.0.0.1:${APP_PORT}/healthz" || true)"
+    healthz="$(curl -fsS --connect-timeout 2 --max-time 5 \
+      "http://127.0.0.1:${APP_PORT}/healthz" || true)"
     if [[ -n "${healthz}" ]]; then
       break
     fi
