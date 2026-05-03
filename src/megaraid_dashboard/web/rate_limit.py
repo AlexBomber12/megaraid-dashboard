@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import cast
 
 from starlette.datastructures import Headers
@@ -17,6 +19,11 @@ _WINDOW_SECONDS = 60.0
 _RETRY_AFTER_SECONDS = 60
 
 
+@dataclass(eq=False)
+class _AttemptSlot:
+    recorded_at: float
+
+
 class AuthRateLimitMiddleware:
     def __init__(
         self,
@@ -27,7 +34,7 @@ class AuthRateLimitMiddleware:
     ) -> None:
         self.app = app
         self.limit = settings.auth_rate_limit_per_minute + settings.auth_rate_limit_burst
-        self._attempts: defaultdict[str, deque[float]] = defaultdict(deque)
+        self._attempts: defaultdict[str, deque[_AttemptSlot]] = defaultdict(deque)
         self._lock = asyncio.Lock()
         self._time_func = time_func
 
@@ -37,8 +44,8 @@ class AuthRateLimitMiddleware:
             return
 
         client_ip = _client_ip(scope)
-        now = self._time_func()
-        if await self._is_limited(client_ip, now):
+        attempt_slot = await self._reserve_attempt(client_ip, self._time_func())
+        if attempt_slot is None:
             response = JSONResponse(
                 {"error": "rate_limit_exceeded"},
                 status_code=429,
@@ -55,31 +62,45 @@ class AuthRateLimitMiddleware:
                 status_code = int(message["status"])
             await send(message)
 
-        await self.app(scope, receive, send_with_status_capture)
+        try:
+            await self.app(scope, receive, send_with_status_capture)
+        except Exception:
+            await self._release_attempt(client_ip, attempt_slot, self._time_func())
+            raise
 
-        if status_code == 401:
-            await self._record_attempt(client_ip, self._time_func())
+        if status_code != 401:
+            await self._release_attempt(client_ip, attempt_slot, self._time_func())
 
-    async def _is_limited(self, client_ip: str, now: float) -> bool:
+    async def _reserve_attempt(self, client_ip: str, now: float) -> _AttemptSlot | None:
         async with self._lock:
             attempts = self._attempts[client_ip]
             _evict_expired(attempts, now)
             if len(attempts) >= self.limit:
-                return True
-            if not attempts:
-                self._attempts.pop(client_ip, None)
-            return False
+                if not attempts:
+                    self._attempts.pop(client_ip, None)
+                return None
+            attempt_slot = _AttemptSlot(recorded_at=now)
+            attempts.append(attempt_slot)
+            return attempt_slot
 
-    async def _record_attempt(self, client_ip: str, now: float) -> None:
+    async def _release_attempt(
+        self,
+        client_ip: str,
+        attempt_slot: _AttemptSlot,
+        now: float,
+    ) -> None:
         async with self._lock:
             attempts = self._attempts[client_ip]
             _evict_expired(attempts, now)
-            attempts.append(now)
+            with contextlib.suppress(ValueError):
+                attempts.remove(attempt_slot)
+            if not attempts:
+                self._attempts.pop(client_ip, None)
 
 
-def _evict_expired(attempts: deque[float], now: float) -> None:
+def _evict_expired(attempts: deque[_AttemptSlot], now: float) -> None:
     expires_before = now - _WINDOW_SECONDS
-    while attempts and attempts[0] <= expires_before:
+    while attempts and attempts[0].recorded_at <= expires_before:
         attempts.popleft()
 
 
