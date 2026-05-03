@@ -98,6 +98,31 @@ def test_vd_and_raid_tiles_are_critical_for_partially_degraded_drive(
     assert raid_tile.status == "critical"
 
 
+def test_raid_tile_uses_stable_tie_break_for_equally_common_levels(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    first_snapshot = _latest(
+        session,
+        _snapshot(
+            sample_snapshot,
+            vd_states=("Optl", "Optl", "Optl", "Optl"),
+            raid_levels=("RAID6", "RAID10", "RAID10", "RAID6"),
+        ),
+    )
+    second_snapshot = _latest(
+        session,
+        _snapshot(
+            sample_snapshot,
+            vd_states=("Optl", "Optl", "Optl", "Optl"),
+            raid_levels=("RAID10", "RAID6", "RAID6", "RAID10"),
+        ),
+    )
+
+    assert _load_raid_tile(first_snapshot).value == "RAID10"
+    assert _load_raid_tile(second_snapshot).value == "RAID10"
+
+
 def test_bbu_tile_is_neutral_when_bbu_is_absent(
     session: Session,
     sample_snapshot: StorcliSnapshot,
@@ -235,6 +260,7 @@ def _snapshot(
     cachevault_present: bool = True,
     temperatures: tuple[int | None, ...] = (40,),
     roc_temperature_celsius: int | None = 78,
+    raid_levels: tuple[str, ...] | None = None,
 ) -> StorcliSnapshot:
     controller = sample_snapshot.controller.model_copy(
         update={
@@ -245,9 +271,11 @@ def _snapshot(
     )
     virtual_drives = [
         sample_snapshot.virtual_drives[0].model_copy(
-            update={"vd_id": index, "state": state, "raid_level": "RAID6"}
+            update={"vd_id": index, "state": state, "raid_level": raid_level}
         )
-        for index, state in enumerate(vd_states)
+        for index, (state, raid_level) in enumerate(
+            zip(vd_states, raid_levels or ("RAID6",) * len(vd_states), strict=True)
+        )
     ]
     physical_drives = [
         drive.model_copy(update={"temperature_celsius": temperature})

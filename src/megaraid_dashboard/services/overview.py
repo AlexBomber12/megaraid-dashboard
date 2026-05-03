@@ -749,7 +749,7 @@ def _dominant_raid_level(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
     if not virtual_drives:
         return "Unknown"
     raid_levels = Counter(virtual_drive.raid_level for virtual_drive in virtual_drives)
-    return raid_levels.most_common(1)[0][0]
+    return sorted(raid_levels.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
 
 def _virtual_drive_state_label(state: str) -> str:
