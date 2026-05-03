@@ -132,7 +132,7 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     assert "User=raid-special" in unit
     assert "Group=raid-special" in unit
     assert f"EnvironmentFile={tmp_path / 'etc' / 'env'}" in unit
-    assert f"ExecStartPre={prefix}/scripts/preflight.sh" in unit
+    assert f"ExecStartPre={prefix}/src/scripts/preflight.sh" in unit
     assert f"ReadWritePaths={tmp_path / 'data'}" in unit
     assert "--port 18123" in unit
     assert "scripts/preflight.sh" in unit

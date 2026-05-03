@@ -440,6 +440,7 @@ phase_systemd() {
   if ! sed \
     -e "s|User=raid-monitor|User=$(sed_replacement_escape "${INSTALL_USER}")|" \
     -e "s|Group=raid-monitor|Group=$(sed_replacement_escape "${INSTALL_USER}")|" \
+    -e "s|ExecStartPre=/opt/megaraid-dashboard/scripts/preflight.sh|ExecStartPre=/opt/megaraid-dashboard/src/scripts/preflight.sh|" \
     -e "s|/opt/megaraid-dashboard|$(sed_replacement_escape "${INSTALL_PREFIX}")|g" \
     -e "s|/var/lib/megaraid-dashboard|$(sed_replacement_escape "${DATA_DIR}")|g" \
     -e "s|/etc/megaraid-dashboard/env|$(sed_replacement_escape "${ENV_FILE}")|g" \
