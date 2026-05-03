@@ -47,6 +47,16 @@ drive snapshots are retained at full 5-minute resolution for 30 days, then downs
 `pd_metrics_hourly` for 1 year, then into `pd_metrics_daily` indefinitely. Events and audit
 logs are retained forever.
 
+### Operations
+
+Production service units should run `scripts/preflight.sh` with systemd `ExecStartPre`
+before starting FastAPI. The script runs `alembic upgrade head` and probes SQLite
+writability by creating and dropping a temporary `_preflight` table. If `DATABASE_URL` is not
+set by the service environment, it falls back to `sqlite:///./megaraid.db`.
+
+See `deploy/megaraid-dashboard.service` for a sample unit fragment that wires the preflight
+script into startup.
+
 ### History Aggregation
 
 Drive detail graphs read history from three layers: raw `pd_snapshots` joined to
