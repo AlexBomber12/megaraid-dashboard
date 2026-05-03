@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.concurrency import run_in_threadpool
 
 from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
@@ -72,6 +73,7 @@ _EVENT_CATEGORY_FILTERS = (
     "controller_temperature",
     "disk_space",
     "system",
+    "operator_action",
 )
 
 HealthStatus = Literal["ok", "degraded"]
@@ -310,7 +312,8 @@ async def _run_locate(
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
-    _record_locate_operator_action(
+    await run_in_threadpool(
+        _record_locate_operator_action_sync,
         request=request,
         action=action,
         enclosure_id=enclosure_id,
@@ -326,7 +329,7 @@ async def _run_locate(
     )
 
 
-def _record_locate_operator_action(
+def _record_locate_operator_action_sync(
     *,
     request: Request,
     action: LocateAction,

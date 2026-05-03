@@ -76,6 +76,8 @@ def test_drive_locate_records_operator_action(
     csrf_headers: Callable[[TestClient], dict[str, str]],
     action: str,
 ) -> None:
+    threadpool_calls: list[str] = []
+
     async def fake_run_storcli(
         args: list[str],
         *,
@@ -85,13 +87,23 @@ def test_drive_locate_records_operator_action(
         del args, use_sudo, binary_path
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
+    async def fake_run_in_threadpool(
+        func: Callable[..., object],
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        threadpool_calls.append(getattr(func, "__name__", ""))
+        return func(*args, **kwargs)
+
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_in_threadpool", fake_run_in_threadpool)
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(f"/drives/2:0/locate/{action}", headers=headers)
 
         assert response.status_code == 200
+        assert threadpool_calls == ["_record_locate_operator_action_sync"]
         session_factory = test_app.state.session_factory
         assert isinstance(session_factory, sessionmaker)
         with session_factory() as session:
