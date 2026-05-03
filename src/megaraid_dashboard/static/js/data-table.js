@@ -8,9 +8,10 @@
   }
 
   function compareValues(left, right) {
-    var leftNumber = parseFloat(left);
-    var rightNumber = parseFloat(right);
-    if (!Number.isNaN(leftNumber) && !Number.isNaN(rightNumber)) {
+    var numericPattern = /^-?\d+(?:\.\d+)?$/;
+    if (numericPattern.test(left) && numericPattern.test(right)) {
+      var leftNumber = Number(left);
+      var rightNumber = Number(right);
       return leftNumber - rightNumber;
     }
     return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
