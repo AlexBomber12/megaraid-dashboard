@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import Session
+from structlog.testing import capture_logs
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.models import Event
@@ -143,6 +144,27 @@ def test_check_data_partition_free_space_ignores_non_sqlite_database(
     events = check_data_partition_free_space(session, settings=settings, now=NOW)
 
     assert events == []
+
+
+def test_check_data_partition_free_space_redacts_non_sqlite_database_url(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path, database_url="postgresql://user:secret@localhost/megaraid")
+
+    with capture_logs() as logs:
+        events = check_data_partition_free_space(session, settings=settings, now=NOW)
+
+    assert events == []
+    assert logs == [
+        {
+            "event": "disk_space_monitor_unsupported_database",
+            "log_level": "warning",
+            "database_backend": "postgresql",
+        }
+    ]
+    assert "secret" not in str(logs)
+    assert settings.database_url not in str(logs)
 
 
 def test_check_data_partition_free_space_emits_for_driver_qualified_sqlite_url(

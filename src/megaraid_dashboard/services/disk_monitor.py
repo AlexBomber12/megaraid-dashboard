@@ -49,7 +49,7 @@ def check_data_partition_free_space(
     except NotImplementedError:
         LOGGER.warning(
             "disk_space_monitor_unsupported_database",
-            database_url=settings.database_url,
+            database_backend=make_url(settings.database_url).get_backend_name(),
         )
         return []
 
