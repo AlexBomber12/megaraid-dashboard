@@ -125,6 +125,7 @@ Routes:
 - `/drives/{enclosure_id}/{slot_id}/charts` renders only the chart fragment used by the
   Drive Detail range selector.
 - `/events` renders the read-only events log page.
+- `/audit` redirects to `/events?category=operator_action` for the operator-action audit log.
 - `/partials/events` renders the events fragment used by HTMX auto-refresh and Load more
   pagination.
 - `/health` returns the health JSON used by smoke checks.

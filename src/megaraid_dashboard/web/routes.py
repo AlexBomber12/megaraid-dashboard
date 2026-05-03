@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -433,6 +433,17 @@ def events(
     )
     _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=False)
     return response
+
+
+@router.get("/audit", name="audit_log")
+async def audit_log(request: Request) -> RedirectResponse:
+    target = _events_query_path(
+        request=request,
+        route_name="events",
+        categories=("operator_action",),
+        severities=(),
+    )
+    return RedirectResponse(url=target, status_code=302)
 
 
 @router.get("/partials/events", name="events_partial")

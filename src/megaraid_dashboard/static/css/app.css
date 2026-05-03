@@ -493,6 +493,13 @@ a:hover {
   font-size: var(--font-size-label);
 }
 
+.event-actor {
+  margin-left: var(--space-tight);
+  color: var(--color-neutral);
+  font-size: var(--font-size-label);
+  font-style: italic;
+}
+
 .filter-chips {
   display: grid;
   gap: var(--space-3);
