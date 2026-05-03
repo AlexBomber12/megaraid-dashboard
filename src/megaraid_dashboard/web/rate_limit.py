@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import ipaddress
 import time
 from collections import defaultdict, deque
@@ -47,8 +46,7 @@ class AuthRateLimitMiddleware:
             return
 
         client_ip = _client_ip(scope)
-        attempt_slot = await self._reserve_attempt(client_ip, self._time_func())
-        if attempt_slot is None:
+        if await self._is_limited(client_ip, self._time_func()):
             response = JSONResponse(
                 {"error": "rate_limit_exceeded"},
                 status_code=429,
@@ -65,41 +63,29 @@ class AuthRateLimitMiddleware:
                 status_code = int(message["status"])
             await send(message)
 
-        try:
-            await self.app(scope, receive, send_with_status_capture)
-        except Exception:
-            await self._release_attempt(client_ip, attempt_slot, self._time_func())
-            raise
+        await self.app(scope, receive, send_with_status_capture)
 
-        if status_code != 401:
-            await self._release_attempt(client_ip, attempt_slot, self._time_func())
+        if status_code == 401:
+            await self._record_failed_attempt(client_ip, self._time_func())
 
-    async def _reserve_attempt(self, client_ip: str, now: float) -> _AttemptSlot | None:
+    async def _is_limited(self, client_ip: str, now: float) -> bool:
+        async with self._lock:
+            self._prune_expired_attempts(now)
+            attempts = self._attempts.get(client_ip)
+            if attempts is None:
+                return False
+            _evict_expired(attempts, now)
+            if not attempts:
+                self._attempts.pop(client_ip, None)
+                return False
+            return len(attempts) >= self.limit
+
+    async def _record_failed_attempt(self, client_ip: str, now: float) -> None:
         async with self._lock:
             self._prune_expired_attempts(now)
             attempts = self._attempts[client_ip]
             _evict_expired(attempts, now)
-            if len(attempts) >= self.limit:
-                if not attempts:
-                    self._attempts.pop(client_ip, None)
-                return None
-            attempt_slot = _AttemptSlot(recorded_at=now)
-            attempts.append(attempt_slot)
-            return attempt_slot
-
-    async def _release_attempt(
-        self,
-        client_ip: str,
-        attempt_slot: _AttemptSlot,
-        now: float,
-    ) -> None:
-        async with self._lock:
-            attempts = self._attempts[client_ip]
-            _evict_expired(attempts, now)
-            with contextlib.suppress(ValueError):
-                attempts.remove(attempt_slot)
-            if not attempts:
-                self._attempts.pop(client_ip, None)
+            attempts.append(_AttemptSlot(recorded_at=now))
 
     def _prune_expired_attempts(self, now: float) -> None:
         if now < self._next_global_prune_at:

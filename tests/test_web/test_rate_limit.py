@@ -61,23 +61,27 @@ async def test_failed_attempts_over_limit_return_429(settings: Settings) -> None
     assert limited_response.json() == {"error": "rate_limit_exceeded"}
 
 
-async def test_in_flight_attempt_reserves_rate_limit_slot(settings: Settings) -> None:
+async def test_in_flight_successful_requests_do_not_reserve_rate_limit_slots(
+    settings: Settings,
+) -> None:
     settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
-    inner_app = _SlowUnauthorizedApp()
-    app = AuthRateLimitMiddleware(inner_app, settings=settings)
+    inner_app = _SlowOkApp()
+    authenticated_app = BasicAuthMiddleware(inner_app, settings=settings)
+    app = AuthRateLimitMiddleware(authenticated_app, settings=settings)
     transport = httpx.ASGITransport(app=app, client=("203.0.113.10", 12345))
+    headers = {"Authorization": _basic_header("admin", _TEST_PASSWORD)}
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        first_task = asyncio.create_task(client.get("/"))
+        first_task = asyncio.create_task(client.get("/", headers=headers))
         await inner_app.entered.wait()
 
-        second = await client.get("/")
+        second = await client.get("/", headers=headers)
         inner_app.release.set()
         first = await first_task
 
-    assert first.status_code == 401
-    assert second.status_code == 429
-    assert inner_app.started == 1
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert inner_app.started == 2
 
 
 async def test_window_expiry_allows_new_attempt(settings: Settings) -> None:
@@ -105,10 +109,10 @@ async def test_expired_inactive_ip_buckets_are_pruned(settings: Settings) -> Non
     limiter = AuthRateLimitMiddleware(_ok_app, settings=settings, time_func=clock.monotonic)
 
     for index in range(3):
-        assert await limiter._reserve_attempt(f"203.0.113.{index}", clock.monotonic()) is not None
+        await limiter._record_failed_attempt(f"203.0.113.{index}", clock.monotonic())
 
     clock.advance(60.1)
-    assert await limiter._reserve_attempt("203.0.113.100", clock.monotonic()) is not None
+    await limiter._record_failed_attempt("203.0.113.100", clock.monotonic())
 
     assert sorted(limiter._attempts) == ["203.0.113.100"]
 
@@ -282,7 +286,7 @@ class _Clock:
         self.now += seconds
 
 
-class _SlowUnauthorizedApp:
+class _SlowOkApp:
     def __init__(self) -> None:
         self.started = 0
         self.entered = asyncio.Event()
@@ -292,6 +296,7 @@ class _SlowUnauthorizedApp:
         assert scope["type"] == "http"
         self.started += 1
         self.entered.set()
-        await self.release.wait()
-        response = PlainTextResponse("Unauthorized", status_code=401)
+        if self.started == 1:
+            await self.release.wait()
+        response = PlainTextResponse("ok")
         await response(scope, receive, send)
