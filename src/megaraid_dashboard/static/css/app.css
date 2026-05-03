@@ -214,13 +214,15 @@ a:hover {
   gap: var(--space-section);
 }
 
-.page-title {
+.page-title,
+.page-header {
   display: grid;
   gap: var(--space-tight);
   margin-bottom: var(--space-section);
 }
 
 .page-title h1,
+.page-header h1,
 .empty-state h1 {
   margin: 0;
   color: var(--color-text);
@@ -230,6 +232,7 @@ a:hover {
 }
 
 .page-title p,
+.page-header p,
 .empty-state p {
   margin: 0;
   color: var(--color-muted);
@@ -672,6 +675,99 @@ a:hover {
   border-radius: var(--radius-md);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
+}
+
+.data-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.data-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: var(--font-size-body);
+}
+
+.data-table th,
+.data-table td {
+  height: 32px;
+  padding: 6px var(--space-tight);
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--color-neutral);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+  user-select: none;
+}
+
+.data-table th[data-sort-key] {
+  cursor: pointer;
+}
+
+.data-table th[data-sort-key]:hover {
+  color: inherit;
+}
+
+.data-table th[data-sort-direction="asc"]::after {
+  content: " ↑";
+}
+
+.data-table th[data-sort-direction="desc"]::after {
+  content: " ↓";
+}
+
+.data-table tbody tr {
+  border-left: 4px solid transparent;
+}
+
+.data-table tr[data-row-state="optimal"] {
+  border-left-color: var(--color-optimal);
+}
+
+.data-table tr[data-row-state="warning"] {
+  border-left-color: var(--color-warning);
+}
+
+.data-table tr[data-row-state="critical"] {
+  border-left-color: var(--color-critical);
+}
+
+.data-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.status-badge__icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  margin-right: var(--space-1);
+}
+
+.temperature-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.temperature-inline__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .drive-table {

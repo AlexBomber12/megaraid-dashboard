@@ -415,15 +415,15 @@ def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
 
     assert response.status_code == 200
     assert "Physical Drives" in response.text
-    assert 'class="drive-table"' in response.text
+    assert 'class="data-table"' in response.text
     assert response.history == []
     drive_links = {
         href
         for href in _anchor_hrefs(response.text)
-        if re.fullmatch(r"/raid/drives/252/[0-7]", href)
+        if re.fullmatch(r"/raid/drives/252:[0-7]", href)
     }
     assert len(drive_links) == 8
-    assert "/raid/drives/252/4" in drive_links
+    assert "/raid/drives/252:4" in drive_links
 
 
 def test_drive_list_slot_column_links_to_drive_detail(sample_snapshot: StorcliSnapshot) -> None:
@@ -434,7 +434,35 @@ def test_drive_list_slot_column_links_to_drive_detail(sample_snapshot: StorcliSn
         response = client.get("/drives")
 
     assert response.status_code == 200
-    assert '<a href="/drives/252/4">e252:s4</a>' in response.text
+    assert '<a href="/drives/252:4">252:4</a>' in response.text
+
+
+def test_drive_detail_slot_ref_route_renders_detail(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives/252:4")
+
+    assert response.status_code == 200
+    assert "Drive 252:4" in response.text
+
+
+def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/drives")
+
+    assert response.status_code == 200
+    assert '<table class="data-table">' in response.text
+    assert 'class="drive-table"' not in response.text
+    assert 'class="table-frame"' not in response.text
+    for sort_key in ("slot", "model", "state", "temperature", "size"):
+        assert f'data-sort-key="{sort_key}"' in response.text
+    assert response.text.count("<tr data-row-state=") == 8
+    assert re.search(r"8 drives,\s+\d+ optimal,\s+\d+ warning,\s+\d+ critical", response.text)
 
 
 def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:

@@ -57,13 +57,27 @@ class PhysicalDriveRow:
     slot_url: str
     model: str
     serial_number: str
+    state: str
+    row_state: str
+    status_icon: str
     temperature: str
+    temperature_sort: int
     temperature_severity: str
+    size: str
+    size_bytes: int
     media_errors: int
     other_errors: int
     predictive_failures: int
     smart_label: str
     smart_severity: str
+
+
+@dataclass(frozen=True)
+class DriveListSummary:
+    total: int
+    optimal: int
+    warning: int
+    critical: int
 
 
 @dataclass(frozen=True)
@@ -138,6 +152,7 @@ class DriveListViewModel:
     controller_label: str
     captured_at: datetime | None
     physical_drives: tuple[PhysicalDriveRow, ...]
+    drive_summary: DriveListSummary
     empty_title: str
     empty_body: str
     empty_next_run: str
@@ -420,6 +435,7 @@ def load_drive_list_view_model(
             controller_label=_CONTROLLER_LABEL,
             captured_at=None,
             physical_drives=(),
+            drive_summary=DriveListSummary(total=0, optimal=0, warning=0, critical=0),
             empty_title="Waiting for first metrics collection",
             empty_body="The collector has not yet completed its first run.",
             empty_next_run=_empty_next_run_text(
@@ -433,20 +449,22 @@ def load_drive_list_view_model(
     )
     temp_warning = settings.temp_warning_celsius
     temp_critical = settings.temp_critical_celsius
+    physical_drives = tuple(
+        _physical_drive_row(
+            drive,
+            temp_warning=temp_warning,
+            temp_critical=temp_critical,
+            slot_url=slot_url_factory(drive.enclosure_id, drive.slot_id),
+        )
+        for drive in sorted_drives
+    )
 
     return DriveListViewModel(
         has_snapshot=True,
         controller_label=_CONTROLLER_LABEL,
         captured_at=snapshot.captured_at,
-        physical_drives=tuple(
-            _physical_drive_row(
-                drive,
-                temp_warning=temp_warning,
-                temp_critical=temp_critical,
-                slot_url=slot_url_factory(drive.enclosure_id, drive.slot_id),
-            )
-            for drive in sorted_drives
-        ),
+        physical_drives=physical_drives,
+        drive_summary=_drive_list_summary(physical_drives),
         empty_title="Waiting for first metrics collection",
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
@@ -815,25 +833,73 @@ def _physical_drive_row(
     slot_url: str = "",
 ) -> PhysicalDriveRow:
     smart_alert = drive.smart_alert
+    row_state = _drive_row_state(
+        drive,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
     return PhysicalDriveRow(
-        slot=f"e{drive.enclosure_id}:s{drive.slot_id}",
+        slot=f"{drive.enclosure_id}:{drive.slot_id}",
         slot_url=slot_url,
         model=drive.model,
         serial_number=drive.serial_number,
+        state=drive.state,
+        row_state=row_state,
+        status_icon=_drive_status_icon(row_state),
         temperature="Unknown"
         if drive.temperature_celsius is None
         else f"{drive.temperature_celsius} C",
+        temperature_sort=-1 if drive.temperature_celsius is None else drive.temperature_celsius,
         temperature_severity=temperature_severity(
             drive.temperature_celsius,
             temp_warning=temp_warning,
             temp_critical=temp_critical,
         ),
+        size=format_tb(drive.size_bytes),
+        size_bytes=drive.size_bytes,
         media_errors=drive.media_errors,
         other_errors=drive.other_errors,
         predictive_failures=drive.predictive_failures,
         smart_label="Yes" if smart_alert else "No",
         smart_severity="critical" if smart_alert else "neutral",
     )
+
+
+def _drive_list_summary(drives: Sequence[PhysicalDriveRow]) -> DriveListSummary:
+    counts = Counter(drive.row_state for drive in drives)
+    return DriveListSummary(
+        total=len(drives),
+        optimal=counts["optimal"],
+        warning=counts["warning"],
+        critical=counts["critical"],
+    )
+
+
+def _drive_row_state(
+    drive: PhysicalDriveSnapshot,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+) -> str:
+    state_status = _event_severity_to_status(physical_drive_state_severity("Onln", drive.state))
+    if state_status == "unknown":
+        state_status = "warning"
+    temp_status = temperature_severity(
+        drive.temperature_celsius,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
+    if temp_status == "unknown":
+        temp_status = "optimal"
+    return _worst_severity(state_status, temp_status)
+
+
+def _drive_status_icon(row_state: str) -> str:
+    return {
+        "optimal": "check-circle",
+        "warning": "alert-triangle",
+        "critical": "x-circle",
+    }.get(row_state, "help-circle")
 
 
 def _find_virtual_drive(

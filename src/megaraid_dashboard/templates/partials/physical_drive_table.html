@@ -1,11 +1,13 @@
-<div class="table-frame">
-  <table class="drive-table">
+<div class="data-table-container">
+  <table class="data-table">
     <thead>
       <tr>
-        <th scope="col">Slot</th>
-        <th scope="col">Model</th>
+        <th scope="col" data-sort-key="slot" data-sort-direction="asc">Slot</th>
+        <th scope="col" data-sort-key="model">Model</th>
         <th scope="col">Serial</th>
-        <th scope="col" class="numeric">Temp</th>
+        <th scope="col" data-sort-key="state">State</th>
+        <th scope="col" data-sort-key="temperature" class="numeric">Temp</th>
+        <th scope="col" data-sort-key="size" class="numeric">Size</th>
         <th scope="col" class="numeric">Media Err</th>
         <th scope="col" class="numeric">Other Err</th>
         <th scope="col" class="numeric">Predictive</th>
@@ -14,17 +16,34 @@
     </thead>
     <tbody>
       {% for drive in drives %}
-        <tr>
-          <td class="mono">
+        <tr data-row-state="{{ drive.row_state }}">
+          <td class="mono" data-sort-value="{{ drive.slot }}">
             {% if drive.slot_url %}
               <a href="{{ drive.slot_url }}">{{ drive.slot }}</a>
             {% else %}
               {{ drive.slot }}
             {% endif %}
           </td>
-          <td>{{ drive.model }}</td>
+          <td data-sort-value="{{ drive.model }}">{{ drive.model }}</td>
           <td class="mono">{{ drive.serial_number }}</td>
-          <td class="numeric status-text status-text--{{ drive.temperature_severity }}">{{ drive.temperature }}</td>
+          <td data-sort-value="{{ drive.state }}">
+            <span class="status-badge status-badge--{{ drive.row_state }}">
+              <svg class="status-badge__icon" aria-hidden="true">
+                <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ drive.status_icon }}"/>
+              </svg>
+              {{ drive.state }}
+            </span>
+          </td>
+          <td
+            class="numeric status-text status-text--{{ drive.temperature_severity }}"
+            data-sort-value="{{ drive.temperature_sort }}"
+          >
+            <span class="temperature-inline temperature-inline--{{ drive.temperature_severity }}">
+              <span class="temperature-inline__dot" aria-hidden="true"></span>
+              {{ drive.temperature }}
+            </span>
+          </td>
+          <td class="numeric" data-sort-value="{{ drive.size_bytes }}">{{ drive.size }}</td>
           <td class="numeric">{{ drive.media_errors }}</td>
           <td class="numeric">{{ drive.other_errors }}</td>
           <td class="numeric">{{ drive.predictive_failures }}</td>
