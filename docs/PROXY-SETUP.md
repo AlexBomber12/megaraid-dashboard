@@ -12,7 +12,7 @@ The proxy provides:
 - A stable `/raid/` path namespace on `server.alexbomber.com`.
 - `X-Forwarded-Prefix: /raid` so the app generates prefixed links and asset URLs.
 - Security headers at the edge.
-- A narrow rate limit on the auth endpoint before traffic reaches the app.
+- A narrow rate limit on auth-required dashboard paths before traffic reaches the app.
 - HTTP-to-HTTPS redirects for accidental plain HTTP requests.
 
 This repository does not install or manage nginx. The config below is a copy-paste-ready
@@ -93,11 +93,8 @@ server {
         proxy_read_timeout 30s;
     }
 
-    location ~ ^/raid/(login|auth) {
-        limit_req zone=raid_login burst=2 nodelay;
-        limit_req_status 429;
-
-        proxy_pass http://127.0.0.1:8090;
+    location ^~ /raid/static/ {
+        proxy_pass http://127.0.0.1:8090/static/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -107,6 +104,9 @@ server {
     }
 
     location /raid/ {
+        limit_req zone=raid_login burst=2 nodelay;
+        limit_req_status 429;
+
         proxy_pass http://127.0.0.1:8090/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -138,6 +138,9 @@ The main dashboard location is:
 
 ```nginx
 location /raid/ {
+    limit_req zone=raid_login burst=2 nodelay;
+    limit_req_status 429;
+
     proxy_pass http://127.0.0.1:8090/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -194,8 +197,8 @@ set of scripts, styles, and HTMX behavior is stable enough to avoid accidental b
 
 ## Rate Limit Zone
 
-The edge rate limit is intentionally narrow. It protects the auth challenge surface without
-rate-limiting health checks, static assets, or normal read-only dashboard traffic.
+The edge rate limit is intentionally scoped to dashboard paths that can trigger HTTP Basic
+auth challenges. It does not rate-limit health checks or static assets.
 
 Define the shared zone once:
 
@@ -203,14 +206,14 @@ Define the shared zone once:
 limit_req_zone $binary_remote_addr zone=raid_login:10m rate=5r/m;
 ```
 
-Apply it to the likely auth endpoint paths:
+Apply it to the auth-required dashboard paths:
 
 ```nginx
-location ~ ^/raid/(login|auth) {
+location /raid/ {
     limit_req zone=raid_login burst=2 nodelay;
     limit_req_status 429;
 
-    proxy_pass http://127.0.0.1:8090;
+    proxy_pass http://127.0.0.1:8090/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -220,13 +223,14 @@ location ~ ^/raid/(login|auth) {
 }
 ```
 
-`5r/m` matches the planned in-app auth throttle. Keeping the same number at both layers makes
-the operating model simple: nginx rejects bursts at the edge, and the app rejects bursts that
-reach it through direct LAN access or a future proxy change.
+This location matches the same public dashboard URLs that the app protects with HTTP Basic
+auth. The exact `/raid/healthz` location and `^~ /raid/static/` location stay outside this
+limit so health checks and static assets are not throttled.
 
-The regex location is deliberately limited to `/raid/login` and `/raid/auth` while the auth
-surface settles. If a later PR pins a single endpoint, tighten this block to an exact
-location.
+`limit_req_status 429` makes rejected bursts explicit instead of returning nginx's default
+503. `5r/m` matches the planned in-app auth throttle. Keeping the same number at both layers
+makes the operating model simple: nginx rejects bursts at the edge, and the app rejects
+bursts that reach it through direct LAN access or a future proxy change.
 
 ## Healthz
 
@@ -276,10 +280,10 @@ Run these commands from a workstation that resolves `server.alexbomber.com` to t
 
    Expected: HTTP 401 with `WWW-Authenticate: Basic realm="megaraid-dashboard"`.
 
-4. Confirm the auth endpoint rate limit triggers:
+4. Confirm the auth-required dashboard rate limit triggers:
 
    ```bash
-   for i in {1..10}; do curl -o /dev/null -s -w "%{http_code}\n" https://server.alexbomber.com/raid/login; done
+   for i in {1..10}; do curl -o /dev/null -s -w "%{http_code}\n" https://server.alexbomber.com/raid/; done
    ```
 
    Expected: several `429` responses after the first five to seven requests within a minute.
