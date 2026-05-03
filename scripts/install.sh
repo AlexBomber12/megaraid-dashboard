@@ -23,6 +23,14 @@ log_fail() {
   exit 1
 }
 
+sed_replacement_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//&/\\&}"
+  value="${value//|/\\|}"
+  printf "%s\n" "${value}"
+}
+
 require_root() {
   [[ ${EUID} -eq 0 ]] || log_fail "must run as root"
 }
@@ -425,9 +433,27 @@ EOF
 phase_systemd() {
   log_info "Phase 9: systemd unit"
 
-  install -m 0644 -o root -g root \
-    "${INSTALL_PREFIX}/src/deploy/megaraid-dashboard.service" \
-    /etc/systemd/system/megaraid-dashboard.service
+  local unit_template unit_tmp
+  unit_template="${INSTALL_PREFIX}/src/deploy/megaraid-dashboard.service"
+  unit_tmp="$(mktemp /tmp/megaraid-dashboard.service.XXXXXXXX)"
+
+  if ! sed \
+    -e "s|User=raid-monitor|User=$(sed_replacement_escape "${INSTALL_USER}")|" \
+    -e "s|Group=raid-monitor|Group=$(sed_replacement_escape "${INSTALL_USER}")|" \
+    -e "s|/opt/megaraid-dashboard|$(sed_replacement_escape "${INSTALL_PREFIX}")|g" \
+    -e "s|/var/lib/megaraid-dashboard|$(sed_replacement_escape "${DATA_DIR}")|g" \
+    -e "s|/etc/megaraid-dashboard/env|$(sed_replacement_escape "${ENV_FILE}")|g" \
+    -e "s|--port 8090|--port $(sed_replacement_escape "${APP_PORT}")|" \
+    "${unit_template}" >"${unit_tmp}"; then
+    rm -f "${unit_tmp}"
+    log_fail "failed to render systemd unit"
+  fi
+
+  if ! install -m 0644 -o root -g root "${unit_tmp}" /etc/systemd/system/megaraid-dashboard.service; then
+    rm -f "${unit_tmp}"
+    log_fail "failed to install systemd unit"
+  fi
+  rm -f "${unit_tmp}"
   systemctl daemon-reload
   systemctl enable megaraid-dashboard.service
   systemctl start megaraid-dashboard.service
@@ -448,12 +474,13 @@ phase_finalize() {
 
   systemctl restart megaraid-dashboard.service
 
-  local i
-  for i in {1..30}; do
+  for ((attempt = 1; attempt <= 30; attempt++)); do
     if systemctl is-active --quiet megaraid-dashboard.service; then
       break
     fi
-    sleep 1
+    if [[ "${attempt}" -lt 30 ]]; then
+      sleep 1
+    fi
   done
   systemctl is-active --quiet megaraid-dashboard.service || \
     log_fail "service failed to become active"

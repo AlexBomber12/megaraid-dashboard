@@ -80,3 +80,65 @@ def test_systemd_unit_file_referenced_by_installer_exists() -> None:
 def test_journald_drop_in_file_referenced_by_installer_exists() -> None:
     assert (REPO_ROOT / "deploy" / "journald-megaraid.conf").is_file()
     assert "deploy/journald-megaraid.conf" in INSTALL_SCRIPT.read_text()
+
+
+def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    unit_template = prefix / "src" / "deploy" / "megaraid-dashboard.service"
+    unit_template.parent.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "deploy" / "megaraid-dashboard.service", unit_template)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "commands.log"
+    installed_unit = tmp_path / "megaraid-dashboard.service"
+    _write_executable(
+        bin_dir / "install",
+        "#!/bin/sh\n"
+        f"printf 'install %s\\n' \"$*\" >> {log}\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  case "$1" in\n'
+        "    -m|-o|-g) shift 2 ;;\n"
+        "    *) break ;;\n"
+        "  esac\n"
+        "done\n"
+        'cp "$1" '
+        f"{installed_unit}\n",
+    )
+    _write_executable(
+        bin_dir / "systemctl",
+        f"#!/bin/sh\nprintf 'systemctl %s\\n' \"$*\" >> {log}\n",
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_systemd"],
+        check=False,
+        env={
+            **os.environ,
+            "APP_PORT": "18123",
+            "DATA_DIR": str(tmp_path / "data"),
+            "ENV_FILE": str(tmp_path / "etc" / "env"),
+            "INSTALL_PREFIX": str(prefix),
+            "INSTALL_USER": "raid-special",
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+    unit = installed_unit.read_text()
+    assert "User=raid-special" in unit
+    assert "Group=raid-special" in unit
+    assert f"EnvironmentFile={tmp_path / 'etc' / 'env'}" in unit
+    assert f"ExecStartPre={prefix}/src/scripts/preflight.sh" in unit
+    assert f"ReadWritePaths={tmp_path / 'data'}" in unit
+    assert "--port 18123" in unit
+    assert "scripts/preflight.sh" in unit
+    assert "systemctl daemon-reload" in log.read_text()
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content)
+    path.chmod(0o755)

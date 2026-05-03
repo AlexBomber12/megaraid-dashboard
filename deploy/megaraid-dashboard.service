@@ -11,7 +11,7 @@ LogNamespace=megaraid-dashboard
 WorkingDirectory=/opt/megaraid-dashboard
 Environment=DATABASE_URL=sqlite:////var/lib/megaraid-dashboard/megaraid.db
 EnvironmentFile=/etc/megaraid-dashboard/env
-ExecStartPre=/opt/megaraid-dashboard/scripts/preflight.sh
+ExecStartPre=/opt/megaraid-dashboard/src/scripts/preflight.sh
 ExecStart=/opt/megaraid-dashboard/.venv/bin/uvicorn megaraid_dashboard.app:create_app --factory --host 0.0.0.0 --port 8090
 Restart=on-failure
 RestartSec=5
