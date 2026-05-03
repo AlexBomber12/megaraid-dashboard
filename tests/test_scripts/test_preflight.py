@@ -132,6 +132,55 @@ sqlite3.connect = connect
     assert ":memory:" in paths
 
 
+def test_preflight_preserves_sqlite_uri_query_options(tmp_path: Path) -> None:
+    project = _copy_preflight_project(tmp_path)
+    _install_stub_venv(project)
+    hook_dir = project / "python_hook"
+    hook_dir.mkdir()
+    (hook_dir / "sitecustomize.py").write_text(
+        """from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import sqlite3
+
+
+class Connection:
+    def execute(self, _sql: str) -> None:
+        return None
+
+    def commit(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def connect(path: str, *args: Any, **kwargs: Any) -> Connection:
+    with Path("sqlite_connect_args.txt").open("a", encoding="utf-8") as handle:
+        handle.write(f"path={path}\\n")
+        handle.write(f"kwargs={kwargs!r}\\n")
+    return Connection()
+
+
+sqlite3.connect = connect
+""",
+        encoding="utf-8",
+    )
+
+    result = _run_preflight(
+        project,
+        database_url="sqlite:///file:tmp_preflight.db?mode=ro&uri=true",
+        extra_env={"PYTHONPATH": str(hook_dir)},
+    )
+
+    assert result.returncode == 0
+    connect_args = (project / "sqlite_connect_args.txt").read_text(encoding="utf-8")
+    assert "path=file:tmp_preflight.db?mode=ro" in connect_args
+    assert "'uri': True" in connect_args
+
+
 def _copy_preflight_project(tmp_path: Path) -> Path:
     project = tmp_path / "project"
     scripts_dir = project / "scripts"

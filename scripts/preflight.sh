@@ -25,39 +25,36 @@ import sqlite3
 import stat
 import sys
 import uuid
-from urllib.parse import unquote, urlparse
+
+from sqlalchemy import make_url
+from sqlalchemy.dialects.sqlite import pysqlite
 
 
-def sqlite_path_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    raw_path = unquote(parsed.path)
-    if raw_path == "" and parsed.netloc == "":
-        return ":memory:"
-    if raw_path in ("", "/"):
-        return parsed.netloc
-    if raw_path.startswith("/./") or raw_path.startswith("/../"):
-        return raw_path[1:]
-    if raw_path.startswith("//"):
-        return raw_path[1:]
-    return raw_path.lstrip("/")
+def sqlite_connect_args_from_url(url: str) -> tuple[str, dict[str, object]]:
+    args, kwargs = pysqlite.dialect().create_connect_args(make_url(url))
+    if len(args) != 1:
+        print("ERROR: unexpected SQLite connection arguments", file=sys.stderr)
+        sys.exit(1)
+    return str(args[0]), dict(kwargs)
 
 
 def is_sqlite_url(url: str) -> bool:
-    return urlparse(url).scheme.split("+", 1)[0] == "sqlite"
+    return make_url(url).get_backend_name() == "sqlite"
 
 
 url = os.environ.get("DATABASE_URL", "sqlite:///./megaraid.db")
 if not is_sqlite_url(url):
     sys.exit(0)
 
-path = sqlite_path_from_url(url)
-if path and path != ":memory:" and os.path.exists(path):
+path, connect_kwargs = sqlite_connect_args_from_url(url)
+connect_kwargs.setdefault("timeout", 2)
+if path and path != ":memory:" and not connect_kwargs.get("uri") and os.path.exists(path):
     mode = os.stat(path).st_mode
     if not mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH):
         print(f"ERROR: SQLite database is not writable: {path}", file=sys.stderr)
         sys.exit(1)
 
-conn = sqlite3.connect(path, timeout=2)
+conn = sqlite3.connect(path, **connect_kwargs)
 table_name = f"_megaraid_preflight_{os.getpid()}_{uuid.uuid4().hex}"
 created = False
 try:
