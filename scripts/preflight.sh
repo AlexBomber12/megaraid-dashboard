@@ -40,8 +40,12 @@ def sqlite_path_from_url(url: str) -> str:
     return raw_path.lstrip("/")
 
 
+def is_sqlite_url(url: str) -> bool:
+    return urlparse(url).scheme.split("+", 1)[0] == "sqlite"
+
+
 url = os.environ.get("DATABASE_URL", "sqlite:///./megaraid.db")
-if not url.startswith("sqlite:"):
+if not is_sqlite_url(url):
     sys.exit(0)
 
 path = sqlite_path_from_url(url)

@@ -69,6 +69,22 @@ def test_preflight_fails_for_read_only_sqlite_db(tmp_path: Path) -> None:
     assert "SQLite database is not writable" in result.stderr
 
 
+def test_preflight_fails_for_read_only_sqlite_db_with_driver_suffix(tmp_path: Path) -> None:
+    project = _copy_preflight_project(tmp_path)
+    _install_stub_venv(project)
+    db_path = project / "tmp_preflight.db"
+    sqlite3.connect(db_path).close()
+    db_path.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+
+    try:
+        result = _run_preflight(project, database_url="sqlite+pysqlite:///./tmp_preflight.db")
+    finally:
+        db_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    assert result.returncode == 1
+    assert "SQLite database is not writable" in result.stderr
+
+
 def _copy_preflight_project(tmp_path: Path) -> Path:
     project = tmp_path / "project"
     scripts_dir = project / "scripts"
