@@ -162,6 +162,49 @@ def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     assert "event-1" not in response.text
 
 
+def test_events_category_filter_is_preserved_across_partial_requests() -> None:
+    test_app = create_app()
+    base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        cachevault_events = tuple(
+            _insert_app_event(
+                test_app,
+                occurred_at=base_time + timedelta(minutes=index),
+                category="cachevault",
+                subject=f"cachevault-{index}",
+            )
+            for index in range(52)
+        )
+        _insert_app_event(
+            test_app,
+            occurred_at=base_time + timedelta(minutes=1, seconds=30),
+            category="physical_drive",
+            subject="physical-drive-leak",
+        )
+
+        initial_page_response = client.get("/events", params={"category": "cachevault"})
+        refresh_response = client.get("/partials/events", params={"category": "cachevault"})
+        cursor_event = cachevault_events[2]
+        pagination_response = client.get(
+            "/partials/events",
+            params={
+                "before_occurred_at": cursor_event.occurred_at.isoformat(),
+                "before_id": str(cursor_event.id),
+                "category": "cachevault",
+            },
+        )
+
+    assert initial_page_response.status_code == 200
+    assert refresh_response.status_code == 200
+    assert pagination_response.status_code == 200
+    assert 'hx-get="/partials/events?category=cachevault"' in initial_page_response.text
+    assert 'hx-get="/partials/events?category=cachevault"' in refresh_response.text
+    assert "cachevault-51" in refresh_response.text
+    assert "physical-drive-leak" not in refresh_response.text
+    assert "cachevault-1" in pagination_response.text
+    assert "physical-drive-leak" not in pagination_response.text
+
+
 @pytest.mark.parametrize(
     ("params", "expected_detail"),
     [
