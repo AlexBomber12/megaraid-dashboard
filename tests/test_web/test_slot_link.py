@@ -29,6 +29,18 @@ def test_slot_link_returns_escaped_input_when_no_slot_exists() -> None:
     assert rendered == "Generic message no slot"
 
 
+def test_slot_link_does_not_wrap_colon_time_without_slot_context() -> None:
+    rendered = str(slot_link("Patrol read started at 12:34"))
+
+    assert rendered == "Patrol read started at 12:34"
+
+
+def test_slot_link_does_not_wrap_colon_token_inside_other_text() -> None:
+    rendered = str(slot_link("Controller reported code 12:34 during check"))
+
+    assert rendered == "Controller reported code 12:34 during check"
+
+
 def test_slot_link_wraps_only_first_slot_token() -> None:
     rendered = str(slot_link("Two slots 2:0 and 3:1 mentioned"))
 
@@ -36,6 +48,6 @@ def test_slot_link_wraps_only_first_slot_token() -> None:
 
 
 def test_slot_link_escapes_non_slot_text() -> None:
-    rendered = str(slot_link("malicious <script> 2:0"))
+    rendered = str(slot_link("malicious <script> PD 2:0"))
 
-    assert rendered == 'malicious &lt;script&gt; <a href="/drives/2:0">2:0</a>'
+    assert rendered == 'malicious &lt;script&gt; PD <a href="/drives/2:0">2:0</a>'

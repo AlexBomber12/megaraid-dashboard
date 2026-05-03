@@ -13,7 +13,11 @@ from jinja2 import Environment, FileSystemLoader, pass_context, select_autoescap
 from jinja2.runtime import Context
 from markupsafe import Markup, escape
 
-_SLOT_TOKEN_RE = re.compile(r"e(?P<enclosure>\d+):s(?P<slot>\d+)|(?P<slot_ref>\d+:\d+)")
+_SLOT_TOKEN_RE = re.compile(
+    r"(?P<event_slot_ref>e(?P<enclosure>\d+):s(?P<slot>\d+))"
+    r"|(?P<slot_context>\b(?:PD|drive|slot|slots?)\s+)(?P<slot_ref>\d+:\d+)",
+    re.IGNORECASE,
+)
 
 
 def create_templates(directory: Path) -> Jinja2Templates:
@@ -56,9 +60,10 @@ def slot_link(text: str, *, slot_url: Callable[[str], str] | None = None) -> Mar
 
     slot_ref = _slot_ref(match)
     href = escape(_default_slot_url(slot_ref) if slot_url is None else slot_url(slot_ref))
-    label = escape(match.group(0))
-    before = escape(text[: match.start()])
-    after = escape(text[match.end() :])
+    label_start, label_end = _slot_label_span(match)
+    label = escape(text[label_start:label_end])
+    before = escape(text[:label_start])
+    after = escape(text[label_end:])
     return Markup(f'{before}<a href="{href}">{label}</a>{after}')
 
 
@@ -67,6 +72,13 @@ def _slot_ref(match: re.Match[str]) -> str:
     if slot_ref is not None:
         return slot_ref
     return f"{match.group('enclosure')}:{match.group('slot')}"
+
+
+def _slot_label_span(match: re.Match[str]) -> tuple[int, int]:
+    slot_ref = match.group("slot_ref")
+    if slot_ref is not None:
+        return match.start("slot_ref"), match.end("slot_ref")
+    return match.start("event_slot_ref"), match.end("event_slot_ref")
 
 
 def _default_slot_url(slot_ref: str) -> str:
