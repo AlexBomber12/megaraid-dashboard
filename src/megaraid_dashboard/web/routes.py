@@ -9,6 +9,7 @@ from math import ceil
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal, Protocol, cast, runtime_checkable
+from urllib.parse import urlencode
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
@@ -53,6 +54,19 @@ TEMPLATES = create_templates(_PACKAGE_ROOT / "templates")
 STATIC_ASSET_VERSION = ""
 _DEFAULT_CHART_RANGE_DAYS = 7
 _ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
+_EVENT_SEVERITY_FILTERS = ("info", "warning", "critical")
+_EVENT_CATEGORY_FILTERS = (
+    "controller",
+    "vd",
+    "pd",
+    "pd_state",
+    "smart_alert",
+    "temperature",
+    "controller_temperature",
+    "disk_space",
+    "cachevault",
+    "physical_drive",
+)
 
 HealthStatus = Literal["ok", "degraded"]
 DatabaseHealth = Literal["ok", "error"]
@@ -91,6 +105,14 @@ class ErrorFallbackRow:
     media_errors: str
     other_errors: str
     predictive_failures: str
+
+
+@dataclass(frozen=True)
+class FilterChip:
+    label: str
+    value: str
+    active: bool
+    href: str
 
 
 @dataclass(frozen=True)
@@ -295,9 +317,29 @@ def drive_charts(
 
 
 @router.get("/events", name="events")
-def events(request: Request, category: str | None = None) -> Response:
+def events(
+    request: Request,
+    before_occurred_at: str | None = None,
+    before_id: str | None = None,
+    since: str | None = None,
+) -> Response:
     started_at = perf_counter()
-    view_model = _load_events_page(request, category=category)
+    if (
+        _is_htmx_request(request)
+        or before_occurred_at is not None
+        or before_id is not None
+        or since is not None
+    ):
+        return _events_fragment_response(
+            request=request,
+            started_at=started_at,
+            before_occurred_at=before_occurred_at,
+            before_id=before_id,
+            since=since,
+        )
+
+    categories, severities = _event_filter_values(request)
+    view_model = _load_events_page(request, categories=categories, severities=severities)
     response = TEMPLATES.TemplateResponse(
         request=request,
         name="pages/events.html",
@@ -306,6 +348,7 @@ def events(request: Request, category: str | None = None) -> Response:
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "view_model": view_model,
+            **_events_filter_context(request=request, categories=categories, severities=severities),
             **_events_empty_context(request=request, view_model=view_model),
         },
     )
@@ -318,20 +361,49 @@ def events_partial(
     request: Request,
     before_occurred_at: str | None = None,
     before_id: str | None = None,
-    category: str | None = None,
+    since: str | None = None,
 ) -> Response:
     started_at = perf_counter()
+    return _events_fragment_response(
+        request=request,
+        started_at=started_at,
+        before_occurred_at=before_occurred_at,
+        before_id=before_id,
+        since=since,
+    )
+
+
+def _events_fragment_response(
+    *,
+    request: Request,
+    started_at: float,
+    before_occurred_at: str | None,
+    before_id: str | None,
+    since: str | None,
+) -> Response:
     cursor = _parse_events_cursor(
         before_occurred_at=before_occurred_at,
         before_id=before_id,
     )
+    since_id = _parse_events_since(since)
+    categories, severities = _event_filter_values(request)
     view_model: EventsPageViewModel | EventsFragmentViewModel
     with _session(request) as session:
-        if cursor is None:
+        if since_id is not None:
+            view_model = load_events_fragment(
+                session,
+                page_size=EVENTS_PAGE_SIZE,
+                categories=categories,
+                severities=severities,
+                since=since_id,
+            )
+            template_name = "partials/events_data.html"
+        elif cursor is None:
             view_model = load_events_page(
                 session,
                 page_size=EVENTS_PAGE_SIZE,
-                category=category,
+                categories=categories,
+                severities=severities,
             )
             template_name = "partials/events_data.html"
         else:
@@ -341,16 +413,21 @@ def events_partial(
                 page_size=EVENTS_PAGE_SIZE,
                 before_occurred_at=cursor_occurred_at,
                 before_id=cursor_id,
-                category=category,
+                categories=categories,
+                severities=severities,
             )
-            template_name = "partials/events_table.html"
+            template_name = "partials/events_data.html"
     response = TEMPLATES.TemplateResponse(
         request=request,
         name=template_name,
         context={
-            "render_events_load_more_oob": cursor is None,
-            "render_events_rows_only": cursor is not None,
+            "events_poll_since": max(since_id or 0, view_model.latest_event_id),
+            "render_events_load_more_oob": cursor is None and since_id is None,
+            "render_events_since_oob": since_id is not None,
+            "render_events_page_fragment": cursor is None and since_id is None,
+            "render_events_page_items": cursor is not None,
             "view_model": view_model,
+            **_events_filter_context(request=request, categories=categories, severities=severities),
             **_events_empty_context(request=request, view_model=view_model),
         },
     )
@@ -435,9 +512,19 @@ def _load_drive_list(request: Request) -> DriveListViewModel:
         )
 
 
-def _load_events_page(request: Request, *, category: str | None = None) -> EventsPageViewModel:
+def _load_events_page(
+    request: Request,
+    *,
+    categories: tuple[str, ...],
+    severities: tuple[str, ...],
+) -> EventsPageViewModel:
     with _session(request) as session:
-        return load_events_page(session, page_size=EVENTS_PAGE_SIZE, category=category)
+        return load_events_page(
+            session,
+            page_size=EVENTS_PAGE_SIZE,
+            categories=categories,
+            severities=severities,
+        )
 
 
 def _parse_events_cursor(
@@ -472,6 +559,135 @@ def _parse_events_cursor(
         raise HTTPException(status_code=400, detail="before_id must be an integer") from exc
 
     return parsed_before_occurred_at.astimezone(UTC), parsed_before_id
+
+
+def _parse_events_since(since: str | None) -> int | None:
+    if since is None:
+        return None
+    try:
+        parsed_since = int(since)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="since must be an integer") from exc
+    if parsed_since < 0:
+        raise HTTPException(status_code=400, detail="since must be non-negative")
+    return parsed_since
+
+
+def _is_htmx_request(request: Request) -> bool:
+    return request.headers.get("HX-Request", "").lower() == "true"
+
+
+def _event_filter_values(request: Request) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    categories = _normalize_query_values(tuple(request.query_params.getlist("category")))
+    severities = _normalize_query_values(tuple(request.query_params.getlist("severity")))
+    return categories, severities
+
+
+def _normalize_query_values(values: tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for value in values:
+        stripped = value.strip()
+        if stripped and stripped not in normalized:
+            normalized.append(stripped)
+    return tuple(normalized)
+
+
+def _events_filter_context(
+    *,
+    request: Request,
+    categories: tuple[str, ...],
+    severities: tuple[str, ...],
+) -> dict[str, object]:
+    return {
+        "event_filter_state": _events_query_path(
+            request=request,
+            route_name="events",
+            categories=categories,
+            severities=severities,
+        ),
+        "events_partial_filter_state": _events_query_path(
+            request=request,
+            route_name="events_partial",
+            categories=categories,
+            severities=severities,
+        ),
+        "severity_filter_chips": tuple(
+            _filter_chip(
+                request=request,
+                label=severity.capitalize(),
+                value=severity,
+                filter_name="severity",
+                categories=categories,
+                severities=severities,
+            )
+            for severity in _EVENT_SEVERITY_FILTERS
+        ),
+        "category_filter_chips": tuple(
+            _filter_chip(
+                request=request,
+                label=category.replace("_", " "),
+                value=category,
+                filter_name="category",
+                categories=categories,
+                severities=severities,
+            )
+            for category in _EVENT_CATEGORY_FILTERS
+        ),
+    }
+
+
+def _filter_chip(
+    *,
+    request: Request,
+    label: str,
+    value: str,
+    filter_name: Literal["category", "severity"],
+    categories: tuple[str, ...],
+    severities: tuple[str, ...],
+) -> FilterChip:
+    updated_categories = categories
+    updated_severities = severities
+    active_values = categories if filter_name == "category" else severities
+    active = value in active_values
+    if filter_name == "category":
+        updated_categories = _toggle_filter_value(categories, value)
+    else:
+        updated_severities = _toggle_filter_value(severities, value)
+    return FilterChip(
+        label=label,
+        value=value,
+        active=active,
+        href=_events_query_path(
+            request=request,
+            route_name="events",
+            categories=updated_categories,
+            severities=updated_severities,
+        ),
+    )
+
+
+def _toggle_filter_value(values: tuple[str, ...], value: str) -> tuple[str, ...]:
+    if value in values:
+        return tuple(existing for existing in values if existing != value)
+    return (*values, value)
+
+
+def _events_query_path(
+    *,
+    request: Request,
+    route_name: str,
+    categories: tuple[str, ...],
+    severities: tuple[str, ...],
+    extra: tuple[tuple[str, str | int], ...] = (),
+) -> str:
+    query_items: list[tuple[str, str | int]] = []
+    query_items.extend(("severity", severity) for severity in severities)
+    query_items.extend(("category", category) for category in categories)
+    query_items.extend(extra)
+    path = str(request.url_for(route_name).path)
+    if not query_items:
+        return path
+    return f"{path}?{urlencode(query_items)}"
 
 
 def _events_empty_next_run_text(request: Request) -> str:

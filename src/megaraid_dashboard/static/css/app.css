@@ -4,6 +4,7 @@
   --tile-border-width: 1px;
   --tile-min-width: 180px;
   --tile-height: 72px;
+  --filter-label-min-width: 72px;
   --icon-size-sm: 16px;
   --icon-size-md: 20px;
   --badge-padding: 2px 8px;
@@ -449,6 +450,68 @@ a:hover {
 
 .timeline__empty {
   margin: 0;
+}
+
+.events-timeline__item {
+  grid-template-columns: var(--icon-size-md) minmax(0, 1fr) minmax(160px, auto);
+}
+
+.events-timeline__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.events-timeline__subject {
+  color: var(--color-muted-strong);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+}
+
+.filter-chips {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-section) 0;
+}
+
+.filter-chips__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.filter-chips__label {
+  min-width: var(--filter-label-min-width);
+  color: var(--color-neutral);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: var(--badge-padding);
+  border: 1px solid var(--color-border);
+  border-radius: var(--badge-radius);
+  color: var(--color-muted-strong);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
+.filter-chip:hover,
+.filter-chip--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+  text-decoration: none;
 }
 
 .stat-grid {

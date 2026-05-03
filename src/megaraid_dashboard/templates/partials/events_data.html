@@ -1,53 +1,126 @@
-<div
-  id="events-data"
-  class="data-block"
-  hx-get="{{ request.url_for('events_partial').path }}{% if view_model.category_filter %}?category={{ view_model.category_filter | urlencode }}{% endif %}"
-  hx-trigger="every 30s"
-  hx-target="this"
-  hx-swap="outerHTML"
->
-  {% if view_model.events or view_model.latest_captured_at is not none %}
-    <section class="page-title">
-      <h1>Events</h1>
-      <p>
-        {{ view_model.controller_label }}
-        {% if view_model.latest_captured_at is not none %}
-          &middot; Updated:
-          <noscript>{{ view_model.latest_captured_at | iso_utc }} UTC</noscript>
-          <time datetime="{{ view_model.latest_captured_at | iso_utc }}" data-local-time hidden>{{ view_model.latest_captured_at | iso_utc }} UTC</time>
-        {% endif %}
-      </p>
-    </section>
-  {% endif %}
+{% macro events_query_separator(path) -%}
+  {%- if "?" in path -%}&{%- else -%}?{%- endif -%}
+{%- endmacro %}
 
+{% macro event_items(events) -%}
+  {% for event in events %}
+    <li class="timeline__item events-timeline__item" data-event-id="{{ event.id }}">
+      <svg class="timeline__icon status-text--{{ event.severity_status }}" aria-hidden="true">
+        <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-{{ event.severity_icon }}"/>
+      </svg>
+      <div class="timeline__body">
+        <div class="events-timeline__meta">
+          <span class="status-badge status-badge--{{ event.severity_status }}">
+            {{ event.severity_label }}
+          </span>
+          <span class="timeline__category">{{ event.category }}</span>
+          <span class="events-timeline__subject">{{ event.subject }}</span>
+        </div>
+        <span class="timeline__message">{{ event.summary }}</span>
+      </div>
+      <time class="timeline__time" datetime="{{ event.occurred_at | iso_utc }}" data-local-time>
+        {{ event.occurred_at | iso_utc }} UTC
+      </time>
+    </li>
+  {% endfor %}
+{%- endmacro %}
+
+{% macro load_more_button(cursor, swap_oob=false) -%}
+  <div id="events-pagination" {% if swap_oob %}hx-swap-oob="true"{% endif %}>
+    {% if cursor is not none %}
+      <button
+        id="events-load-more"
+        class="button"
+        type="button"
+        hx-get="{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}before_occurred_at={{ cursor.before_occurred_at_iso | urlencode }}&before_id={{ cursor.before_id }}"
+        hx-target="#events-pagination"
+        hx-swap="outerHTML"
+      >Load more</button>
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro events_poller(latest_event_id, swap_oob=false) -%}
+  <div
+    id="events-poller"
+    hx-get="{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}since={{ latest_event_id }}"
+    hx-trigger="every 30s"
+    hx-swap="none"
+    {% if swap_oob %}hx-swap-oob="true"{% endif %}
+  ></div>
+{%- endmacro %}
+
+{% if render_events_since_oob | default(false) %}
+  <ol id="events-list" hx-swap-oob="afterbegin:#events-list">
+    {{ event_items(view_model.events) }}
+  </ol>
+  {{ events_poller(events_poll_since | default(view_model.latest_event_id), swap_oob=true) }}
+{% elif render_events_page_items | default(false) %}
   {% if view_model.events %}
-    {% with render_events_load_more=false %}
-      {% include "partials/events_table.html" %}
-    {% endwith %}
-  {% else %}
-    <section class="empty-state empty-state--centered">
-      <h1>{{ events_empty_title | default("No events recorded yet.") }}</h1>
-      {% if events_empty_body | default("") %}
-        <p>{{ events_empty_body }}</p>
-      {% endif %}
-      {% if events_empty_next_run | default("") %}
-        <p>{{ events_empty_next_run }}</p>
-      {% endif %}
-      {% if events_empty_detail | default("") %}
-        <p>{{ events_empty_detail }}</p>
-      {% endif %}
-    </section>
+    {{ event_items(view_model.events) }}
   {% endif %}
-</div>
+  {{ load_more_button(view_model.next_cursor) }}
+{% else %}
+  <div id="events-data" class="data-block">
+    {% if view_model.events or view_model.latest_captured_at is not none %}
+      <section class="page-title">
+        <h1>Events</h1>
+        <p>
+          {{ view_model.controller_label }}
+          {% if view_model.latest_captured_at is not none %}
+            &middot; Updated:
+            <noscript>{{ view_model.latest_captured_at | iso_utc }} UTC</noscript>
+            <time datetime="{{ view_model.latest_captured_at | iso_utc }}" data-local-time hidden>{{ view_model.latest_captured_at | iso_utc }} UTC</time>
+          {% endif %}
+        </p>
+      </section>
+    {% endif %}
 
-{% if render_events_load_more_container | default(false) %}
-  {% with render_events_table=false %}
-    {% include "partials/events_table.html" %}
-  {% endwith %}
-{% endif %}
+    <nav class="filter-chips" aria-label="Event filters" data-filter-state>
+      <div class="filter-chips__group">
+        <span class="filter-chips__label">Severity</span>
+        {% for chip in severity_filter_chips %}
+          <a
+            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+            href="{{ chip.href }}"
+            aria-pressed="{{ 'true' if chip.active else 'false' }}"
+          >{{ chip.label }}</a>
+        {% endfor %}
+      </div>
+      <div class="filter-chips__group">
+        <span class="filter-chips__label">Category</span>
+        {% for chip in category_filter_chips %}
+          <a
+            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+            href="{{ chip.href }}"
+            aria-pressed="{{ 'true' if chip.active else 'false' }}"
+          >{{ chip.label }}</a>
+        {% endfor %}
+      </div>
+    </nav>
 
-{% if render_events_load_more_oob | default(false) %}
-  {% with render_events_table=false %}
-    {% include "partials/events_table.html" %}
-  {% endwith %}
+    {% if view_model.events %}
+      <section class="timeline events-timeline" aria-label="Events timeline">
+        <ol id="events-list" class="timeline__list">
+          {{ event_items(view_model.events) }}
+        </ol>
+      </section>
+    {% else %}
+      <section class="empty-state empty-state--centered">
+        <h1>{{ events_empty_title | default("No events recorded yet.") }}</h1>
+        {% if events_empty_body | default("") %}
+          <p>{{ events_empty_body }}</p>
+        {% endif %}
+        {% if events_empty_next_run | default("") %}
+          <p>{{ events_empty_next_run }}</p>
+        {% endif %}
+        {% if events_empty_detail | default("") %}
+          <p>{{ events_empty_detail }}</p>
+        {% endif %}
+      </section>
+    {% endif %}
+  </div>
+
+  {{ load_more_button(view_model.next_cursor, swap_oob=render_events_load_more_oob | default(false)) }}
+  {{ events_poller(events_poll_since | default(view_model.latest_event_id)) }}
 {% endif %}

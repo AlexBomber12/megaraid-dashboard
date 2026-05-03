@@ -80,7 +80,7 @@ def test_events_route_requires_authentication() -> None:
     ("count", "expected_subject", "expect_load_more"),
     [(51, "event-50", True), (50, "event-49", False)],
 )
-def test_events_page_renders_table_and_load_more_state(
+def test_events_page_renders_timeline_and_load_more_state(
     count: int,
     expected_subject: str,
     expect_load_more: bool,
@@ -93,13 +93,20 @@ def test_events_page_renders_table_and_load_more_state(
         response = client.get("/events", headers=headers)
 
     assert response.status_code == 200
-    assert '<th scope="col">Time</th>' in response.text
+    assert 'aria-label="Events timeline"' in response.text
+    assert 'id="events-list"' in response.text
+    assert "<thead>" not in response.text
+    assert "drive-table" not in response.text
     assert expected_subject in response.text
     assert ("Load more" in response.text) is expect_load_more
     assert response.text.count('id="events-pagination"') == 1
+    assert 'id="events-poller"' in response.text
+    assert 'hx-trigger="every 30s"' in response.text
+    assert 'hx-swap="none"' in response.text
     if expect_load_more:
-        assert 'hx-get="/raid/partials/events"' in response.text
-        assert response.text.count('id="events-load-more-row"') == 1
+        assert "/partials/events" in response.text
+        assert "before_occurred_at=" in response.text
+        assert response.text.count('id="events-load-more"') == 1
 
 
 def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
@@ -109,15 +116,15 @@ def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
         response = client.get("/partials/events")
 
     assert response.status_code == 200
-    assert response.text.lstrip().startswith('<div\n  id="events-data"')
+    assert response.text.lstrip().startswith('<div id="events-data"')
     assert "event-50" in response.text
     assert "Load more" in response.text
     assert 'id="events-pagination"' in response.text
     assert 'hx-swap-oob="true"' in response.text
-    assert 'hx-get="/partials/events"' in response.text
+    assert "/partials/events" in response.text
+    assert "since=51" in response.text
     assert 'hx-trigger="every 30s"' in response.text
-    assert 'hx-target="this"' in response.text
-    assert 'hx-swap="outerHTML"' in response.text
+    assert 'hx-swap="none"' in response.text
     assert "<!doctype html>" not in response.text
     assert "site-header" not in response.text
 
@@ -156,7 +163,7 @@ def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     assert response.status_code == 200
     assert 'id="events-data"' not in response.text
     assert "<thead>" not in response.text
-    assert "<tr" in response.text
+    assert "<li" in response.text
     assert "<!doctype html>" not in response.text
     assert "event-0" in response.text
     assert "event-1" not in response.text
@@ -197,12 +204,98 @@ def test_events_category_filter_is_preserved_across_partial_requests() -> None:
     assert initial_page_response.status_code == 200
     assert refresh_response.status_code == 200
     assert pagination_response.status_code == 200
-    assert 'hx-get="/partials/events?category=cachevault"' in initial_page_response.text
-    assert 'hx-get="/partials/events?category=cachevault"' in refresh_response.text
+    assert "category=cachevault" in initial_page_response.text
+    assert "since=" in initial_page_response.text
+    assert "category=cachevault" in refresh_response.text
+    assert "since=" in refresh_response.text
     assert "cachevault-51" in refresh_response.text
     assert "physical-drive-leak" not in refresh_response.text
     assert "cachevault-1" in pagination_response.text
     assert "physical-drive-leak" not in pagination_response.text
+
+
+def test_events_filters_by_severity_and_category() -> None:
+    test_app = create_app()
+    occurred_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_event(
+            test_app,
+            occurred_at=occurred_at,
+            severity="critical",
+            category="pd_state",
+            subject="matching-critical-pd",
+        )
+        _insert_app_event(
+            test_app,
+            occurred_at=occurred_at + timedelta(minutes=1),
+            severity="warning",
+            category="pd_state",
+            subject="wrong-severity",
+        )
+        _insert_app_event(
+            test_app,
+            occurred_at=occurred_at + timedelta(minutes=2),
+            severity="critical",
+            category="temperature",
+            subject="wrong-category",
+        )
+
+        response = client.get(
+            "/events",
+            params={"severity": "critical", "category": "pd_state"},
+        )
+
+    assert response.status_code == 200
+    assert "matching-critical-pd" in response.text
+    assert "wrong-severity" not in response.text
+    assert "wrong-category" not in response.text
+
+
+def test_events_filter_chips_reflect_active_state() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/events", params={"severity": "critical", "category": "pd_state"})
+
+    assert response.status_code == 200
+    assert 'class="filter-chip filter-chip--active"' in response.text
+    assert 'href="/events?category=pd_state"' in response.text
+    assert 'href="/events?severity=critical"' in response.text
+
+
+def test_events_since_poll_returns_oob_newer_events_only() -> None:
+    test_app = create_app()
+    base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        first = _insert_app_event(test_app, occurred_at=base_time, subject="old-event")
+        _insert_app_event(
+            test_app,
+            occurred_at=base_time + timedelta(minutes=1),
+            subject="new-event",
+        )
+
+        response = client.get(
+            "/events", params={"since": str(first.id)}, headers={"HX-Request": "true"}
+        )
+
+    assert response.status_code == 200
+    assert 'hx-swap-oob="afterbegin:#events-list"' in response.text
+    assert "new-event" in response.text
+    assert "old-event" not in response.text
+    assert 'id="events-poller"' in response.text
+
+
+def test_events_since_poll_preserves_since_when_no_new_events() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get(
+            "/events",
+            params={"since": "42"},
+            headers={"HX-Request": "true"},
+        )
+
+    assert response.status_code == 200
+    assert 'hx-swap-oob="afterbegin:#events-list"' in response.text
+    assert "since=42" in response.text
 
 
 @pytest.mark.parametrize(
@@ -246,7 +339,7 @@ def test_events_page_formats_time_and_severity_badges() -> None:
         response = client.get("/events")
 
     assert response.status_code == 200
-    assert 'datetime="2026-04-25T12:00:00Z" data-local-time hidden' in response.text
+    assert 'datetime="2026-04-25T12:00:00Z" data-local-time' in response.text
     assert "2026-04-25T12:00:00Z UTC" in response.text
     assert "status-badge--optimal" in response.text
     assert "status-badge--warning" in response.text
