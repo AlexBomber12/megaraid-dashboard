@@ -238,3 +238,75 @@ async def test_whitelist_rejects_tokens_with_whitespace(
             use_sudo=False,
             binary_path="storcli64",
         )
+
+
+@pytest.mark.asyncio
+async def test_show_drive_template_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    async def fake_create_subprocess_exec(
+        *argv: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        captured["argv"] = argv
+        return FakeProcess(b'{"Controllers":[]}', b"", 0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_storcli(
+        ["/c0/e2/s0", "show", "all", "J"],
+        use_sudo=False,
+        binary_path="storcli64",
+    )
+
+    assert captured["argv"] == ("storcli64", "/c0/e2/s0", "show", "all", "J")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("verb", ["offline", "missing"])
+async def test_set_offline_and_missing_templates_are_allowed(
+    monkeypatch: pytest.MonkeyPatch, verb: str
+) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    async def fake_create_subprocess_exec(
+        *argv: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        captured["argv"] = argv
+        return FakeProcess(b'{"Controllers":[]}', b"", 0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_storcli(
+        ["/c0/e2/s0", "set", verb, "J"],
+        use_sudo=False,
+        binary_path="storcli64",
+    )
+
+    assert captured["argv"] == ("storcli64", "/c0/e2/s0", "set", verb, "J")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["/c0/e2/s0", "set", "good", "J"],
+        ["/c0/e2/s0", "set", "online", "J"],
+        ["/c0/e2/s0", "delete", "missing", "J"],
+        ["/c0", "set", "offline", "J"],
+    ],
+)
+async def test_set_template_rejects_unknown_verbs(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    async def fake_create_subprocess_exec(
+        *_argv: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        raise AssertionError("subprocess should not be called for disallowed commands")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    with pytest.raises(StorcliCommandFailed, match="not allowed"):
+        await run_storcli(argv, use_sudo=False, binary_path="storcli64")

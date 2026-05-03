@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
     storcli_use_sudo: bool = False
+    maintenance_mode: bool = False
+    destructive_mode: bool = False
     metrics_interval_seconds: int = Field(...)
     metrics_raw_retention_days: int = 30
     metrics_hourly_retention_days: int = 365

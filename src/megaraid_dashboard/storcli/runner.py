@@ -21,7 +21,9 @@ _ALLOWED_COMMAND_PATTERNS = (
     re.compile(r"^/c0/eall/sall show all J$"),
     re.compile(r"^/c0/cv show all J$"),
     re.compile(r"^/c0/bbu show all J$"),
+    re.compile(r"^/c0/e\d+/s\d+ show all J$"),
     re.compile(r"^/c0/e\d+/s\d+ (start|stop) locate J$"),
+    re.compile(r"^/c0/e\d+/s\d+ set (offline|missing) J$"),
 )
 
 

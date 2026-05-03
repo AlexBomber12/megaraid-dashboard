@@ -10,6 +10,7 @@ from megaraid_dashboard.storcli.models import (
     BbuInfo,
     CacheVault,
     ControllerInfo,
+    DriveShow,
     PhysicalDrive,
     VirtualDrive,
 )
@@ -56,6 +57,34 @@ def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
         return sorted(virtual_drives, key=lambda virtual_drive: virtual_drive.vd_id)
     except (TypeError, ValidationError) as exc:
         raise StorcliParseError("virtual drive payload does not match expected schema") from exc
+
+
+def parse_drive_show(payload: dict[str, Any]) -> DriveShow:
+    """Extract live state and serial number from a `/c0/eX/sY show all J` payload."""
+    controller = _ensure_success(payload)
+    try:
+        response = _response_data(controller)
+        return _extract_drive_show(response)
+    except (KeyError, TypeError, ValidationError) as exc:
+        raise StorcliParseError("drive show payload does not match expected schema") from exc
+
+
+def _extract_drive_show(response: Mapping[str, Any]) -> DriveShow:
+    for key, value in response.items():
+        if not key.startswith("Drive ") or key.endswith(" - Detailed Information"):
+            continue
+        if not isinstance(value, list) or not value:
+            continue
+        first = value[0]
+        if not isinstance(first, Mapping):
+            continue
+        state = first.get("State")
+        if not isinstance(state, str):
+            continue
+        detail = _mapping(response[f"{key} - Detailed Information"])
+        attributes = _mapping(detail[f"{key} Device attributes"])
+        return DriveShow.model_validate({"state": state, "serial_number": attributes["SN"]})
+    raise StorcliParseError("drive show payload does not contain a Drive State and SN")
 
 
 def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:

@@ -14,7 +14,8 @@ from urllib.parse import urlencode
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from sqlalchemy import text
+from pydantic import BaseModel, ValidationError
+from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,7 +26,16 @@ from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
 from megaraid_dashboard.services.audit import record_operator_action
-from megaraid_dashboard.services.drive_actions import LocateAction, build_locate_command
+from megaraid_dashboard.services.drive_actions import (
+    LocateAction,
+    ReplaceStep,
+    build_locate_command,
+    build_set_missing_command,
+    build_set_offline_command,
+    build_show_drive_command,
+    can_transition,
+    validate_enclosure_slot,
+)
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
     DriveHistoryPointKey,
@@ -50,7 +60,12 @@ from megaraid_dashboard.services.overview import (
     load_overview_view_model,
     temperature_severity,
 )
-from megaraid_dashboard.storcli import run_storcli
+from megaraid_dashboard.storcli import (
+    DriveShow,
+    StorcliError,
+    parse_drive_show,
+    run_storcli,
+)
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -350,6 +365,320 @@ def _record_locate_operator_action_sync(
             enclosure_id=enclosure_id,
             slot_id=slot_id,
         )
+
+
+class ReplaceRequest(BaseModel):
+    serial_number: str
+    dry_run: bool = False
+
+
+@router.post("/drives/{enclosure}:{slot}/replace/offline", name="drive_replace_offline")
+async def drive_replace_offline(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Mark a physical drive offline as Step 1a of the replace procedure."""
+    return await _run_replace_step(enclosure, slot, "offline", request)
+
+
+@router.post("/drives/{enclosure}:{slot}/replace/missing", name="drive_replace_missing")
+async def drive_replace_missing(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Mark a physical drive missing as Step 1b of the replace procedure."""
+    return await _run_replace_step(enclosure, slot, "missing", request)
+
+
+async def _run_replace_step(
+    enclosure: str,
+    slot: str,
+    step: ReplaceStep,
+    request: Request,
+) -> JSONResponse:
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+    except ValueError:
+        return JSONResponse({"error": "enclosure and slot must be integers"}, status_code=400)
+
+    try:
+        validate_enclosure_slot(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    query_dry_run = _parse_query_dry_run(request)
+    if isinstance(query_dry_run, JSONResponse):
+        return query_dry_run
+
+    body = await _parse_replace_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    dry_run = body.dry_run or query_dry_run
+
+    drive = await run_in_threadpool(
+        _load_latest_drive_for_slot,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if drive is None:
+        return JSONResponse(
+            {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
+            status_code=404,
+        )
+    if drive.serial_number != body.serial_number:
+        # Do not echo the canonical serial: returning it would let an
+        # operator probe with a placeholder value, read back the true serial,
+        # and replay the destructive call with that value.
+        return JSONResponse(
+            {"error": "serial mismatch"},
+            status_code=409,
+        )
+
+    try:
+        if step == "offline":
+            argv = build_set_offline_command(enclosure_id, slot_id)
+        else:
+            argv = build_set_missing_command(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if dry_run:
+        # Dry-run gates on the persisted snapshot to avoid an extra storcli call.
+        if not can_transition(drive.state, step):
+            return JSONResponse(
+                {
+                    "error": f"cannot {step} drive currently in state {drive.state}",
+                    "state": drive.state,
+                    "step": step,
+                },
+                status_code=409,
+            )
+        return JSONResponse(
+            {
+                "dry_run": True,
+                "step": step,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "argv": argv,
+            }
+        )
+
+    settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode or not settings.destructive_mode:
+        return JSONResponse(
+            {
+                "error": "destructive operations require maintenance_mode and destructive_mode",
+                "maintenance_mode": settings.maintenance_mode,
+                "destructive_mode": settings.destructive_mode,
+            },
+            status_code=403,
+        )
+
+    # Re-confirm live drive identity and state before any destructive command:
+    # the persisted snapshot can lag, so the typed serial confirmation must be
+    # validated against the disk currently in the slot, not the snapshot.
+    try:
+        live = await _query_live_drive_show(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {
+                "error": "storcli precheck failed",
+                "step": step,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+    if live.serial_number != body.serial_number:
+        # Same reasoning as the snapshot mismatch above: do not return the
+        # live drive's serial in the response.
+        return JSONResponse(
+            {"error": "live serial mismatch"},
+            status_code=409,
+        )
+    if not can_transition(live.state, step):
+        return JSONResponse(
+            {
+                "error": f"cannot {step} drive currently in state {live.state}",
+                "state": live.state,
+                "step": step,
+            },
+            status_code=409,
+        )
+
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_replace_operator_action_sync,
+            request=request,
+            step=step,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=body.serial_number,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        audit_failure_body: dict[str, Any] = {
+            "error": "audit persistence failed",
+            "step": step,
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "serial_number": body.serial_number,
+            "argv": argv,
+        }
+        if result is not None:
+            audit_failure_body["result"] = result
+        if storcli_error is not None:
+            audit_failure_body["storcli_error"] = str(storcli_error)
+        return JSONResponse(audit_failure_body, status_code=500)
+
+    if storcli_error is not None:
+        return JSONResponse(
+            {
+                "error": "storcli command failed",
+                "step": step,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(
+        {
+            "step": step,
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "serial_number": body.serial_number,
+            "argv": argv,
+            "result": result,
+        }
+    )
+
+
+_DRY_RUN_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_DRY_RUN_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def _parse_query_dry_run(request: Request) -> bool | JSONResponse:
+    raw = request.query_params.get("dry_run")
+    if raw is None:
+        return False
+    # Empty values (e.g. "?dry_run=" or "?dry_run") are ambiguous for a
+    # destructive safety flag; fail closed by rejecting them rather than
+    # silently treating them as False.
+    normalized = raw.strip().lower()
+    if normalized in _DRY_RUN_TRUE_VALUES:
+        return True
+    if normalized in _DRY_RUN_FALSE_VALUES:
+        return False
+    return JSONResponse(
+        {"error": "dry_run query parameter must be a boolean"},
+        status_code=400,
+    )
+
+
+async def _parse_replace_request_body(request: Request) -> ReplaceRequest | JSONResponse:
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "request body must be valid JSON"}, status_code=400)
+    try:
+        return ReplaceRequest.model_validate(payload)
+    except ValidationError as exc:
+        return JSONResponse(
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+async def _query_live_drive_show(
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    settings: Settings,
+) -> DriveShow:
+    argv = build_show_drive_command(enclosure_id, slot_id)
+    payload = await run_storcli(
+        argv,
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    return parse_drive_show(payload)
+
+
+def _load_latest_drive_for_slot(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+) -> PhysicalDriveSnapshot | None:
+    with _session(request) as session:
+        return session.scalars(
+            select(PhysicalDriveSnapshot)
+            .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
+            .where(PhysicalDriveSnapshot.enclosure_id == enclosure_id)
+            .where(PhysicalDriveSnapshot.slot_id == slot_id)
+            .order_by(ControllerSnapshot.captured_at.desc(), PhysicalDriveSnapshot.id.desc())
+            .limit(1)
+        ).one_or_none()
+
+
+_AUDIT_DETAIL_MAX_LEN = 200
+
+
+def _truncate_audit_detail(text: str) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= _AUDIT_DETAIL_MAX_LEN:
+        return collapsed
+    return collapsed[: _AUDIT_DETAIL_MAX_LEN - 1] + "…"
+
+
+def _record_replace_operator_action_sync(
+    *,
+    request: Request,
+    step: ReplaceStep,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=(
+                    f"replace step {step} drive {enclosure_id}:{slot_id} "
+                    f"serial {serial_number} {outcome}"
+                ),
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action=f"replace_{step}",
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            outcome=outcome,
+        )
+        raise
 
 
 @router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
