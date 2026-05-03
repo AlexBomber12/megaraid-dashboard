@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard import __version__
@@ -309,12 +310,12 @@ async def _run_locate(
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
-    with _session(request) as session, session.begin():
-        record_operator_action(
-            session,
-            username=str(request.scope.get("user_username", "unknown")),
-            message=f"locate {action} drive {enclosure_id}:{slot_id}",
-        )
+    _record_locate_operator_action(
+        request=request,
+        action=action,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
     return JSONResponse(
         {
             "action": action,
@@ -323,6 +324,29 @@ async def _run_locate(
             "result": result,
         }
     )
+
+
+def _record_locate_operator_action(
+    *,
+    request: Request,
+    action: LocateAction,
+    enclosure_id: int,
+    slot_id: int,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=f"locate {action} drive {enclosure_id}:{slot_id}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action=action,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
 
 
 @router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
