@@ -207,7 +207,19 @@ def test_max_temp_tile_uses_hottest_drive_and_thresholds(
 
     assert tile.value == "58 C"
     assert tile.status == "warning"
-    assert tile.href == "/drives"
+    assert tile.href == "/drives/252/2"
+
+
+def test_max_temp_tile_links_to_stable_hottest_drive_when_temperatures_tie(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    snapshot = _latest(session, _snapshot(sample_snapshot, temperatures=(58, 42, 58)))
+
+    tile = _load_max_temp_tile(snapshot, settings=get_settings(), drives_url="/raid/drives")
+
+    assert tile.value == "58 C"
+    assert tile.href == "/raid/drives/252/0"
 
 
 def test_max_temp_tile_is_neutral_without_physical_drives(
@@ -220,6 +232,7 @@ def test_max_temp_tile_is_neutral_without_physical_drives(
 
     assert tile.value == "Unknown"
     assert tile.status == "neutral"
+    assert tile.href == "/drives"
 
 
 def test_roc_tile_reuses_roc_temperature_section(

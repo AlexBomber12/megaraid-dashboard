@@ -343,7 +343,8 @@ def _load_max_temp_tile(
     drives_url: str = "/drives",
 ) -> StripTileViewModel:
     physical_drives = () if latest_snapshot is None else tuple(latest_snapshot.physical_drives)
-    max_temp = _max_temperature(physical_drives)
+    hottest_drive = _hottest_drive(physical_drives)
+    max_temp = None if hottest_drive is None else hottest_drive.temperature_celsius
     value = "Unknown" if max_temp is None else f"{max_temp} C"
     status = (
         "neutral"
@@ -359,7 +360,7 @@ def _load_max_temp_tile(
         value=value,
         status=status,
         icon="thermometer",
-        href=drives_url,
+        href=drives_url if hottest_drive is None else _drive_detail_url(drives_url, hottest_drive),
     )
 
 
@@ -823,6 +824,31 @@ def _max_temperature(physical_drives: Sequence[PhysicalDriveSnapshot]) -> int | 
         if drive.temperature_celsius is not None
     ]
     return max(temperatures) if temperatures else None
+
+
+def _hottest_drive(
+    physical_drives: Sequence[PhysicalDriveSnapshot],
+) -> PhysicalDriveSnapshot | None:
+    drives_with_temperature = [
+        drive for drive in physical_drives if drive.temperature_celsius is not None
+    ]
+    if not drives_with_temperature:
+        return None
+    return sorted(
+        drives_with_temperature,
+        key=lambda drive: (-_require_temperature(drive), drive.enclosure_id, drive.slot_id),
+    )[0]
+
+
+def _require_temperature(drive: PhysicalDriveSnapshot) -> int:
+    if drive.temperature_celsius is None:
+        msg = "drive temperature is required"
+        raise ValueError(msg)
+    return drive.temperature_celsius
+
+
+def _drive_detail_url(drives_url: str, drive: PhysicalDriveSnapshot) -> str:
+    return f"{drives_url.rstrip('/')}/{drive.enclosure_id}/{drive.slot_id}"
 
 
 def format_tb(size_bytes: int) -> str:
