@@ -134,7 +134,7 @@ def test_events_partial_without_cursor_refreshes_header_timestamp(
     assert response.status_code == 200
     assert "<h1>Events</h1>" in response.text
     assert "LSI MegaRAID SAS9270CV-8i" in response.text
-    assert 'datetime="2026-04-25T12:00:00Z" data-local-time' in response.text
+    assert 'datetime="2026-04-25T12:00:00Z" data-local-time hidden' in response.text
     assert "<noscript>2026-04-25T12:00:00Z UTC</noscript>" in response.text
     assert "Waiting for first metrics collection" not in response.text
 
@@ -203,7 +203,7 @@ def test_events_page_formats_time_and_severity_badges() -> None:
         response = client.get("/events")
 
     assert response.status_code == 200
-    assert 'datetime="2026-04-25T12:00:00Z" data-local-time' in response.text
+    assert 'datetime="2026-04-25T12:00:00Z" data-local-time hidden' in response.text
     assert "2026-04-25T12:00:00Z UTC" in response.text
     assert "status-badge--optimal" in response.text
     assert "status-badge--warning" in response.text

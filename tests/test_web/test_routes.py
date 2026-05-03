@@ -143,7 +143,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     )
     assert re.search(r"/raid/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
-    assert 'data-local-time-clock aria-live="off"' in response.text
+    assert 'data-local-time-clock aria-live="off" hidden' in response.text
     assert "/raid/partials/overview" in response.text
     assert {"/raid/", "/raid/drives", "/raid/events"}.issubset(_anchor_hrefs(response.text))
 
@@ -282,11 +282,11 @@ def test_operator_pages_render_local_time_markup(
 
     assert response.status_code == 200
     assert re.search(
-        r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time>',
+        r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
         response.text,
     )
     assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
-    assert 'data-local-time-clock aria-live="off"' in response.text
+    assert 'data-local-time-clock aria-live="off" hidden' in response.text
 
 
 def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
@@ -708,23 +708,34 @@ def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapsho
     ) in response.text
 
 
-def test_static_asset_version_includes_chartjs_bytes(
+@pytest.mark.parametrize(
+    "asset_relative_path",
+    [
+        Path("static/js/local-time.js"),
+        Path("static/vendor/chart.min.js"),
+    ],
+)
+def test_static_asset_version_includes_js_bytes(
+    asset_relative_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     from megaraid_dashboard.web import routes
 
     (tmp_path / "static" / "css").mkdir(parents=True)
+    (tmp_path / "static" / "js").mkdir()
     (tmp_path / "static" / "vendor").mkdir()
     (tmp_path / "static" / "css" / "app.css").write_text("css", encoding="utf-8")
+    (tmp_path / "static" / "js" / "local-time.js").write_text("local-time", encoding="utf-8")
     (tmp_path / "static" / "vendor" / "htmx.min.js").write_text("htmx", encoding="utf-8")
-    chart_path = tmp_path / "static" / "vendor" / "chart.min.js"
-    chart_path.write_text("chart-a", encoding="utf-8")
+    (tmp_path / "static" / "vendor" / "chart.min.js").write_text("chart", encoding="utf-8")
+    changed_path = tmp_path / asset_relative_path
+    changed_path.write_text("asset-a", encoding="utf-8")
     monkeypatch.setattr(routes, "_PACKAGE_ROOT", tmp_path)
     monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
     first_version = routes._static_asset_version()
 
-    chart_path.write_text("chart-b", encoding="utf-8")
+    changed_path.write_text("asset-b", encoding="utf-8")
     monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
     second_version = routes._static_asset_version()
 

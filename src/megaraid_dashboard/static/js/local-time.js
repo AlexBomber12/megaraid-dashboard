@@ -32,6 +32,7 @@
       }
       el.textContent = fmt(date, formatOptions(el));
       el.title = iso;
+      el.hidden = false;
     });
   }
 
@@ -46,6 +47,7 @@
         minute: "2-digit",
         second: "2-digit",
       });
+      el.hidden = false;
     }
     tick();
     setInterval(tick, 1000);

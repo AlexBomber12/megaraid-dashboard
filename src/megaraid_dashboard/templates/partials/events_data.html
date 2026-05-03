@@ -14,7 +14,7 @@
         {% if view_model.latest_captured_at is not none %}
           &middot; Updated:
           <noscript>{{ view_model.latest_captured_at | iso_utc }} UTC</noscript>
-          <time datetime="{{ view_model.latest_captured_at | iso_utc }}" data-local-time>{{ view_model.latest_captured_at | iso_utc }} UTC</time>
+          <time datetime="{{ view_model.latest_captured_at | iso_utc }}" data-local-time hidden>{{ view_model.latest_captured_at | iso_utc }} UTC</time>
         {% endif %}
       </p>
     </section>

@@ -13,7 +13,7 @@
         {{ view_model.controller_label }}
         &middot; Updated:
         <noscript>{{ view_model.captured_at | iso_utc }} UTC</noscript>
-        <time datetime="{{ view_model.captured_at | iso_utc }}" data-local-time>{{ view_model.captured_at | iso_utc }} UTC</time>
+        <time datetime="{{ view_model.captured_at | iso_utc }}" data-local-time hidden>{{ view_model.captured_at | iso_utc }} UTC</time>
       </p>
     </section>
 
