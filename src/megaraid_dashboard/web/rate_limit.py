@@ -38,6 +38,7 @@ class AuthRateLimitMiddleware:
     ) -> None:
         self.app = app
         self.limit = settings.auth_rate_limit_per_minute + settings.auth_rate_limit_burst
+        self._trusted_proxy_networks = _parse_trusted_proxy_networks(settings.trusted_proxy_ips)
         self._attempts: defaultdict[str, deque[_AttemptSlot]] = defaultdict(deque)
         self._lock = asyncio.Lock()
         self._time_func = time_func
@@ -48,7 +49,7 @@ class AuthRateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        client_ip = _client_ip(scope)
+        client_ip = _client_ip(scope, self._trusted_proxy_networks)
         reserved_slot = await self._reserve_attempt_slot(client_ip, self._time_func())
         if reserved_slot is None:
             response = JSONResponse(
@@ -152,13 +153,16 @@ def _evict_expired(attempts: deque[_AttemptSlot], now: float) -> None:
         attempts.popleft()
 
 
-def _client_ip(scope: Scope) -> str:
+def _client_ip(
+    scope: Scope,
+    trusted_proxy_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+) -> str:
     client = scope.get("client")
     peer_ip = str(client[0]) if isinstance(client, tuple) and client else "unknown"
 
     headers = Headers(raw=cast("list[tuple[bytes, bytes]]", scope["headers"]))
     forwarded_for = headers.get("x-forwarded-for")
-    if forwarded_for is not None and _is_trusted_proxy_peer(peer_ip):
+    if forwarded_for is not None and _is_trusted_proxy_peer(peer_ip, trusted_proxy_networks):
         entries = [entry.strip() for entry in forwarded_for.split(",")]
         for entry in reversed(entries):
             if entry:
@@ -167,8 +171,22 @@ def _client_ip(scope: Scope) -> str:
     return peer_ip
 
 
-def _is_trusted_proxy_peer(peer_ip: str) -> bool:
+def _is_trusted_proxy_peer(
+    peer_ip: str,
+    trusted_proxy_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+) -> bool:
     try:
-        return ipaddress.ip_address(peer_ip).is_loopback
+        peer_address = ipaddress.ip_address(peer_ip)
     except ValueError:
         return False
+    return any(peer_address in network for network in trusted_proxy_networks)
+
+
+def _parse_trusted_proxy_networks(
+    trusted_proxy_ips: str,
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    return tuple(
+        ipaddress.ip_network(entry.strip(), strict=False)
+        for entry in trusted_proxy_ips.split(",")
+        if entry.strip()
+    )

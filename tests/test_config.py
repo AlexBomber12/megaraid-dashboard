@@ -88,6 +88,7 @@ def test_temperature_threshold_defaults_validate(monkeypatch: pytest.MonkeyPatch
     assert settings.collector_lock_path == "/tmp/megaraid-dashboard-collector.lock"
     assert settings.auth_rate_limit_per_minute == 5
     assert settings.auth_rate_limit_burst == 2
+    assert settings.trusted_proxy_ips == ""
 
 
 def test_temperature_critical_must_exceed_warning(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,6 +243,16 @@ def test_auth_rate_limit_burst_must_not_exceed_limit(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("AUTH_RATE_LIMIT_BURST", "6")
 
     with pytest.raises(ValidationError, match="auth_rate_limit_burst"):
+        Settings()
+
+
+def test_trusted_proxy_ips_must_be_addresses_or_networks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", "127.0.0.1,not-an-ip")
+
+    with pytest.raises(ValidationError, match="trusted_proxy_ips"):
         Settings()
 
 

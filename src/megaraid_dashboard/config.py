@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 
 from pydantic import Field, model_validator
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     alert_throttle_per_hour: int = 20
     auth_rate_limit_per_minute: int = 5
     auth_rate_limit_burst: int = 2
+    trusted_proxy_ips: str = ""
     admin_username: str = Field(...)
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
@@ -107,6 +109,12 @@ class Settings(BaseSettings):
         if self.auth_rate_limit_burst > self.auth_rate_limit_per_minute:
             msg = "auth_rate_limit_burst must not exceed auth_rate_limit_per_minute"
             raise ValueError(msg)
+        for trusted_proxy_ip in _split_csv(self.trusted_proxy_ips):
+            try:
+                ipaddress.ip_network(trusted_proxy_ip, strict=False)
+            except ValueError as exc:
+                msg = "trusted_proxy_ips must contain only IP addresses or CIDR networks"
+                raise ValueError(msg) from exc
         return self
 
 
@@ -129,3 +137,7 @@ def get_settings() -> Settings:
 
 def get_database_url() -> str:
     return DatabaseSettings().database_url
+
+
+def _split_csv(value: str) -> list[str]:
+    return [entry.strip() for entry in value.split(",") if entry.strip()]

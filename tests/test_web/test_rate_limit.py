@@ -187,7 +187,12 @@ async def test_whitelisted_path_is_not_rate_limited(settings: Settings) -> None:
 async def test_limiter_uses_last_x_forwarded_for_value_from_trusted_proxy(
     settings: Settings,
 ) -> None:
-    settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
+    settings = settings.model_copy(
+        update={
+            "auth_rate_limit_per_minute": 1,
+            "trusted_proxy_ips": "127.0.0.1",
+        }
+    )
     async with _rate_limited_client(settings=settings, client=("127.0.0.1", 12345)) as client:
         first = await client.get(
             "/",
@@ -214,6 +219,30 @@ async def test_limiter_uses_last_x_forwarded_for_value_from_trusted_proxy(
     assert first.status_code == 401
     assert second_same_proxy.status_code == 429
     assert different_proxy.status_code == 401
+
+
+async def test_limiter_ignores_x_forwarded_for_from_unconfigured_loopback_peer(
+    settings: Settings,
+) -> None:
+    settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
+    async with _rate_limited_client(settings=settings, client=("127.0.0.1", 12345)) as client:
+        first = await client.get(
+            "/",
+            headers={
+                "Authorization": _basic_header("admin", "wrong"),
+                "X-Forwarded-For": "198.51.100.10",
+            },
+        )
+        second = await client.get(
+            "/",
+            headers={
+                "Authorization": _basic_header("admin", "wrong"),
+                "X-Forwarded-For": "198.51.100.11",
+            },
+        )
+
+    assert first.status_code == 401
+    assert second.status_code == 429
 
 
 async def test_limiter_ignores_spoofed_x_forwarded_for_from_untrusted_peer(
