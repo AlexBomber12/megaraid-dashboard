@@ -27,6 +27,28 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+validate_install_user() {
+  local passwd_entry
+  passwd_entry="$(getent passwd "${INSTALL_USER}")" || log_fail "user ${INSTALL_USER} not found"
+
+  local uid gid home shell
+  IFS=: read -r _ _ uid gid _ home shell <<<"${passwd_entry}"
+
+  local group_entry
+  group_entry="$(getent group "${gid}")" || log_fail "primary group ${gid} for ${INSTALL_USER} not found"
+
+  local group_name
+  group_name="${group_entry%%:*}"
+
+  [[ "${uid}" -lt 1000 ]] || log_fail "user ${INSTALL_USER} exists but is not a system user"
+  [[ "${home}" == "${DATA_DIR}" ]] || \
+    log_fail "user ${INSTALL_USER} home is ${home}, expected ${DATA_DIR}"
+  [[ "${shell}" == "/usr/sbin/nologin" ]] || \
+    log_fail "user ${INSTALL_USER} shell is ${shell}, expected /usr/sbin/nologin"
+  [[ "${group_name}" == "${INSTALL_USER}" ]] || \
+    log_fail "user ${INSTALL_USER} primary group is ${group_name}, expected ${INSTALL_USER}"
+}
+
 os_release_value() {
   local key="$1"
   local value
@@ -63,7 +85,12 @@ phase_preflight() {
 
   [[ -x "${STORCLI_PATH}" ]] || log_fail "storcli64 not found at ${STORCLI_PATH}"
 
-  if ss -lnt | awk '{print $4}' | grep -q ":${APP_PORT}\$"; then
+  local sockets
+  if ! sockets="$(ss -lnt 2>&1)"; then
+    log_fail "ss port probe failed: ${sockets}"
+  fi
+
+  if printf "%s\n" "${sockets}" | awk '{print $4}' | grep -q ":${APP_PORT}\$"; then
     log_fail "port ${APP_PORT} already in use"
   fi
 
@@ -74,9 +101,10 @@ phase_user() {
   log_info "Phase 2: system user"
 
   if id -u "${INSTALL_USER}" >/dev/null 2>&1; then
-    log_info "user ${INSTALL_USER} already exists, skip"
+    validate_install_user
+    log_info "user ${INSTALL_USER} already exists and matches service account policy, skip"
   else
-    useradd --system --home-dir "${DATA_DIR}" --no-create-home --shell /usr/sbin/nologin \
+    useradd --system --user-group --home-dir "${DATA_DIR}" --no-create-home --shell /usr/sbin/nologin \
       "${INSTALL_USER}"
     log_info "created user ${INSTALL_USER}"
   fi
