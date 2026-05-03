@@ -32,6 +32,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_locate_command,
     build_set_missing_command,
     build_set_offline_command,
+    build_show_drive_command,
     can_transition,
     validate_enclosure_slot,
 )
@@ -59,7 +60,7 @@ from megaraid_dashboard.services.overview import (
     load_overview_view_model,
     temperature_severity,
 )
-from megaraid_dashboard.storcli import run_storcli
+from megaraid_dashboard.storcli import parse_drive_state, run_storcli
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -424,15 +425,6 @@ async def _run_replace_step(
             },
             status_code=409,
         )
-    if not can_transition(drive.state, step):
-        return JSONResponse(
-            {
-                "error": f"cannot {step} drive currently in state {drive.state}",
-                "state": drive.state,
-                "step": step,
-            },
-            status_code=409,
-        )
 
     try:
         if step == "offline":
@@ -441,6 +433,20 @@ async def _run_replace_step(
             argv = build_set_missing_command(enclosure_id, slot_id)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+
+    # For dry-run and the offline step we gate on the persisted snapshot, which
+    # avoids an extra storcli call. The missing step on a real run re-checks live
+    # drive state because the offline step it follows immediately does not refresh
+    # the persisted snapshot, so the persisted state can lag behind reality.
+    if (dry_run or step == "offline") and not can_transition(drive.state, step):
+        return JSONResponse(
+            {
+                "error": f"cannot {step} drive currently in state {drive.state}",
+                "state": drive.state,
+                "step": step,
+            },
+            status_code=409,
+        )
 
     if dry_run:
         return JSONResponse(
@@ -464,6 +470,22 @@ async def _run_replace_step(
             },
             status_code=403,
         )
+
+    if step == "missing":
+        live_state = await _query_live_drive_state(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+        if not can_transition(live_state, step):
+            return JSONResponse(
+                {
+                    "error": f"cannot {step} drive currently in state {live_state}",
+                    "state": live_state,
+                    "step": step,
+                },
+                status_code=409,
+            )
 
     result = await run_storcli(
         argv,
@@ -535,6 +557,21 @@ async def _parse_replace_request_body(request: Request) -> ReplaceRequest | JSON
             {"error": "invalid request body", "detail": exc.errors()},
             status_code=400,
         )
+
+
+async def _query_live_drive_state(
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    settings: Settings,
+) -> str:
+    argv = build_show_drive_command(enclosure_id, slot_id)
+    payload = await run_storcli(
+        argv,
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    return parse_drive_state(payload)
 
 
 def _load_latest_drive_for_slot(

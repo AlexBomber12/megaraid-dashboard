@@ -32,6 +32,11 @@ def build_set_missing_command(enclosure: int, slot: int) -> list[str]:
     return [f"/c0/e{enclosure}/s{slot}", "set", "missing", "J"]
 
 
+def build_show_drive_command(enclosure: int, slot: int) -> list[str]:
+    validate_enclosure_slot(enclosure, slot)
+    return [f"/c0/e{enclosure}/s{slot}", "show", "all", "J"]
+
+
 def can_transition(current_state: str, requested_step: ReplaceStep) -> bool:
     if requested_step == "offline":
         return current_state in _OFFLINE_ALLOWED_STATES

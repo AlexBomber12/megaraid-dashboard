@@ -15,6 +15,7 @@ from megaraid_dashboard.storcli import (
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
+    parse_drive_state,
     parse_physical_drives,
     parse_virtual_drives,
 )
@@ -147,6 +148,46 @@ def test_successful_parsers_wrap_malformed_response_data(
 ) -> None:
     with pytest.raises(StorcliParseError):
         parser(success_payload(None))
+
+
+@pytest.mark.parametrize("state", ["Onln", "Offln", "Failed", "UBad", "UGood", "Rbld"])
+def test_parse_drive_state_returns_summary_state(state: str) -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {
+                    "EID:Slt": "2:0",
+                    "DID": 14,
+                    "State": state,
+                    "Intf": "SATA",
+                }
+            ],
+        }
+    )
+
+    assert parse_drive_state(payload) == state
+
+
+def test_parse_drive_state_raises_on_failure() -> None:
+    with pytest.raises(StorcliCommandFailed, match="device removed"):
+        parse_drive_state(unexpected_failure_payload("device removed"))
+
+
+def test_parse_drive_state_raises_when_state_field_missing() -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {
+                    "EID:Slt": "2:0",
+                    "DID": 14,
+                    "Intf": "SATA",
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(StorcliParseError, match="State"):
+        parse_drive_state(payload)
 
 
 def success_payload(response_data: Any) -> dict[str, Any]:

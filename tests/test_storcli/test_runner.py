@@ -241,6 +241,28 @@ async def test_whitelist_rejects_tokens_with_whitespace(
 
 
 @pytest.mark.asyncio
+async def test_show_drive_template_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    async def fake_create_subprocess_exec(
+        *argv: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        captured["argv"] = argv
+        return FakeProcess(b'{"Controllers":[]}', b"", 0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_storcli(
+        ["/c0/e2/s0", "show", "all", "J"],
+        use_sudo=False,
+        binary_path="storcli64",
+    )
+
+    assert captured["argv"] == ("storcli64", "/c0/e2/s0", "show", "all", "J")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("verb", ["offline", "missing"])
 async def test_set_offline_and_missing_templates_are_allowed(
     monkeypatch: pytest.MonkeyPatch, verb: str

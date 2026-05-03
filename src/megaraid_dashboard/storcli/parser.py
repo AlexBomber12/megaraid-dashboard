@@ -58,6 +58,24 @@ def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
         raise StorcliParseError("virtual drive payload does not match expected schema") from exc
 
 
+def parse_drive_state(payload: dict[str, Any]) -> str:
+    """Extract the live drive state from a `/c0/eX/sY show all J` payload."""
+    controller = _ensure_success(payload)
+    response = _response_data(controller)
+    for key, value in response.items():
+        if not key.startswith("Drive ") or key.endswith(" - Detailed Information"):
+            continue
+        if not isinstance(value, list) or not value:
+            continue
+        first = value[0]
+        if not isinstance(first, Mapping):
+            continue
+        state = first.get("State")
+        if isinstance(state, str):
+            return state
+    raise StorcliParseError("drive show payload does not contain a State field")
+
+
 def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:
     controller = _ensure_success(payload)
 

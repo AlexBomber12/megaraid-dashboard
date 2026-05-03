@@ -252,6 +252,8 @@ def test_drive_replace_missing_success_invokes_runner_and_audits(
     ) -> dict[str, Any]:
         del use_sudo, binary_path
         runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Offln")
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -267,9 +269,94 @@ def test_drive_replace_missing_success_invokes_runner_and_audits(
         )
 
         assert response.status_code == 200
-        assert runner_calls == [["/c0/e2/s0", "set", "missing", "J"]]
+        assert runner_calls == [
+            ["/c0/e2/s0", "show", "all", "J"],
+            ["/c0/e2/s0", "set", "missing", "J"],
+        ]
         event = _read_single_event(test_app)
         assert event.summary == f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL}"
+
+
+def test_drive_replace_missing_uses_live_state_when_persisted_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Offln")
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Persisted snapshot still shows Onln because the collector has not yet
+        # written a fresh snapshot after the operator ran replace/offline.
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        assert runner_calls == [
+            ["/c0/e2/s0", "show", "all", "J"],
+            ["/c0/e2/s0", "set", "missing", "J"],
+        ]
+        event = _read_single_event(test_app)
+        assert event.summary == f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL}"
+
+
+def test_drive_replace_missing_rejects_when_live_state_is_not_offline(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln")
+        raise AssertionError("set missing must not run when live state is not Offln")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Persisted snapshot says Offln, but the live controller state is Onln.
+        # The live state must win: the request is rejected.
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["state"] == "Onln"
+        assert body["step"] == "missing"
+        assert "cannot missing" in body["error"]
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        _assert_no_audit_event(test_app)
 
 
 def test_drive_replace_offline_returns_404_when_no_snapshot(
@@ -352,12 +439,12 @@ def test_drive_replace_offline_returns_409_on_invalid_state(
         _assert_no_audit_event(test_app)
 
 
-def test_drive_replace_missing_requires_offline_state(
+def test_drive_replace_missing_dry_run_rejects_non_offline_persisted_state(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
     async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
-        raise AssertionError("storcli should not be called from a non-Offln drive")
+        raise AssertionError("dry_run must not invoke storcli")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
 
@@ -368,11 +455,14 @@ def test_drive_replace_missing_requires_offline_state(
         response = client.post(
             "/drives/2:0/replace/missing",
             headers=headers,
-            json={"serial_number": _DEFAULT_SERIAL},
+            json={"serial_number": _DEFAULT_SERIAL, "dry_run": True},
         )
 
         assert response.status_code == 409
-        assert "cannot missing" in response.json()["error"]
+        body = response.json()
+        assert body["state"] == "Onln"
+        assert body["step"] == "missing"
+        assert "cannot missing" in body["error"]
         _assert_no_audit_event(test_app)
 
 
@@ -729,6 +819,30 @@ def _seed_drive(
         ]
         session.add(controller)
         session.commit()
+
+
+def _drive_show_payload(*, state: str) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {
+                    "Drive /c0/e2/s0": [
+                        {
+                            "EID:Slt": "2:0",
+                            "DID": 14,
+                            "State": state,
+                            "DG": 0,
+                            "Size": "2.728 TB",
+                            "Intf": "SATA",
+                            "Med": "HDD",
+                            "Model": "WDC WD30EFRX-68EUZN0",
+                        }
+                    ],
+                },
+            }
+        ]
+    }
 
 
 def _read_single_event(test_app: FastAPI) -> Event:

@@ -17,6 +17,7 @@ from megaraid_dashboard.storcli.parser import (
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
+    parse_drive_state,
     parse_physical_drives,
     parse_virtual_drives,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "parse_bbu",
     "parse_cachevault",
     "parse_controller_show_all",
+    "parse_drive_state",
     "parse_physical_drives",
     "parse_virtual_drives",
     "run_storcli",
