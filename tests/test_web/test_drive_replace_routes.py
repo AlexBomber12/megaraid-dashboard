@@ -1,0 +1,497 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
+
+from megaraid_dashboard.app import create_app
+from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.db.models import (
+    ControllerSnapshot,
+    Event,
+    PhysicalDriveSnapshot,
+)
+from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
+
+_DEFAULT_SERIAL = "WD-TEST-1234"
+
+
+@pytest.fixture(autouse=True)
+def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    monkeypatch.setenv("ALERT_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("ALERT_SMTP_PORT", "587")
+    monkeypatch.setenv("ALERT_SMTP_USER", "alert@example.test")
+    monkeypatch.setenv("ALERT_SMTP_PASSWORD", "test-token")
+    monkeypatch.setenv("ALERT_FROM", "alert@example.test")
+    monkeypatch.setenv("ALERT_TO", "ops@example.test")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
+    monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
+    monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
+    monkeypatch.setenv("COLLECTOR_ENABLED", "false")
+    monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_drive_replace_offline_dry_run_returns_argv_and_skips_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        runner_calls.append(list(_args[0]) if _args else [])
+        raise AssertionError("storcli should not be called for dry runs")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL, "dry_run": True},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "dry_run": True,
+            "step": "offline",
+            "enclosure": 2,
+            "slot": 0,
+            "serial_number": _DEFAULT_SERIAL,
+            "argv": ["/c0/e2/s0", "set", "offline", "J"],
+        }
+        assert runner_calls == []
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_offline_success_invokes_runner_and_audits(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        assert use_sudo is False
+        assert binary_path == "/usr/local/sbin/storcli64"
+        runner_calls.append(list(args))
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "step": "offline",
+            "enclosure": 2,
+            "slot": 0,
+            "serial_number": _DEFAULT_SERIAL,
+            "argv": ["/c0/e2/s0", "set", "offline", "J"],
+            "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
+        }
+        assert runner_calls == [["/c0/e2/s0", "set", "offline", "J"]]
+        event = _read_single_event(test_app)
+        assert event.category == "operator_action"
+        assert event.severity == "info"
+        assert event.summary == f"replace step offline drive 2:0 serial {_DEFAULT_SERIAL}"
+        assert event.operator_username == "admin"
+
+
+def test_drive_replace_missing_success_invokes_runner_and_audits(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        assert runner_calls == [["/c0/e2/s0", "set", "missing", "J"]]
+        event = _read_single_event(test_app)
+        assert event.summary == f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL}"
+
+
+def test_drive_replace_offline_returns_404_when_no_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called when snapshot is missing")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+    assert response.status_code == 404
+    body = response.json()
+    assert body["error"] == "no snapshot for slot"
+    assert body["enclosure"] == 2
+    assert body["slot"] == 0
+
+
+def test_drive_replace_offline_returns_409_on_serial_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called on serial mismatch")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": "WD-WRONG"},
+        )
+
+        assert response.status_code == 409
+        assert response.json() == {
+            "error": "serial mismatch",
+            "expected": _DEFAULT_SERIAL,
+            "supplied": "WD-WRONG",
+        }
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_offline_returns_409_on_invalid_state(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called on invalid transition")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Rbld")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["state"] == "Rbld"
+        assert body["step"] == "offline"
+        assert "cannot offline" in body["error"]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_missing_requires_offline_state(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called from a non-Offln drive")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 409
+        assert "cannot missing" in response.json()["error"]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_uses_latest_snapshot_serial(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("dry_run should not invoke storcli")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        base_time = datetime(2026, 5, 3, 10, 0, tzinfo=UTC)
+        _seed_drive(
+            test_app,
+            serial_number="OLD-SERIAL",
+            state="Onln",
+            captured_at=base_time,
+        )
+        _seed_drive(
+            test_app,
+            serial_number="NEW-SERIAL",
+            state="Onln",
+            captured_at=base_time + timedelta(minutes=5),
+        )
+        headers = _csrf_request_headers(client, csrf_headers)
+        response_old = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": "OLD-SERIAL", "dry_run": True},
+        )
+        response_new = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": "NEW-SERIAL", "dry_run": True},
+        )
+
+        assert response_old.status_code == 409
+        assert response_old.json() == {
+            "error": "serial mismatch",
+            "expected": "NEW-SERIAL",
+            "supplied": "OLD-SERIAL",
+        }
+        assert response_new.status_code == 200
+
+
+def test_drive_replace_offline_without_csrf_returns_403(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called without csrf")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+    assert response.status_code == 403
+
+
+def test_drive_replace_offline_without_auth_returns_401(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called without auth")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as authed_client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(authed_client, csrf_headers)
+
+    with TestClient(test_app) as client:
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+    assert response.status_code == 401
+
+
+def test_drive_replace_offline_rejects_non_integer_path(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for invalid path values")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/abc:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+    assert response.status_code == 400
+
+
+def test_drive_replace_offline_rejects_missing_body_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for malformed bodies")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post("/drives/2:0/replace/offline", headers=headers, json={})
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid request body"
+
+
+def test_drive_replace_offline_audit_failure_still_returns_success(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
+        raise SQLAlchemyError("database is locked")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    monkeypatch.setattr(
+        "megaraid_dashboard.web.routes.record_operator_action",
+        fail_record_operator_action,
+    )
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["step"] == "offline"
+
+
+def _csrf_request_headers(
+    client: TestClient,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> dict[str, str]:
+    headers = csrf_headers(client)
+    token = headers["X-CSRF-Token"]
+    return {**headers, "Cookie": f"__Host-csrf={token}"}
+
+
+def _seed_drive(
+    test_app: FastAPI,
+    *,
+    serial_number: str,
+    state: str,
+    enclosure_id: int = 2,
+    slot_id: int = 0,
+    captured_at: datetime | None = None,
+) -> None:
+    session_factory = test_app.state.session_factory
+    assert isinstance(session_factory, sessionmaker)
+    timestamp = captured_at or datetime.now(UTC)
+    with session_factory() as session:
+        assert isinstance(session, Session)
+        controller = ControllerSnapshot(
+            captured_at=timestamp,
+            model_name="LSI 9270CV-8i",
+            serial_number="ctrl-serial",
+            firmware_version="23.34.0-0019",
+            bios_version="6.36.00.0",
+            driver_version="07.727",
+            alarm_state="off",
+            cv_present=True,
+            bbu_present=False,
+            roc_temperature_celsius=55,
+        )
+        controller.physical_drives = [
+            PhysicalDriveSnapshot(
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                device_id=14,
+                model="WDC WD30EFRX-68EUZN0",
+                serial_number=serial_number,
+                firmware_version="82.00A82",
+                size_bytes=3_000_000_000_000,
+                interface="SATA",
+                media_type="HDD",
+                state=state,
+                temperature_celsius=40,
+                media_errors=0,
+                other_errors=0,
+                predictive_failures=0,
+                smart_alert=False,
+                sas_address="0x4433221100000000",
+            )
+        ]
+        session.add(controller)
+        session.commit()
+
+
+def _read_single_event(test_app: FastAPI) -> Event:
+    session_factory = test_app.state.session_factory
+    assert isinstance(session_factory, sessionmaker)
+    with session_factory() as session:
+        assert isinstance(session, Session)
+        return session.scalars(select(Event)).one()
+
+
+def _assert_no_audit_event(test_app: FastAPI) -> None:
+    session_factory = test_app.state.session_factory
+    assert isinstance(session_factory, sessionmaker)
+    with session_factory() as session:
+        assert isinstance(session, Session)
+        assert session.scalars(select(Event)).all() == []

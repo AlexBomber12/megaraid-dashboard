@@ -14,7 +14,8 @@ from urllib.parse import urlencode
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from sqlalchemy import text
+from pydantic import BaseModel, ValidationError
+from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,7 +26,14 @@ from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
 from megaraid_dashboard.services.audit import record_operator_action
-from megaraid_dashboard.services.drive_actions import LocateAction, build_locate_command
+from megaraid_dashboard.services.drive_actions import (
+    LocateAction,
+    ReplaceStep,
+    build_locate_command,
+    build_set_missing_command,
+    build_set_offline_command,
+    can_transition,
+)
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
     DriveHistoryPointKey,
@@ -347,6 +355,172 @@ def _record_locate_operator_action_sync(
         LOGGER.exception(
             "operator_action_audit_failed",
             action=action,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+
+
+class ReplaceRequest(BaseModel):
+    serial_number: str
+    dry_run: bool = False
+
+
+@router.post("/drives/{enclosure}:{slot}/replace/offline", name="drive_replace_offline")
+async def drive_replace_offline(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Mark a physical drive offline as Step 1a of the replace procedure."""
+    return await _run_replace_step(enclosure, slot, "offline", request)
+
+
+@router.post("/drives/{enclosure}:{slot}/replace/missing", name="drive_replace_missing")
+async def drive_replace_missing(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Mark a physical drive missing as Step 1b of the replace procedure."""
+    return await _run_replace_step(enclosure, slot, "missing", request)
+
+
+async def _run_replace_step(
+    enclosure: str,
+    slot: str,
+    step: ReplaceStep,
+    request: Request,
+) -> JSONResponse:
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+    except ValueError:
+        return JSONResponse({"error": "enclosure and slot must be integers"}, status_code=400)
+
+    body = await _parse_replace_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+
+    drive = await run_in_threadpool(
+        _load_latest_drive_for_slot,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if drive is None:
+        return JSONResponse(
+            {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
+            status_code=404,
+        )
+    if drive.serial_number != body.serial_number:
+        return JSONResponse(
+            {
+                "error": "serial mismatch",
+                "expected": drive.serial_number,
+                "supplied": body.serial_number,
+            },
+            status_code=409,
+        )
+    if not can_transition(drive.state, step):
+        return JSONResponse(
+            {
+                "error": f"cannot {step} drive currently in state {drive.state}",
+                "state": drive.state,
+                "step": step,
+            },
+            status_code=409,
+        )
+
+    try:
+        if step == "offline":
+            argv = build_set_offline_command(enclosure_id, slot_id)
+        else:
+            argv = build_set_missing_command(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if body.dry_run:
+        return JSONResponse(
+            {
+                "dry_run": True,
+                "step": step,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "argv": argv,
+            }
+        )
+
+    settings: Settings = request.app.state.settings
+    result = await run_storcli(
+        argv,
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    await run_in_threadpool(
+        _record_replace_operator_action_sync,
+        request=request,
+        step=step,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        serial_number=body.serial_number,
+    )
+    return JSONResponse(
+        {
+            "step": step,
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "serial_number": body.serial_number,
+            "argv": argv,
+            "result": result,
+        }
+    )
+
+
+async def _parse_replace_request_body(request: Request) -> ReplaceRequest | JSONResponse:
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "request body must be valid JSON"}, status_code=400)
+    try:
+        return ReplaceRequest.model_validate(payload)
+    except ValidationError as exc:
+        return JSONResponse(
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+def _load_latest_drive_for_slot(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+) -> PhysicalDriveSnapshot | None:
+    with _session(request) as session:
+        return session.scalars(
+            select(PhysicalDriveSnapshot)
+            .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
+            .where(PhysicalDriveSnapshot.enclosure_id == enclosure_id)
+            .where(PhysicalDriveSnapshot.slot_id == slot_id)
+            .order_by(ControllerSnapshot.captured_at.desc(), PhysicalDriveSnapshot.id.desc())
+            .limit(1)
+        ).one_or_none()
+
+
+def _record_replace_operator_action_sync(
+    *,
+    request: Request,
+    step: ReplaceStep,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=(
+                    f"replace step {step} drive {enclosure_id}:{slot_id} serial {serial_number}"
+                ),
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action=f"replace_{step}",
             enclosure_id=enclosure_id,
             slot_id=slot_id,
         )
