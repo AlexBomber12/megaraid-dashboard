@@ -103,6 +103,22 @@ async def test_in_flight_failed_request_reserves_rate_limit_slot(settings: Setti
     assert inner_app.started == 1
 
 
+async def test_cancelled_request_releases_reserved_rate_limit_slot(settings: Settings) -> None:
+    settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
+    inner_app = _CancelledThenUnauthorizedApp()
+    limiter = AuthRateLimitMiddleware(inner_app, settings=settings)
+    transport = httpx.ASGITransport(app=limiter, client=("203.0.113.10", 12345))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        with pytest.raises(asyncio.CancelledError):
+            await client.get("/")
+
+        response = await client.get("/")
+
+    assert response.status_code == 401
+    assert inner_app.started == 2
+
+
 async def test_window_expiry_allows_new_attempt(settings: Settings) -> None:
     clock = _Clock()
     async with _rate_limited_client(settings=settings, time_func=clock.monotonic) as client:
@@ -332,5 +348,18 @@ class _SlowUnauthorizedApp:
         self.started += 1
         self.entered.set()
         await self.release.wait()
+        response = PlainTextResponse("Unauthorized", status_code=401)
+        await response(scope, receive, send)
+
+
+class _CancelledThenUnauthorizedApp:
+    def __init__(self) -> None:
+        self.started = 0
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        assert scope["type"] == "http"
+        self.started += 1
+        if self.started == 1:
+            raise asyncio.CancelledError
         response = PlainTextResponse("Unauthorized", status_code=401)
         await response(scope, receive, send)

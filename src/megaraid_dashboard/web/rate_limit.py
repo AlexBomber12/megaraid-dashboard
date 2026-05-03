@@ -79,6 +79,10 @@ class AuthRateLimitMiddleware:
 
         try:
             await self.app(rate_limited_scope, receive, send_with_status_capture)
+        except asyncio.CancelledError:
+            if not auth_result_received:
+                await self._release_attempt_slot(client_ip, reserved_slot)
+            raise
         except Exception:
             if not auth_result_received:
                 await self._release_attempt_slot(client_ip, reserved_slot)
