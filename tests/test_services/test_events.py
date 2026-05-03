@@ -112,6 +112,28 @@ def test_events_ordering_is_descending_by_occurred_at_and_id(session: Session) -
     ]
 
 
+def test_events_page_filters_by_category(session: Session) -> None:
+    occurred_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _insert_event(
+        session,
+        occurred_at=occurred_at,
+        category="physical_drive",
+        summary="Drive state changed",
+    )
+    _insert_event(
+        session,
+        occurred_at=occurred_at + timedelta(minutes=1),
+        category="cachevault",
+        summary="CacheVault state changed",
+    )
+    session.commit()
+
+    view_model = load_events_page(session, category="cachevault")
+
+    assert [event.summary for event in view_model.events] == ["CacheVault state changed"]
+    assert view_model.category_filter == "cachevault"
+
+
 def test_load_events_page_populates_latest_captured_at_when_available(
     session: Session,
     sample_snapshot: StorcliSnapshot,

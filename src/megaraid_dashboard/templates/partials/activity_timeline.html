@@ -1,0 +1,25 @@
+<section class="timeline" aria-label="Recent activity">
+  <h2 class="timeline__title">Recent activity</h2>
+  {% if view_model.recent_activity %}
+    <ol class="timeline__list">
+      {% for event in view_model.recent_activity %}
+        <li class="timeline__item">
+          <svg class="timeline__icon status-text--{{ event.severity }}" aria-hidden="true">
+            <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-{{ event.severity_icon }}"/>
+          </svg>
+          <div class="timeline__body">
+            <a class="timeline__category" href="{{ request.url_for('events').path }}?category={{ event.category | urlencode }}">
+              {{ event.category }}
+            </a>
+            <span class="timeline__message">{{ event.message }}</span>
+          </div>
+          <time class="timeline__time" datetime="{{ event.occurred_at | iso_utc }}" data-local-time>
+            {{ event.occurred_at | iso_utc }} UTC
+          </time>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="timeline__empty">No events yet.</p>
+  {% endif %}
+</section>

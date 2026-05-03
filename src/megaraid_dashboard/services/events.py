@@ -44,6 +44,7 @@ class EventsPageViewModel:
     is_first_page: bool
     latest_captured_at: datetime | None
     controller_label: str
+    category_filter: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class EventsFragmentViewModel:
     events: tuple[EventRow, ...]
     next_cursor: EventsCursor | None
     is_first_page: bool
+    category_filter: str | None = None
 
 
 def load_events_page(
@@ -59,6 +61,7 @@ def load_events_page(
     page_size: int = EVENTS_PAGE_SIZE,
     before_occurred_at: datetime | None = None,
     before_id: int | None = None,
+    category: str | None = None,
     controller_label: str = _CONTROLLER_LABEL,
 ) -> EventsPageViewModel:
     fragment = load_events_fragment(
@@ -66,6 +69,7 @@ def load_events_page(
         page_size=page_size,
         before_occurred_at=before_occurred_at,
         before_id=before_id,
+        category=category,
     )
     latest_captured_at = _latest_captured_at(session) if fragment.is_first_page else None
     return EventsPageViewModel(
@@ -74,6 +78,7 @@ def load_events_page(
         is_first_page=fragment.is_first_page,
         latest_captured_at=latest_captured_at,
         controller_label=controller_label,
+        category_filter=fragment.category_filter,
     )
 
 
@@ -83,6 +88,7 @@ def load_events_fragment(
     page_size: int = EVENTS_PAGE_SIZE,
     before_occurred_at: datetime | None = None,
     before_id: int | None = None,
+    category: str | None = None,
     controller_label: str = _CONTROLLER_LABEL,
 ) -> EventsFragmentViewModel:
     del controller_label
@@ -97,9 +103,12 @@ def load_events_fragment(
     resolved_before_occurred_at = (
         None if before_occurred_at is None else _require_aware_utc(before_occurred_at)
     )
+    category_filter = _normalize_category_filter(category)
     statement = (
         select(Event).order_by(Event.occurred_at.desc(), Event.id.desc()).limit(page_size + 1)
     )
+    if category_filter is not None:
+        statement = statement.where(Event.category == category_filter)
     if resolved_before_occurred_at is not None and before_id is not None:
         statement = statement.where(
             or_(
@@ -122,6 +131,18 @@ def load_events_fragment(
         events=rows,
         next_cursor=next_cursor,
         is_first_page=is_first_page,
+        category_filter=category_filter,
+    )
+
+
+def list_recent_events(session: Session, *, limit: int) -> list[Event]:
+    if limit < 1:
+        msg = "limit must be at least 1"
+        raise ValueError(msg)
+    return list(
+        session.scalars(
+            select(Event).order_by(Event.occurred_at.desc(), Event.id.desc()).limit(limit)
+        )
     )
 
 
@@ -148,6 +169,13 @@ def _event_row(event: Event) -> EventRow:
 
 def _normalize_event_severity(severity: str) -> str:
     return severity if severity in {"info", "warning", "critical"} else "unknown"
+
+
+def _normalize_category_filter(category: str | None) -> str | None:
+    if category is None:
+        return None
+    stripped = category.strip()
+    return stripped or None
 
 
 def _latest_captured_at(session: Session) -> datetime | None:

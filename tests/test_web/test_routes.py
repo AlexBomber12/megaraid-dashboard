@@ -264,6 +264,74 @@ def test_alert_status_pending_count_uses_warning_cell(
     assert "Pending" in response.text
 
 
+def test_overview_renders_recent_activity_timeline_with_links(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_app_event(
+            test_app,
+            occurred_at=datetime(2026, 4, 25, 12, 1, tzinfo=UTC),
+            category="physical_drive",
+            summary="Drive state changed",
+        )
+        _insert_app_event(
+            test_app,
+            occurred_at=datetime(2026, 4, 25, 12, 2, tzinfo=UTC),
+            category="cachevault",
+            summary="CacheVault state changed",
+            severity="warning",
+        )
+
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<section class="timeline"' in response.text
+    assert "Drive state changed" in response.text
+    assert "CacheVault state changed" in response.text
+    assert '<a class="timeline__category" href="/events?category=physical_drive">' in response.text
+    assert '<a class="timeline__category" href="/events?category=cachevault">' in response.text
+    assert 'datetime="2026-04-25T12:02:00Z" data-local-time' in response.text
+    assert "#icon-alert-triangle" in response.text
+
+
+def test_overview_recent_activity_empty_state(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<section class="timeline"' in response.text
+    assert "No events yet." in response.text
+
+
+def test_timeline_category_link_filters_events_page(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_app_event(
+            test_app,
+            occurred_at=datetime(2026, 4, 25, 12, 1, tzinfo=UTC),
+            category="physical_drive",
+            summary="Drive state changed",
+        )
+        _insert_app_event(
+            test_app,
+            occurred_at=datetime(2026, 4, 25, 12, 2, tzinfo=UTC),
+            category="cachevault",
+            summary="CacheVault state changed",
+        )
+
+        response = client.get("/events?category=cachevault")
+
+    assert response.status_code == 200
+    assert "CacheVault state changed" in response.text
+    assert "Drive state changed" not in response.text
+
+
 def test_data_block_has_auto_refresh_attributes() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
@@ -821,6 +889,28 @@ def _insert_pending_alert(test_app: FastAPI) -> None:
                 category="physical_drive",
                 subject="e252:s4",
                 summary="Drive state changed",
+            )
+        )
+        session.commit()
+
+
+def _insert_app_event(
+    test_app: FastAPI,
+    *,
+    occurred_at: datetime,
+    category: str,
+    summary: str,
+    severity: str = "info",
+) -> None:
+    session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
+    with session_factory() as session:
+        session.add(
+            Event(
+                occurred_at=occurred_at,
+                severity=severity,
+                category=category,
+                subject="e252:s4",
+                summary=summary,
             )
         )
         session.commit()

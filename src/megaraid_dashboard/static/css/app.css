@@ -389,6 +389,65 @@ a:hover {
   line-height: 1.1;
 }
 
+.timeline {
+  margin-top: var(--space-section);
+}
+
+.timeline__title {
+  margin: 0 0 var(--space-tight);
+  color: var(--color-neutral);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
+.timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline__item {
+  display: grid;
+  grid-template-columns: var(--icon-size-md) 1fr auto;
+  gap: var(--space-tight);
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.timeline__item:last-child {
+  border-bottom: 0;
+}
+
+.timeline__icon {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  align-self: center;
+}
+
+.timeline__category {
+  margin-right: var(--space-tight);
+  color: inherit;
+  font-weight: var(--font-weight-value);
+}
+
+.timeline__message,
+.timeline__time,
+.timeline__empty {
+  color: var(--color-neutral);
+}
+
+.timeline__time {
+  font-size: var(--font-size-label);
+  white-space: nowrap;
+}
+
+.timeline__empty {
+  margin: 0;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
