@@ -1,0 +1,17 @@
+{% set tile_status = status | default('neutral', true) %}
+{% set tile_tag = 'a' if href else 'div' %}
+<{{ tile_tag }}
+  class="status-tile status-tile--{{ tile_status }}"
+  {% if href %}href="{{ href }}"{% endif %}
+  {% if aria_label %}aria-label="{{ aria_label }}"{% endif %}
+>
+  {% if icon %}
+    <svg class="status-tile__icon" aria-hidden="true">
+      <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ icon }}"/>
+    </svg>
+  {% endif %}
+  <div class="status-tile__body">
+    <div class="status-tile__label">{{ label }}</div>
+    <div class="status-tile__value mono">{{ value }}</div>
+  </div>
+</{{ tile_tag }}>

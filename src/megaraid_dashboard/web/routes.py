@@ -1005,6 +1005,7 @@ def _static_asset_version() -> str:
     digest = hashlib.sha256()
     for path in (
         _PACKAGE_ROOT / "static" / "css" / "app.css",
+        _PACKAGE_ROOT / "static" / "icons.svg",
         _PACKAGE_ROOT / "static" / "js" / "local-time.js",
         _PACKAGE_ROOT / "static" / "vendor" / "chart.min.js",
         _PACKAGE_ROOT / "static" / "vendor" / "htmx.min.js",
