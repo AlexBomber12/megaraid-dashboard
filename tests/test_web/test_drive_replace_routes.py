@@ -35,6 +35,8 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
+    monkeypatch.setenv("MAINTENANCE_MODE", "true")
+    monkeypatch.setenv("DESTRUCTIVE_MODE", "true")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
@@ -546,7 +548,7 @@ def test_drive_replace_offline_rejects_missing_body_fields(
     assert response.json()["error"] == "invalid request body"
 
 
-def test_drive_replace_offline_audit_failure_still_returns_success(
+def test_drive_replace_offline_audit_failure_returns_500(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
@@ -572,8 +574,102 @@ def test_drive_replace_offline_audit_failure_still_returns_success(
             json={"serial_number": _DEFAULT_SERIAL},
         )
 
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"] == "audit persistence failed"
+        assert body["step"] == "offline"
+        assert body["argv"] == ["/c0/e2/s0", "set", "offline", "J"]
+
+
+@pytest.mark.parametrize(
+    ("maintenance", "destructive"),
+    [("false", "false"), ("true", "false"), ("false", "true")],
+)
+def test_drive_replace_offline_blocked_without_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    maintenance: str,
+    destructive: str,
+) -> None:
+    monkeypatch.setenv("MAINTENANCE_MODE", maintenance)
+    monkeypatch.setenv("DESTRUCTIVE_MODE", destructive)
+    get_settings.cache_clear()
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli must not run when destructive mode is disabled")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 403
+        body = response.json()
+        assert "maintenance_mode" in body["error"]
+        assert "destructive_mode" in body["error"]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_missing_blocked_without_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    monkeypatch.setenv("DESTRUCTIVE_MODE", "false")
+    get_settings.cache_clear()
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli must not run when destructive mode is disabled")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 403
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_dry_run_allowed_without_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    monkeypatch.setenv("DESTRUCTIVE_MODE", "false")
+    get_settings.cache_clear()
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli must not run for dry_run")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL, "dry_run": True},
+        )
+
         assert response.status_code == 200
-        assert response.json()["step"] == "offline"
+        assert response.json()["dry_run"] is True
+        _assert_no_audit_event(test_app)
 
 
 def _csrf_request_headers(

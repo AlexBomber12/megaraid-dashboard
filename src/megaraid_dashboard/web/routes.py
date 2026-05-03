@@ -455,19 +455,43 @@ async def _run_replace_step(
         )
 
     settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode or not settings.destructive_mode:
+        return JSONResponse(
+            {
+                "error": "destructive operations require maintenance_mode and destructive_mode",
+                "maintenance_mode": settings.maintenance_mode,
+                "destructive_mode": settings.destructive_mode,
+            },
+            status_code=403,
+        )
+
     result = await run_storcli(
         argv,
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
-    await run_in_threadpool(
-        _record_replace_operator_action_sync,
-        request=request,
-        step=step,
-        enclosure_id=enclosure_id,
-        slot_id=slot_id,
-        serial_number=body.serial_number,
-    )
+    try:
+        await run_in_threadpool(
+            _record_replace_operator_action_sync,
+            request=request,
+            step=step,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=body.serial_number,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "step": step,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "argv": argv,
+                "result": result,
+            },
+            status_code=500,
+        )
     return JSONResponse(
         {
             "step": step,
@@ -554,6 +578,7 @@ def _record_replace_operator_action_sync(
             enclosure_id=enclosure_id,
             slot_id=slot_id,
         )
+        raise
 
 
 @router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
