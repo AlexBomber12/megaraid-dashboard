@@ -389,9 +389,14 @@ async def _run_replace_step(
     except ValueError:
         return JSONResponse({"error": "enclosure and slot must be integers"}, status_code=400)
 
+    query_dry_run = _parse_query_dry_run(request)
+    if isinstance(query_dry_run, JSONResponse):
+        return query_dry_run
+
     body = await _parse_replace_request_body(request)
     if isinstance(body, JSONResponse):
         return body
+    dry_run = body.dry_run or query_dry_run
 
     drive = await run_in_threadpool(
         _load_latest_drive_for_slot,
@@ -431,7 +436,7 @@ async def _run_replace_step(
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
-    if body.dry_run:
+    if dry_run:
         return JSONResponse(
             {
                 "dry_run": True,
@@ -466,6 +471,25 @@ async def _run_replace_step(
             "argv": argv,
             "result": result,
         }
+    )
+
+
+_DRY_RUN_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_DRY_RUN_FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
+
+
+def _parse_query_dry_run(request: Request) -> bool | JSONResponse:
+    raw = request.query_params.get("dry_run")
+    if raw is None:
+        return False
+    normalized = raw.strip().lower()
+    if normalized in _DRY_RUN_TRUE_VALUES:
+        return True
+    if normalized in _DRY_RUN_FALSE_VALUES:
+        return False
+    return JSONResponse(
+        {"error": "dry_run query parameter must be a boolean"},
+        status_code=400,
     )
 
 

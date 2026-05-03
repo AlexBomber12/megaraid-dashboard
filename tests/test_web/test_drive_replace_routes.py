@@ -80,6 +80,116 @@ def test_drive_replace_offline_dry_run_returns_argv_and_skips_runner(
         _assert_no_audit_event(test_app)
 
 
+@pytest.mark.parametrize("query_value", ["true", "1", "yes", "TRUE"])
+def test_drive_replace_offline_dry_run_query_param_skips_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    query_value: str,
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called when dry_run query is true")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            f"/drives/2:0/replace/offline?dry_run={query_value}",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["dry_run"] is True
+        assert body["argv"] == ["/c0/e2/s0", "set", "offline", "J"]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_offline_dry_run_query_param_false_executes_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline?dry_run=false",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        assert "result" in response.json()
+        assert runner_calls == [["/c0/e2/s0", "set", "offline", "J"]]
+
+
+def test_drive_replace_offline_dry_run_query_param_invalid_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for invalid dry_run query")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline?dry_run=banana",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "dry_run query parameter must be a boolean"
+
+
+def test_drive_replace_missing_dry_run_query_param_skips_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called when dry_run query is true")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing?dry_run=true",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["dry_run"] is True
+        assert body["argv"] == ["/c0/e2/s0", "set", "missing", "J"]
+        _assert_no_audit_event(test_app)
+
+
 def test_drive_replace_offline_success_invokes_runner_and_audits(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
