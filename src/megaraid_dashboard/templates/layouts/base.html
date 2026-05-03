@@ -25,34 +25,36 @@
   <body>
     <div class="app-shell">
       <header class="site-header">
-        <div class="site-header__left">
-          <a class="brand" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
-          <nav class="site-nav" aria-label="Primary navigation">
-            <a
-              class="site-nav__link{% if active_nav == 'overview' %} site-nav__link--active{% endif %}"
-              href="{{ request.url_for('overview').path }}"
-            >Dashboard</a>
-            <a
-              class="site-nav__link{% if active_nav == 'drives' %} site-nav__link--active{% endif %}"
-              href="{{ request.url_for('drives').path }}"
-            >Drives</a>
-            <a
-              class="site-nav__link{% if active_nav == 'events' %} site-nav__link--active{% endif %}"
-              href="{{ request.url_for('events').path }}"
-            >Events</a>
-          </nav>
-        </div>
-        <div class="site-header__right">
-          <noscript><time class="utc-clock">{{ current_utc_label }}</time></noscript>
-          <time class="utc-clock" data-local-time-clock aria-live="off" hidden>{{ current_utc_label }}</time>
-          <button
-            class="button button--primary"
-            type="button"
-            hx-get="{{ request.url_for('overview_partial').path }}"
-            hx-target="#data-block"
-            hx-swap="outerHTML"
-            hx-trigger="click"
-          >Refresh</button>
+        <div class="site-header__inner">
+          <div class="site-header__left">
+            <a class="brand" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
+            <nav class="site-nav" aria-label="Primary navigation">
+              <a
+                class="site-nav__link{% if active_nav == 'overview' %} site-nav__link--active{% endif %}"
+                href="{{ request.url_for('overview').path }}"
+              >Dashboard</a>
+              <a
+                class="site-nav__link{% if active_nav == 'drives' %} site-nav__link--active{% endif %}"
+                href="{{ request.url_for('drives').path }}"
+              >Drives</a>
+              <a
+                class="site-nav__link{% if active_nav == 'events' %} site-nav__link--active{% endif %}"
+                href="{{ request.url_for('events').path }}"
+              >Events</a>
+            </nav>
+          </div>
+          <div class="site-header__actions">
+            <noscript><time class="utc-clock">{{ current_utc_label }}</time></noscript>
+            <time class="utc-clock" data-local-time-clock aria-live="off" hidden>{{ current_utc_label }}</time>
+            <button
+              class="button button--primary"
+              type="button"
+              hx-get="{{ request.url_for('overview_partial').path }}"
+              hx-target="#data-block"
+              hx-swap="outerHTML"
+              hx-trigger="click"
+            >Refresh</button>
+          </div>
         </div>
       </header>
 
@@ -61,7 +63,9 @@
       </main>
 
       <footer class="site-footer">
-        Local-only resources. Access through LAN or VPN.
+        <div class="site-footer__inner">
+          Version {{ app_version }} | Build {{ build_sha[:8] }}
+        </div>
       </footer>
     </div>
   </body>
