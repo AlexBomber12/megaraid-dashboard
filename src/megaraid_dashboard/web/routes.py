@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import ceil
 from pathlib import Path
 from time import perf_counter
-from typing import Any, cast
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard import __version__
-from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
 from megaraid_dashboard.services.drive_history import (
@@ -49,6 +52,10 @@ TEMPLATES = create_templates(_PACKAGE_ROOT / "templates")
 STATIC_ASSET_VERSION = ""
 _DEFAULT_CHART_RANGE_DAYS = 7
 _ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
+
+HealthStatus = Literal["ok", "degraded"]
+DatabaseHealth = Literal["ok", "error"]
+CollectorHealth = Literal["ok", "idle", "lock_held"]
 
 router = APIRouter()
 
@@ -120,9 +127,32 @@ class _ChartPointKey:
     history_point_key: DriveHistoryPointKey
 
 
+@runtime_checkable
+class _TaskLike(Protocol):
+    def done(self) -> bool: ...
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
+
+
+@router.get("/healthz", name="healthz")
+async def healthz(request: Request) -> JSONResponse:
+    engine = cast(Engine, request.app.state.engine)
+    database_status = await asyncio.to_thread(_database_health, engine)
+    collector_status = _collector_health(request)
+    status: HealthStatus = "ok" if database_status == "ok" else "degraded"
+    response = JSONResponse(
+        status_code=200 if status == "ok" else 503,
+        content={
+            "status": status,
+            "database": database_status,
+            "collector": collector_status,
+        },
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/", name="overview")
@@ -312,6 +342,39 @@ def events_partial(
 def _session(request: Request) -> Session:
     session_factory = cast(sessionmaker[Session], request.app.state.session_factory)
     return session_factory()
+
+
+def _database_health(engine: Engine) -> DatabaseHealth:
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        LOGGER.exception("healthz_database_check_failed")
+        return "error"
+    return "ok"
+
+
+def _collector_health(request: Request) -> CollectorHealth:
+    settings = cast(Settings, request.app.state.settings)
+    if not settings.collector_enabled:
+        return "idle"
+
+    collector = getattr(request.app.state, "collector", None)
+    lock_fd = getattr(request.app.state, "collector_lock_fd", None)
+    if collector is not None and lock_fd is not None:
+        return "ok"
+
+    retry_task = getattr(request.app.state, "collector_retry_task", None)
+    if _task_is_alive(retry_task):
+        return "lock_held"
+
+    return "idle"
+
+
+def _task_is_alive(task: object) -> bool:
+    if not isinstance(task, _TaskLike):
+        return False
+    return not task.done()
 
 
 def _load_overview(request: Request) -> OverviewViewModel:

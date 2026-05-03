@@ -101,6 +101,7 @@ Routes:
 - `/partials/events` renders the events fragment used by HTMX auto-refresh and Load more
   pagination.
 - `/health` returns the health JSON used by smoke checks.
+- `/healthz` returns JSON liveness; 200 ok / 503 degraded; whitelisted from auth.
 
 Events are retained indefinitely while raw controller snapshots are pruned after 30 days.
 That means the Events page can show event history older than the oldest retained raw
