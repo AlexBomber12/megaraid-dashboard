@@ -146,7 +146,6 @@ phase_pip() {
   log_info "Phase 5: pip install"
 
   command_exists curl || log_fail "curl not found"
-  command_exists rsync || log_fail "rsync not found"
 
   local src_dir="${INSTALL_PREFIX}/src"
   local script_dir
@@ -158,15 +157,15 @@ phase_pip() {
     log_fail "pypi.org unreachable; cannot pip install"
   fi
 
+  command_exists git || log_fail "git not found"
+  command_exists tar || log_fail "tar not found"
+  if [[ "$(git -C "${repo_root}" rev-parse --is-inside-work-tree)" != "true" ]]; then
+    log_fail "${repo_root} is not a git work tree"
+  fi
+
   install -d -m 0750 -o "${INSTALL_USER}" -g "${INSTALL_USER}" "${src_dir}"
-  rsync -a --delete \
-    --exclude='.git/' \
-    --exclude='.venv/' \
-    --exclude='__pycache__/' \
-    --exclude='*.egg-info/' \
-    --exclude='dist/' \
-    --exclude='build/' \
-    "${repo_root}/" "${src_dir}/"
+  find "${src_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  git -C "${repo_root}" archive --format=tar HEAD | tar -x -C "${src_dir}"
   chown -R "${INSTALL_USER}:${INSTALL_USER}" "${src_dir}"
 
   sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/pip" install -e "${src_dir}"

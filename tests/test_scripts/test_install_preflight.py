@@ -266,7 +266,6 @@ def test_phase_venv_creates_root_bootstrapped_venv_then_fixes_ownership(tmp_path
 def test_phase_pip_fails_fast_when_pypi_unreachable(tmp_path: Path) -> None:
     bin_dir = _stub_bin(tmp_path)
     _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 7\n")
-    _write_executable(bin_dir / "rsync", "#!/bin/sh\nexit 0\n")
 
     result = _run_phase(
         "phase_pip",
@@ -280,7 +279,7 @@ def test_phase_pip_fails_fast_when_pypi_unreachable(tmp_path: Path) -> None:
     assert "pypi.org unreachable; cannot pip install" in result.stderr
 
 
-def test_phase_pip_copies_source_and_installs_editable_package(tmp_path: Path) -> None:
+def test_phase_pip_exports_tracked_source_and_installs_editable_package(tmp_path: Path) -> None:
     prefix = tmp_path / "prefix"
     pip = prefix / ".venv" / "bin" / "pip"
     pip.parent.mkdir(parents=True)
@@ -295,8 +294,18 @@ def test_phase_pip_copies_source_and_installs_editable_package(tmp_path: Path) -
         '#!/bin/sh\nwhile [ $# -gt 1 ]; do\n  shift\ndone\nmkdir -p "$1"\n',
     )
     _write_executable(
-        bin_dir / "rsync",
-        f"#!/bin/sh\nprintf 'rsync %s\\n' \"$*\" >> {log}\n",
+        bin_dir / "git",
+        "#!/bin/sh\n"
+        f"printf 'git %s\\n' \"$*\" >> {log}\n"
+        'if [ "$3" = "rev-parse" ]; then\n'
+        "  printf 'true\\n'\n"
+        'elif [ "$3" = "archive" ]; then\n'
+        "  printf 'tracked tar stream'\n"
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "tar",
+        f"#!/bin/sh\nprintf 'tar %s\\n' \"$*\" >> {log}\ncat >/dev/null\n",
     )
     _write_executable(
         bin_dir / "chown",
@@ -317,8 +326,9 @@ def test_phase_pip_copies_source_and_installs_editable_package(tmp_path: Path) -
 
     assert result.returncode == 0, result.stderr
     logged = log.read_text()
-    assert "--exclude=.git/" in logged
-    assert f"{REPO_ROOT}/ {prefix}/src/" in logged
+    assert f"git -C {REPO_ROOT} rev-parse --is-inside-work-tree" in logged
+    assert f"git -C {REPO_ROOT} archive --format=tar HEAD" in logged
+    assert f"tar -x -C {prefix}/src" in logged
     assert f"chown -R raid-monitor:raid-monitor {prefix}/src" in logged
     assert f"pip install -e {prefix}/src" in logged
 
