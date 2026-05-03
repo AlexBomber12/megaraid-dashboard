@@ -136,12 +136,14 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "Notifier OK" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
+    assert "/raid/static/js/csrf.js" in response.text
     assert "/raid/static/js/local-time.js" in response.text
     assert "/raid/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     )
+    assert re.search(r"/raid/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/raid/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert 'data-local-time-clock aria-live="off" hidden' in response.text
     assert "/raid/partials/overview" in response.text
@@ -160,10 +162,12 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert response.status_code == 200
     assert "/static/css/app.css" in response.text
     assert "/static/vendor/htmx.min.js" in response.text
+    assert "/static/js/csrf.js" in response.text
     assert "/static/js/local-time.js" in response.text
     assert "/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
+    assert re.search(r"/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
@@ -240,6 +244,7 @@ def test_data_block_has_auto_refresh_attributes() -> None:
 
 def test_vendored_htmx_exists_and_is_referenced() -> None:
     assert Path("src/megaraid_dashboard/static/vendor/htmx.min.js").exists()
+    assert Path("src/megaraid_dashboard/static/js/csrf.js").exists()
     assert Path("src/megaraid_dashboard/static/js/local-time.js").exists()
 
     test_app = create_app()
@@ -247,6 +252,7 @@ def test_vendored_htmx_exists_and_is_referenced() -> None:
         response = client.get("/")
 
     assert "/static/vendor/htmx.min.js" in response.text
+    assert "/static/js/csrf.js" in response.text
     assert "/static/js/local-time.js" in response.text
 
 
@@ -254,10 +260,12 @@ def test_static_assets_are_served_with_far_future_cache_header() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         css_response = client.get("/static/css/app.css")
+        csrf_response = client.get("/static/js/csrf.js")
         local_time_response = client.get("/static/js/local-time.js")
         chart_response = client.get("/static/vendor/chart.min.js")
 
     assert css_response.status_code == 200
+    assert csrf_response.status_code == 200
     assert local_time_response.status_code == 200
     assert chart_response.status_code == 200
     assert "public" in css_response.headers["Cache-Control"]
