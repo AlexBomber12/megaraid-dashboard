@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from time import monotonic
 from typing import Any
 
@@ -14,6 +15,14 @@ from megaraid_dashboard.storcli.exceptions import (
 )
 
 LOGGER = structlog.get_logger(__name__)
+_ALLOWED_COMMAND_PATTERNS = (
+    re.compile(r"^/c0 show all J$"),
+    re.compile(r"^/c0/vall show all J$"),
+    re.compile(r"^/c0/eall/sall show all J$"),
+    re.compile(r"^/c0/cv show all J$"),
+    re.compile(r"^/c0/bbu show all J$"),
+    re.compile(r"^/c0/e\d+/s\d+ (start|stop) locate J$"),
+)
 
 
 async def run_storcli(
@@ -23,7 +32,9 @@ async def run_storcli(
     binary_path: str,
     timeout_seconds: float = 30.0,
 ) -> dict[str, Any]:
-    argv = [binary_path, *args, "J"]
+    command_args = _with_json_flag(args)
+    _validate_command(command_args)
+    argv = [binary_path, *command_args]
     if use_sudo:
         argv = ["sudo", "-n", *argv]
 
@@ -71,6 +82,22 @@ async def run_storcli(
     if not isinstance(parsed, dict):
         raise StorcliParseError("storcli JSON root is not an object")
     return parsed
+
+
+def _with_json_flag(args: list[str]) -> list[str]:
+    if args and args[-1] == "J":
+        return list(args)
+    return [*args, "J"]
+
+
+def _validate_command(args: list[str]) -> None:
+    if any(arg == "" or re.search(r"\s", arg) is not None for arg in args):
+        command = " ".join(args)
+        raise StorcliCommandFailed(f"storcli command is not allowed: {command!r}", err_msg=command)
+    command = " ".join(args)
+    if any(pattern.fullmatch(command) for pattern in _ALLOWED_COMMAND_PATTERNS):
+        return
+    raise StorcliCommandFailed(f"storcli command is not allowed: {command!r}", err_msg=command)
 
 
 def _sudo_blocked(stderr_text: str) -> bool:
