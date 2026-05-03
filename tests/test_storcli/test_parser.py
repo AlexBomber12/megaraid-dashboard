@@ -223,6 +223,38 @@ def test_parse_drive_show_raises_when_sn_missing() -> None:
         parse_drive_show(payload)
 
 
+def test_parse_drive_show_raises_when_state_is_empty_string() -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {"EID:Slt": "2:0", "State": "   "},
+            ],
+            "Drive /c0/e2/s0 - Detailed Information": {
+                "Drive /c0/e2/s0 Device attributes": {"SN": "WD-SN-0001"},
+            },
+        }
+    )
+
+    with pytest.raises(StorcliParseError, match="schema"):
+        parse_drive_show(payload)
+
+
+def test_parse_drive_show_raises_when_serial_is_blank() -> None:
+    payload = success_payload(
+        {
+            "Drive /c0/e2/s0": [
+                {"EID:Slt": "2:0", "State": "Onln"},
+            ],
+            "Drive /c0/e2/s0 - Detailed Information": {
+                "Drive /c0/e2/s0 Device attributes": {"SN": "   "},
+            },
+        }
+    )
+
+    with pytest.raises(StorcliParseError, match="schema"):
+        parse_drive_show(payload)
+
+
 def test_parse_drive_show_raises_when_sn_not_string() -> None:
     payload = success_payload(
         {

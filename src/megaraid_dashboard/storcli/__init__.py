@@ -8,13 +8,13 @@ from megaraid_dashboard.storcli.models import (
     BbuInfo,
     CacheVault,
     ControllerInfo,
+    DriveShow,
     PhysicalDrive,
     StorcliSnapshot,
     VirtualDrive,
     size_string_to_bytes,
 )
 from megaraid_dashboard.storcli.parser import (
-    DriveShow,
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,

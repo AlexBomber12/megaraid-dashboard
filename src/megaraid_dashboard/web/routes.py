@@ -475,11 +475,24 @@ async def _run_replace_step(
     # Re-confirm live drive identity and state before any destructive command:
     # the persisted snapshot can lag, so the typed serial confirmation must be
     # validated against the disk currently in the slot, not the snapshot.
-    live = await _query_live_drive_show(
-        enclosure_id=enclosure_id,
-        slot_id=slot_id,
-        settings=settings,
-    )
+    try:
+        live = await _query_live_drive_show(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {
+                "error": "storcli precheck failed",
+                "step": step,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
     if live.serial_number != body.serial_number:
         return JSONResponse(
             {

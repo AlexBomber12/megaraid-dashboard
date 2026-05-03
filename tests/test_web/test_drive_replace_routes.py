@@ -902,6 +902,86 @@ def test_drive_replace_missing_records_audit_when_storcli_fails(
         assert "permission denied" in event.summary
 
 
+def test_drive_replace_offline_returns_502_when_live_precheck_storcli_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    from megaraid_dashboard.storcli import StorcliNotAvailable
+
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        raise StorcliNotAvailable("storcli sudo access is not available: permission denied")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli precheck failed"
+        assert body["step"] == "offline"
+        assert body["enclosure"] == 2
+        assert body["slot"] == 0
+        assert body["serial_number"] == _DEFAULT_SERIAL
+        assert "permission denied" in body["detail"]
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        _assert_no_audit_event(test_app)
+
+
+def test_drive_replace_missing_returns_502_when_live_precheck_parse_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        # Malformed JSON payload that does not contain a Drive entry.
+        return {"Controllers": [{"Command Status": {"Status": "Success"}, "Response Data": {}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli precheck failed"
+        assert body["step"] == "missing"
+        assert "schema" in body["detail"] or "Drive" in body["detail"]
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        _assert_no_audit_event(test_app)
+
+
 def test_drive_replace_offline_returns_500_when_storcli_and_audit_both_fail(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],

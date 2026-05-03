@@ -301,6 +301,36 @@ class BbuInfo(StorcliModel):
     response_data: dict[str, Any] = Field(alias="Response Data")
 
 
+class DriveShow(StorcliModel):
+    """Live state and serial number from a `/c0/eX/sY show all J` payload."""
+
+    state: str
+    serial_number: str
+
+    @field_validator("state", mode="before")
+    @classmethod
+    def validate_state(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            msg = f"expected state string, got {type(value).__name__}"
+            raise TypeError(msg)
+        if not value.strip():
+            msg = "state must not be empty"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("serial_number", mode="before")
+    @classmethod
+    def validate_serial_number(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            msg = f"expected serial number string, got {type(value).__name__}"
+            raise TypeError(msg)
+        stripped = value.strip()
+        if not stripped:
+            msg = "serial_number must not be empty"
+            raise ValueError(msg)
+        return stripped
+
+
 class StorcliSnapshot(StorcliModel):
     controller: ControllerInfo
     virtual_drives: list[VirtualDrive]

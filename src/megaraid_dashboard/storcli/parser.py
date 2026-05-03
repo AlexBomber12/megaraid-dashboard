@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -11,17 +10,10 @@ from megaraid_dashboard.storcli.models import (
     BbuInfo,
     CacheVault,
     ControllerInfo,
+    DriveShow,
     PhysicalDrive,
     VirtualDrive,
 )
-
-
-@dataclass(frozen=True)
-class DriveShow:
-    """Live drive state and serial number from a `/c0/eX/sY show all J` payload."""
-
-    state: str
-    serial_number: str
 
 
 def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
@@ -73,7 +65,7 @@ def parse_drive_show(payload: dict[str, Any]) -> DriveShow:
     try:
         response = _response_data(controller)
         return _extract_drive_show(response)
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, ValidationError) as exc:
         raise StorcliParseError("drive show payload does not match expected schema") from exc
 
 
@@ -91,11 +83,7 @@ def _extract_drive_show(response: Mapping[str, Any]) -> DriveShow:
             continue
         detail = _mapping(response[f"{key} - Detailed Information"])
         attributes = _mapping(detail[f"{key} Device attributes"])
-        serial_number = attributes["SN"]
-        if not isinstance(serial_number, str):
-            msg = "SN must be a string"
-            raise TypeError(msg)
-        return DriveShow(state=state, serial_number=serial_number.strip())
+        return DriveShow.model_validate({"state": state, "serial_number": attributes["SN"]})
     raise StorcliParseError("drive show payload does not contain a Drive State and SN")
 
 
