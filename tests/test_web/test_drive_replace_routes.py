@@ -244,7 +244,9 @@ def test_drive_replace_offline_success_invokes_runner_and_audits(
         event = _read_single_event(test_app)
         assert event.category == "operator_action"
         assert event.severity == "info"
-        assert event.summary == f"replace step offline drive 2:0 serial {_DEFAULT_SERIAL}"
+        assert event.summary == (
+            f"replace step offline drive 2:0 serial {_DEFAULT_SERIAL} succeeded"
+        )
         assert event.operator_username == "admin"
 
 
@@ -284,7 +286,9 @@ def test_drive_replace_missing_success_invokes_runner_and_audits(
             ["/c0/e2/s0", "set", "missing", "J"],
         ]
         event = _read_single_event(test_app)
-        assert event.summary == f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL}"
+        assert event.summary == (
+            f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL} succeeded"
+        )
 
 
 def test_drive_replace_missing_uses_live_state_when_persisted_is_stale(
@@ -325,7 +329,9 @@ def test_drive_replace_missing_uses_live_state_when_persisted_is_stale(
             ["/c0/e2/s0", "set", "missing", "J"],
         ]
         event = _read_single_event(test_app)
-        assert event.summary == f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL}"
+        assert event.summary == (
+            f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL} succeeded"
+        )
 
 
 def test_drive_replace_missing_rejects_when_live_state_is_not_offline(
@@ -807,6 +813,138 @@ def test_drive_replace_offline_audit_failure_returns_500(
         assert body["error"] == "audit persistence failed"
         assert body["step"] == "offline"
         assert body["argv"] == ["/c0/e2/s0", "set", "offline", "J"]
+
+
+def test_drive_replace_offline_records_audit_when_storcli_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    from megaraid_dashboard.storcli import StorcliCommandFailed
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln")
+        raise StorcliCommandFailed("storcli command failed: drive busy", err_msg="drive busy")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli command failed"
+        assert body["step"] == "offline"
+        assert body["argv"] == ["/c0/e2/s0", "set", "offline", "J"]
+        assert "drive busy" in body["detail"]
+
+        event = _read_single_event(test_app)
+        assert event.category == "operator_action"
+        assert event.summary.startswith(
+            f"replace step offline drive 2:0 serial {_DEFAULT_SERIAL} failed"
+        )
+        assert "StorcliCommandFailed" in event.summary
+        assert "drive busy" in event.summary
+
+
+def test_drive_replace_missing_records_audit_when_storcli_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    from megaraid_dashboard.storcli import StorcliNotAvailable
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Offln")
+        raise StorcliNotAvailable("storcli sudo access is not available: permission denied")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Offln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/missing",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli command failed"
+        assert "permission denied" in body["detail"]
+
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(
+            f"replace step missing drive 2:0 serial {_DEFAULT_SERIAL} failed"
+        )
+        assert "StorcliNotAvailable" in event.summary
+        assert "permission denied" in event.summary
+
+
+def test_drive_replace_offline_returns_500_when_storcli_and_audit_both_fail(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    from megaraid_dashboard.storcli import StorcliCommandFailed
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln")
+        raise StorcliCommandFailed("storcli timed out", err_msg=None)
+
+    def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
+        raise SQLAlchemyError("database is locked")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    monkeypatch.setattr(
+        "megaraid_dashboard.web.routes.record_operator_action",
+        fail_record_operator_action,
+    )
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+        assert response.status_code == 500
+        body = response.json()
+        assert body["error"] == "audit persistence failed"
+        assert body["step"] == "offline"
+        assert body["argv"] == ["/c0/e2/s0", "set", "offline", "J"]
+        assert body["storcli_error"] == "storcli timed out"
+        assert "result" not in body
 
 
 @pytest.mark.parametrize(

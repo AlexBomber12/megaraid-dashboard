@@ -60,7 +60,12 @@ from megaraid_dashboard.services.overview import (
     load_overview_view_model,
     temperature_severity,
 )
-from megaraid_dashboard.storcli import DriveShow, parse_drive_show, run_storcli
+from megaraid_dashboard.storcli import (
+    DriveShow,
+    StorcliError,
+    parse_drive_show,
+    run_storcli,
+)
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -494,11 +499,19 @@ async def _run_replace_step(
             status_code=409,
         )
 
-    result = await run_storcli(
-        argv,
-        use_sudo=settings.storcli_use_sudo,
-        binary_path=settings.storcli_path,
-    )
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
     try:
         await run_in_threadpool(
             _record_replace_operator_action_sync,
@@ -507,20 +520,37 @@ async def _run_replace_step(
             enclosure_id=enclosure_id,
             slot_id=slot_id,
             serial_number=body.serial_number,
+            outcome=outcome,
         )
     except SQLAlchemyError:
+        audit_failure_body: dict[str, Any] = {
+            "error": "audit persistence failed",
+            "step": step,
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "serial_number": body.serial_number,
+            "argv": argv,
+        }
+        if result is not None:
+            audit_failure_body["result"] = result
+        if storcli_error is not None:
+            audit_failure_body["storcli_error"] = str(storcli_error)
+        return JSONResponse(audit_failure_body, status_code=500)
+
+    if storcli_error is not None:
         return JSONResponse(
             {
-                "error": "audit persistence failed",
+                "error": "storcli command failed",
                 "step": step,
                 "enclosure": enclosure_id,
                 "slot": slot_id,
                 "serial_number": body.serial_number,
                 "argv": argv,
-                "result": result,
+                "detail": str(storcli_error),
             },
-            status_code=500,
+            status_code=502,
         )
+
     return JSONResponse(
         {
             "step": step,
@@ -598,6 +628,16 @@ def _load_latest_drive_for_slot(
         ).one_or_none()
 
 
+_AUDIT_DETAIL_MAX_LEN = 200
+
+
+def _truncate_audit_detail(text: str) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= _AUDIT_DETAIL_MAX_LEN:
+        return collapsed
+    return collapsed[: _AUDIT_DETAIL_MAX_LEN - 1] + "…"
+
+
 def _record_replace_operator_action_sync(
     *,
     request: Request,
@@ -605,6 +645,7 @@ def _record_replace_operator_action_sync(
     enclosure_id: int,
     slot_id: int,
     serial_number: str,
+    outcome: str,
 ) -> None:
     try:
         with _session(request) as session, session.begin():
@@ -612,7 +653,8 @@ def _record_replace_operator_action_sync(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
                 message=(
-                    f"replace step {step} drive {enclosure_id}:{slot_id} serial {serial_number}"
+                    f"replace step {step} drive {enclosure_id}:{slot_id} "
+                    f"serial {serial_number} {outcome}"
                 ),
             )
     except SQLAlchemyError:
@@ -621,6 +663,7 @@ def _record_replace_operator_action_sync(
             action=f"replace_{step}",
             enclosure_id=enclosure_id,
             slot_id=slot_id,
+            outcome=outcome,
         )
         raise
 
