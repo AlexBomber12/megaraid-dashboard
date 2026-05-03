@@ -3,10 +3,10 @@ from __future__ import annotations
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlparse
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import Settings
@@ -21,15 +21,16 @@ SUPPRESS_WINDOW = timedelta(hours=6)
 
 
 def _resolve_data_partition(database_url: str) -> Path:
-    parsed = urlparse(database_url)
-    if parsed.scheme != "sqlite":
+    parsed = make_url(database_url)
+    if parsed.get_backend_name() != "sqlite":
         raise NotImplementedError("only SQLite database URLs are supported")
-    stripped_path = parsed.path.lstrip("/")
-    if stripped_path in {"", ":memory:"}:
+    database_path = parsed.database
+    if database_path is None or database_path in {"", ":memory:"}:
         return Path.cwd()
-    if parsed.path.startswith("//"):
-        return Path("/" + parsed.path.lstrip("/")).parent
-    return Path(stripped_path).resolve().parent
+    path = Path(database_path)
+    if path.is_absolute():
+        return path.parent
+    return path.resolve().parent
 
 
 def _free_space_mb(path: Path) -> int:

@@ -34,6 +34,18 @@ def test_resolve_data_partition_handles_absolute_sqlite_url(tmp_path: Path) -> N
     )
 
 
+@pytest.mark.parametrize("driver", ["pysqlite", "aiosqlite"])
+def test_resolve_data_partition_handles_driver_qualified_sqlite_url(
+    tmp_path: Path,
+    driver: str,
+) -> None:
+    database_path = tmp_path / "data" / "megaraid.db"
+
+    assert _resolve_data_partition(
+        f"sqlite+{driver}:////{database_path.as_posix().lstrip('/')}"
+    ) == (tmp_path / "data")
+
+
 def test_resolve_data_partition_handles_memory_sqlite_url(tmp_path: Path) -> None:
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.chdir(tmp_path)
@@ -131,6 +143,20 @@ def test_check_data_partition_free_space_ignores_non_sqlite_database(
     events = check_data_partition_free_space(session, settings=settings, now=NOW)
 
     assert events == []
+
+
+def test_check_data_partition_free_space_emits_for_driver_qualified_sqlite_url(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    _mock_free_space(monkeypatch, 50)
+    settings = _settings(tmp_path, database_url=f"sqlite+pysqlite:///{tmp_path / 'megaraid.db'}")
+
+    events = check_data_partition_free_space(session, settings=settings, now=NOW)
+
+    assert len(events) == 1
+    assert events[0].severity == "critical"
 
 
 def _mock_free_space(monkeypatch: pytest.MonkeyPatch, free_mb: int) -> None:
