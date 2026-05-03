@@ -85,6 +85,53 @@ def test_preflight_fails_for_read_only_sqlite_db_with_driver_suffix(tmp_path: Pa
     assert "SQLite database is not writable" in result.stderr
 
 
+def test_preflight_treats_empty_sqlite_url_as_in_memory(tmp_path: Path) -> None:
+    project = _copy_preflight_project(tmp_path)
+    _install_stub_venv(project)
+    hook_dir = project / "python_hook"
+    hook_dir.mkdir()
+    (hook_dir / "sitecustomize.py").write_text(
+        """from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import sqlite3
+
+
+class Connection:
+    def execute(self, _sql: str) -> None:
+        return None
+
+    def commit(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def connect(path: str, *args: Any, **kwargs: Any) -> Connection:
+    with Path("sqlite_connect_paths.txt").open("a", encoding="utf-8") as handle:
+        handle.write(f"{path}\\n")
+    return Connection()
+
+
+sqlite3.connect = connect
+""",
+        encoding="utf-8",
+    )
+
+    result = _run_preflight(
+        project,
+        database_url="sqlite://",
+        extra_env={"PYTHONPATH": str(hook_dir)},
+    )
+
+    assert result.returncode == 0
+    paths = (project / "sqlite_connect_paths.txt").read_text(encoding="utf-8").splitlines()
+    assert ":memory:" in paths
+
+
 def _copy_preflight_project(tmp_path: Path) -> Path:
     project = tmp_path / "project"
     scripts_dir = project / "scripts"
@@ -106,9 +153,16 @@ def _install_stub_venv(project: Path) -> None:
     alembic.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
 
-def _run_preflight(project: Path, *, database_url: str) -> subprocess.CompletedProcess[str]:
+def _run_preflight(
+    project: Path,
+    *,
+    database_url: str,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
+    if extra_env is not None:
+        env.update(extra_env)
     return subprocess.run(
         ["bash", "scripts/preflight.sh"],
         cwd=project,

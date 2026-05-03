@@ -31,6 +31,8 @@ from urllib.parse import unquote, urlparse
 def sqlite_path_from_url(url: str) -> str:
     parsed = urlparse(url)
     raw_path = unquote(parsed.path)
+    if raw_path == "" and parsed.netloc == "":
+        return ":memory:"
     if raw_path in ("", "/"):
         return parsed.netloc
     if raw_path.startswith("/./") or raw_path.startswith("/../"):
