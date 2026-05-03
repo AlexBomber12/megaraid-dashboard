@@ -310,6 +310,8 @@ def test_drive_replace_insert_success_invokes_runner_and_audits(
     ) -> dict[str, Any]:
         del use_sudo, binary_path
         runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number=_NEW_SERIAL)
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -338,6 +340,7 @@ def test_drive_replace_insert_success_invokes_runner_and_audits(
         ]
         assert body["result"] == {"Controllers": [{"Command Status": {"Status": "Success"}}]}
         assert runner_calls == [
+            ["/c0/e2/s0", "show", "all", "J"],
             ["/c0/e2/s0", "insert", "dg=0", "array=0", "row=0", "J"],
         ]
         events = sorted(_all_events(test_app), key=lambda event: event.id)
@@ -386,7 +389,15 @@ def test_drive_replace_insert_records_audit_when_storcli_fails(
 ) -> None:
     from megaraid_dashboard.storcli import StorcliCommandFailed
 
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number=_NEW_SERIAL)
         raise StorcliCommandFailed("storcli command failed: array busy", err_msg="array busy")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -418,7 +429,15 @@ def test_drive_replace_insert_audit_failure_returns_500(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number=_NEW_SERIAL)
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
@@ -701,6 +720,128 @@ def test_drive_replace_topology_rejects_invalid_path() -> None:
         response = client.get("/drives/abc:0/replace/topology")
 
         assert response.status_code == 400
+
+
+def test_drive_replace_insert_rejects_when_live_serial_mismatches(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    """Snapshot still names the new drive but the slot was swapped again
+    after the last poll. The live precheck must catch the divergence and
+    refuse to issue the destructive insert command.
+    """
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number="WD-OTHER-9999")
+        raise AssertionError("insert must not run on live serial mismatch")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_NEW_SERIAL, state="UGood")
+        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            headers=headers,
+            json={"serial_number": _NEW_SERIAL},
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body == {"error": "live serial mismatch (replacement drive)"}
+        # Live serial must not leak in the response.
+        assert "WD-OTHER-9999" not in response.text
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        # Only the seeded step-missing audit; no insert audit recorded.
+        events = _all_events(test_app)
+        assert len(events) == 1
+        assert "replace step missing" in events[0].summary
+
+
+def test_drive_replace_insert_returns_502_when_live_precheck_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    from megaraid_dashboard.storcli import StorcliNotAvailable
+
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        raise StorcliNotAvailable("storcli sudo access is not available: permission denied")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_NEW_SERIAL, state="UGood")
+        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            headers=headers,
+            json={"serial_number": _NEW_SERIAL},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli precheck failed"
+        assert body["step"] == "insert"
+        assert body["enclosure"] == 2
+        assert body["slot"] == 0
+        assert body["serial_number"] == _NEW_SERIAL
+        assert "permission denied" in body["detail"]
+        # Only the precheck call was attempted; the destructive insert must not run.
+        assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
+        events = _all_events(test_app)
+        assert len(events) == 1
+        assert "replace step missing" in events[0].summary
+
+
+def _drive_show_payload(*, state: str, serial_number: str) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {
+                    "Drive /c0/e2/s0": [
+                        {
+                            "EID:Slt": "2:0",
+                            "DID": 14,
+                            "State": state,
+                            "DG": 0,
+                            "Size": "2.728 TB",
+                            "Intf": "SATA",
+                            "Med": "HDD",
+                            "Model": "WDC WD30EFRX-68EUZN0",
+                        }
+                    ],
+                    "Drive /c0/e2/s0 - Detailed Information": {
+                        "Drive /c0/e2/s0 State": {"Media Error Count": 0},
+                        "Drive /c0/e2/s0 Device attributes": {"SN": serial_number},
+                        "Drive /c0/e2/s0 Policies/Settings": {},
+                    },
+                },
+            }
+        ]
+    }
 
 
 def _csrf_request_headers(

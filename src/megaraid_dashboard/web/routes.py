@@ -861,6 +861,38 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             status_code=403,
         )
 
+    # Re-confirm live drive identity before the destructive insert: the
+    # persisted snapshot can lag, so the typed replacement-serial confirmation
+    # must be validated against the disk currently in the slot, not the
+    # snapshot. Without this, a slot that swapped again after the last poll
+    # could pass snapshot/topology checks and have ``insert`` execute against
+    # a different live device.
+    try:
+        live = await _query_live_drive_show(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {
+                "error": "storcli precheck failed",
+                "step": "insert",
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+    if live.serial_number != body.serial_number:
+        # Same reasoning as the snapshot mismatch above: do not return the
+        # live drive's serial in the response.
+        return JSONResponse(
+            {"error": "live serial mismatch (replacement drive)"},
+            status_code=409,
+        )
+
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     try:
