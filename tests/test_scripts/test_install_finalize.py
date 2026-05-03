@@ -182,6 +182,8 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     preflight_source = prefix / "src" / "scripts" / "preflight.sh"
     preflight_source.parent.mkdir(parents=True)
     shutil.copy2(REPO_ROOT / "scripts" / "preflight.sh", preflight_source)
+    uninstall_source = prefix / "src" / "scripts" / "uninstall.sh"
+    shutil.copy2(REPO_ROOT / "scripts" / "uninstall.sh", uninstall_source)
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -239,7 +241,41 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     assert "--port 18123" in unit
     assert "scripts/preflight.sh" in unit
     assert (prefix / "scripts" / "preflight.sh").read_text() == preflight_source.read_text()
+    assert (prefix / "scripts" / "uninstall.sh").read_text() == uninstall_source.read_text()
     assert "systemctl daemon-reload" in log.read_text()
+
+
+def test_phase_finalize_points_uninstall_to_root_owned_script_copy(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_executable(
+        bin_dir / "systemctl",
+        "#!/bin/sh\n"
+        'if [ "$1" = "is-active" ] && [ "$2" != "--quiet" ]; then\n'
+        "  printf 'active\\n'\n"
+        "fi\n",
+    )
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nprintf 'ok\\n'\n")
+    _write_executable(bin_dir / "hostname", "#!/bin/sh\nprintf 'raid-host.example\\n'\n")
+
+    prefix = tmp_path / "prefix"
+    result = subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_finalize"],
+        check=False,
+        env={
+            **os.environ,
+            "APP_PORT": "18123",
+            "ENV_FILE": str(tmp_path / "env"),
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"Uninstall: sudo bash {prefix}/scripts/uninstall.sh" in result.stdout
+    assert f"{prefix}/src/scripts/uninstall.sh" not in result.stdout
 
 
 def test_uninstall_removes_configured_sudoers_file() -> None:

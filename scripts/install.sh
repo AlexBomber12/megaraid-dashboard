@@ -478,6 +478,9 @@ phase_systemd() {
   install -m 0750 -o root -g "${INSTALL_USER}" \
     "${INSTALL_PREFIX}/src/scripts/preflight.sh" \
     "${INSTALL_PREFIX}/scripts/preflight.sh"
+  install -m 0750 -o root -g "${INSTALL_USER}" \
+    "${INSTALL_PREFIX}/src/scripts/uninstall.sh" \
+    "${INSTALL_PREFIX}/scripts/uninstall.sh"
 
   if ! sed \
     -e "s|User=raid-monitor|User=$(sed_replacement_escape "${INSTALL_USER}")|" \
@@ -556,7 +559,7 @@ Healthz:   http://$(hostname -f):${APP_PORT}/healthz
 Logs:      journalctl --namespace=megaraid-dashboard -f
 Config:    ${ENV_FILE}
 Reload:    sudo systemctl restart megaraid-dashboard.service
-Uninstall: sudo bash ${INSTALL_PREFIX}/src/scripts/uninstall.sh
+Uninstall: sudo bash ${INSTALL_PREFIX}/scripts/uninstall.sh
 
 Reverse proxy: see ${INSTALL_PREFIX}/src/docs/PROXY-SETUP.md
 ==============================
