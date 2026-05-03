@@ -77,6 +77,82 @@
     </div>
   </section>
 
+  <section
+    class="replace-wizard"
+    aria-label="Replace drive"
+    data-replace-wizard
+    data-enclosure="{{ view_model.enclosure_id }}"
+    data-slot="{{ view_model.slot_id }}"
+    data-serial="{{ view_model.serial_number }}"
+    data-replace-offline-url="{{ request.url_for('drive_replace_offline', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+    data-replace-missing-url="{{ request.url_for('drive_replace_missing', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+  >
+    <h2 class="replace-wizard__title">Replace drive</h2>
+    <button type="button" class="button button--warning" data-replace-action="open">Begin replace</button>
+
+    <div class="replace-wizard__stage" data-stage="confirm" hidden>
+      <p>You are about to begin replacement of:</p>
+      <dl class="replace-wizard__metadata">
+        <dt>Slot</dt>
+        <dd>{{ view_model.enclosure_id }}:{{ view_model.slot_id }}</dd>
+        <dt>Model</dt>
+        <dd>{{ view_model.model }}</dd>
+        <dt>Serial</dt>
+        <dd class="mono">{{ view_model.serial_number }}</dd>
+        <dt>State</dt>
+        <dd>
+          {% for attribute in view_model.attributes if attribute.label == "State" %}
+            {{ attribute.value }}
+          {% endfor %}
+        </dd>
+      </dl>
+      <p>
+        This procedure changes RAID array state. Make sure the drive at this slot is the one
+        you intend to replace.
+      </p>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button
+          type="button"
+          class="button button--warning"
+          data-replace-action="continue-to-serial"
+        >Continue</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="serial" hidden>
+      <label class="replace-wizard__field">
+        <span>Type the serial number of the drive to replace:</span>
+        <input
+          type="text"
+          class="input mono"
+          data-replace-input="serial"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </label>
+      <label class="replace-wizard__toggle">
+        <input type="checkbox" data-replace-input="dry-run" checked>
+        Dry run (do not invoke storcli)
+      </label>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button
+          type="button"
+          class="button button--warning"
+          data-replace-action="run-step1"
+          disabled
+        >Run Step 1</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="result" hidden>
+      <h3>Result</h3>
+      <pre class="mono replace-wizard__output" data-replace-output></pre>
+      <button type="button" class="button" data-replace-action="close">Close</button>
+    </div>
+  </section>
+
   <section class="history-section" aria-label="Drive history">
     <div class="range-tabs" role="tablist" aria-label="History range">
       {% for tab in view_model.range_tabs %}
