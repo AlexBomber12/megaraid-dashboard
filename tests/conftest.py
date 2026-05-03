@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import base64
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import bcrypt
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -39,6 +40,18 @@ def admin_password_hash() -> str:
 @pytest.fixture
 def auth_header() -> dict[str, str]:
     return dict(TEST_AUTH_HEADER)
+
+
+@pytest.fixture
+def csrf_headers() -> Callable[[TestClient], dict[str, str]]:
+    def build_headers(client: TestClient, *, path: str = "/") -> dict[str, str]:
+        response = client.get(path)
+        token = client.cookies.get("__Host-csrf")
+        assert response.status_code < 400
+        assert token is not None
+        return {"X-CSRF-Token": token}
+
+    return build_headers
 
 
 @pytest.fixture
