@@ -109,6 +109,22 @@ def test_events_page_renders_timeline_and_load_more_state(
         assert response.text.count('id="events-load-more"') == 1
 
 
+def test_events_page_links_event_detector_slot_tokens_with_forwarded_prefix() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_event(
+            test_app,
+            occurred_at=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+            subject="PD e252:s4",
+            summary="PD e252:s4 state is Failed",
+        )
+
+        response = client.get("/events", headers={"X-Forwarded-Prefix": "/raid"})
+
+    assert response.status_code == 200
+    assert 'PD <a href="/raid/drives/252:4">e252:s4</a> state is Failed' in response.text
+
+
 def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
