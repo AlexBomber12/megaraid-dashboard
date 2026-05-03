@@ -196,6 +196,7 @@ def test_phase_venv_reuses_existing_venv_and_upgrades_pip(tmp_path: Path) -> Non
     pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\n")
     pip.chmod(0o755)
     bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
     _write_executable(
         bin_dir / "sudo",
         '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
@@ -214,11 +215,39 @@ def test_phase_venv_reuses_existing_venv_and_upgrades_pip(tmp_path: Path) -> Non
     assert log.read_text() == "pip install --upgrade pip>=24\n"
 
 
+def test_phase_venv_fails_fast_when_pypi_unreachable(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    pip = prefix / ".venv" / "bin" / "pip"
+    pip.parent.mkdir(parents=True)
+    log = tmp_path / "commands.log"
+    pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\n")
+    pip.chmod(0o755)
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 7\n")
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_venv",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "pypi.org unreachable; cannot pip install" in result.stderr
+    assert not log.exists()
+
+
 def test_phase_venv_creates_root_bootstrapped_venv_then_fixes_ownership(tmp_path: Path) -> None:
     prefix = tmp_path / "prefix"
     prefix.mkdir(mode=0o750)
     log = tmp_path / "commands.log"
     bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
     _write_executable(
         bin_dir / "python3",
         "#!/bin/sh\n"

@@ -27,6 +27,14 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+require_pypi_reachable() {
+  command_exists curl || log_fail "curl not found"
+
+  if ! curl -fsSI -o /dev/null https://pypi.org/simple/; then
+    log_fail "pypi.org unreachable; cannot pip install"
+  fi
+}
+
 validate_install_user() {
   local passwd_entry
   passwd_entry="$(getent passwd "${INSTALL_USER}")" || log_fail "user ${INSTALL_USER} not found"
@@ -139,23 +147,20 @@ phase_venv() {
     log_info "venv exists, skip"
   fi
 
+  require_pypi_reachable
   sudo -u "${INSTALL_USER}" "${venv}/bin/pip" install --upgrade "pip>=24" >/dev/null
 }
 
 phase_pip() {
   log_info "Phase 5: pip install"
 
-  command_exists curl || log_fail "curl not found"
+  require_pypi_reachable
 
   local src_dir="${INSTALL_PREFIX}/src"
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local repo_root
   repo_root="$(dirname "${script_dir}")"
-
-  if ! curl -fsSI -o /dev/null https://pypi.org/simple/; then
-    log_fail "pypi.org unreachable; cannot pip install"
-  fi
 
   command_exists git || log_fail "git not found"
   command_exists tar || log_fail "tar not found"
