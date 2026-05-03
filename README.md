@@ -61,6 +61,14 @@ script into startup. The sample unit sets a production default of
 
 Reverse proxy: see `docs/PROXY-SETUP.md` and `deploy/nginx/megaraid.conf.sample`.
 
+### Log retention
+
+Logs go to systemd journald. To cap this unit's journal at 200 MB on disk, copy
+`deploy/journald-megaraid.conf` to a journald drop-in directory and add
+`LogNamespace=megaraid-dashboard` to the unit's `[Service]` section. See
+`deploy/journald-megaraid.conf` header comments for exact paths. Inspect:
+`journalctl --namespace=megaraid-dashboard --since=today`.
+
 ### History Aggregation
 
 Drive detail graphs read history from three layers: raw `pd_snapshots` joined to
