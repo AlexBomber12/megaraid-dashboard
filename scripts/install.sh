@@ -170,7 +170,15 @@ phase_pip() {
   local backup_dir
   backup_dir=""
 
-  if ! git -C "${repo_root}" archive --format=tar HEAD | tar -x -C "${staging_dir}"; then
+  if ! (
+    cd "${repo_root}"
+    git ls-files -z --cached --others --exclude-standard |
+      while IFS= read -r -d '' path; do
+        [[ -e "${path}" ]] && printf '%s\0' "${path}"
+      done |
+      tar --null --files-from=- --create --file=- |
+      tar -x -C "${staging_dir}"
+  ); then
     rm -rf -- "${staging_dir}"
     log_fail "failed to export source tree"
   fi
@@ -197,11 +205,18 @@ phase_pip() {
     log_fail "failed to promote staged source tree"
   fi
 
+  if ! sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/pip" install -e "${src_dir}"; then
+    rm -rf -- "${src_dir}"
+    if [[ -n "${backup_dir}" ]]; then
+      mv "${backup_dir}" "${src_dir}"
+    fi
+    log_fail "pip install failed; restored previous source tree"
+  fi
+
   if [[ -n "${backup_dir}" ]]; then
     rm -rf -- "${backup_dir}"
   fi
 
-  sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/pip" install -e "${src_dir}"
   log_info "package installed"
 }
 
