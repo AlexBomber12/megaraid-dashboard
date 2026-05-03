@@ -79,6 +79,36 @@ validate_install_user() {
     log_fail "user ${INSTALL_USER} primary group is ${group_name}, expected ${INSTALL_USER}"
 }
 
+validate_root_owned_not_writable() {
+  local path="$1"
+  local owner perms
+
+  read -r owner perms < <(stat -Lc "%u %A" -- "${path}") || \
+    log_fail "failed to stat ${path}"
+
+  [[ "${owner}" == "0" ]] || log_fail "${path} must be owned by root before sudoers grant"
+  [[ "${perms:5:1}" != "w" && "${perms:8:1}" != "w" ]] || \
+    log_fail "${path} must not be writable by group or other before sudoers grant"
+}
+
+validate_storcli_sudo_target() {
+  [[ "${STORCLI_PATH}" = /* ]] || log_fail "storcli path must be absolute: ${STORCLI_PATH}"
+  [[ -e "${STORCLI_PATH}" ]] || log_fail "storcli64 not found at ${STORCLI_PATH}"
+  [[ -f "${STORCLI_PATH}" ]] || log_fail "storcli path is not a regular file: ${STORCLI_PATH}"
+  [[ -x "${STORCLI_PATH}" ]] || log_fail "storcli64 is not executable at ${STORCLI_PATH}"
+  [[ ! -L "${STORCLI_PATH}" ]] || log_fail "storcli path must not be a symlink: ${STORCLI_PATH}"
+
+  validate_root_owned_not_writable "${STORCLI_PATH}"
+
+  local parent
+  parent="$(dirname "${STORCLI_PATH}")"
+  while [[ "${parent}" != "/" ]]; do
+    validate_root_owned_not_writable "${parent}"
+    parent="$(dirname "${parent}")"
+  done
+  validate_root_owned_not_writable "/"
+}
+
 os_release_value() {
   local key="$1"
   local value
@@ -415,6 +445,8 @@ phase_sudoers() {
   local sudoers_dir sudoers_tmp
   sudoers_dir="$(dirname "${SUDOERS_FILE}")"
   sudoers_tmp="${SUDOERS_FILE}.tmp"
+
+  validate_storcli_sudo_target
 
   install -d -m 0755 "${sudoers_dir}"
   cat >"${sudoers_tmp}" <<EOF

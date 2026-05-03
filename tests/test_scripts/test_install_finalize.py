@@ -40,10 +40,22 @@ def test_shellcheck_passes_on_install_and_uninstall_scripts() -> None:
 
 
 def test_phase_sudoers_writes_valid_fragment(tmp_path: Path) -> None:
-    if shutil.which("visudo") is None:
-        pytest.skip("visudo not installed")
-
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    storcli = tmp_path / "usr" / "local" / "sbin" / "storcli64"
+    storcli.parent.mkdir(parents=True)
+    _write_executable(storcli, "#!/bin/sh\nexit 0\n")
     sudoers = tmp_path / "sudoers.d" / "megaraid-dashboard"
+    _write_executable(
+        bin_dir / "stat",
+        "#!/bin/sh\n"
+        "last=\n"
+        'for arg in "$@"; do last="$arg"; done\n'
+        'case "$last" in\n'
+        "  *) printf '0 -rwxr-xr-x\\n' ;;\n"
+        "esac\n",
+    )
+    _write_executable(bin_dir / "visudo", "#!/bin/sh\nexit 0\n")
 
     result = subprocess.run(
         ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_sudoers"],
@@ -51,7 +63,8 @@ def test_phase_sudoers_writes_valid_fragment(tmp_path: Path) -> None:
         env={
             **os.environ,
             "INSTALL_USER": "raid-monitor",
-            "STORCLI_PATH": "/usr/local/sbin/storcli64",
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "STORCLI_PATH": str(storcli),
             "SUDOERS_FILE": str(sudoers),
         },
         text=True,
@@ -59,17 +72,30 @@ def test_phase_sudoers_writes_valid_fragment(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert sudoers.read_text() == "raid-monitor ALL=(root) NOPASSWD: /usr/local/sbin/storcli64\n"
+    assert sudoers.read_text() == f"raid-monitor ALL=(root) NOPASSWD: {storcli}\n"
     assert stat.S_IMODE(sudoers.stat().st_mode) == 0o440
 
-    visudo = subprocess.run(
-        ["visudo", "-c", "-f", str(sudoers)],
-        check=False,
-        text=True,
-        capture_output=True,
+
+def test_phase_sudoers_rejects_non_root_owned_storcli(tmp_path: Path) -> None:
+    result, sudoers = _run_phase_sudoers_with_stat(
+        tmp_path,
+        storcli_stat_output="1001 -rwxr-xr-x",
     )
 
-    assert visudo.returncode == 0, visudo.stderr
+    assert result.returncode == 1
+    assert "must be owned by root before sudoers grant" in result.stderr
+    assert not sudoers.exists()
+
+
+def test_phase_sudoers_rejects_group_writable_storcli(tmp_path: Path) -> None:
+    result, sudoers = _run_phase_sudoers_with_stat(
+        tmp_path,
+        storcli_stat_output="0 -rwxrwxr-x",
+    )
+
+    assert result.returncode == 1
+    assert "must not be writable by group or other before sudoers grant" in result.stderr
+    assert not sudoers.exists()
 
 
 def test_systemd_unit_file_referenced_by_installer_exists() -> None:
@@ -211,6 +237,47 @@ def test_uninstall_removes_configured_sudoers_file() -> None:
     assert 'SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/megaraid-dashboard}"' in script
     assert 'rm -f "${SUDOERS_FILE}"' in script
     assert "rm -f /etc/sudoers.d/megaraid-dashboard" not in script
+
+
+def _run_phase_sudoers_with_stat(
+    tmp_path: Path,
+    *,
+    storcli_stat_output: str,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    storcli = tmp_path / "usr" / "local" / "sbin" / "storcli64"
+    storcli.parent.mkdir(parents=True)
+    _write_executable(storcli, "#!/bin/sh\nexit 0\n")
+    sudoers = tmp_path / "sudoers.d" / "megaraid-dashboard"
+    _write_executable(
+        bin_dir / "stat",
+        "#!/bin/sh\n"
+        "last=\n"
+        'for arg in "$@"; do last="$arg"; done\n'
+        f'if [ "$last" = "{storcli}" ]; then\n'
+        f"  printf '{storcli_stat_output}\\n'\n"
+        "else\n"
+        "  printf '0 -rwxr-xr-x\\n'\n"
+        "fi\n",
+    )
+    _write_executable(bin_dir / "visudo", "#!/bin/sh\nexit 0\n")
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_sudoers"],
+        check=False,
+        env={
+            **os.environ,
+            "INSTALL_USER": "raid-monitor",
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "STORCLI_PATH": str(storcli),
+            "SUDOERS_FILE": str(sudoers),
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    return result, sudoers
 
 
 def _write_executable(path: Path, content: str) -> None:
