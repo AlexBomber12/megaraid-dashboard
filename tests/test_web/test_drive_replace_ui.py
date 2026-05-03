@@ -73,6 +73,8 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
             "data-enclosure": "252",
             "data-slot": "4",
             "data-serial": "WD-WM00000005",
+            "data-replace-offline-url": "/drives/252:4/replace/offline",
+            "data-replace-missing-url": "/drives/252:4/replace/missing",
         }
     ]
     assert "Replace drive" in response.text
@@ -93,6 +95,20 @@ def test_drive_detail_renders_replace_serial_controls(
     run_button = _button_by_action(parsed, "run-step1")
     assert run_button["class"] == "button button--warning"
     assert "disabled" in run_button
+
+
+def test_drive_detail_replace_urls_include_forwarded_prefix(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    response = _drive_detail_response(sample_snapshot, headers={"X-Forwarded-Prefix": "/raid"})
+    parsed = _parse_replace_wizard(response.text)
+
+    assert parsed.wizard_roots[0]["data-replace-offline-url"] == (
+        "/raid/drives/252:4/replace/offline"
+    )
+    assert parsed.wizard_roots[0]["data-replace-missing-url"] == (
+        "/raid/drives/252:4/replace/missing"
+    )
 
 
 def test_drive_detail_replace_cancel_buttons_are_default_focus(
@@ -120,17 +136,22 @@ def test_replace_wizard_js_validates_serial_and_posts_steps_in_order() -> None:
 
     assert "serialInput.value.trim() !== expectedSerial.trim()" in source
     assert "dry_run: dryRunInput.checked" in source
-    assert '"/drives/" + enclosure + ":" + slot + "/replace/offline"' in source
-    assert '"/drives/" + enclosure + ":" + slot + "/replace/missing"' in source
+    assert "const offlineUrl = root.dataset.replaceOfflineUrl;" in source
+    assert "const missingUrl = root.dataset.replaceMissingUrl;" in source
+    assert "dryRunInput.checked = true;" in source
     assert "if (!offline.ok) return;" in source
     assert '"X-CSRF-Token": getCookie("__Host-csrf") || ""' in source
 
 
-def _drive_detail_response(sample_snapshot: StorcliSnapshot) -> Any:
+def _drive_detail_response(
+    sample_snapshot: StorcliSnapshot,
+    *,
+    headers: dict[str, str] | None = None,
+) -> Any:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
-        return client.get("/drives/252/4")
+        return client.get("/drives/252/4", headers=headers)
 
 
 def _parse_replace_wizard(html: str) -> _ReplaceWizardParser:

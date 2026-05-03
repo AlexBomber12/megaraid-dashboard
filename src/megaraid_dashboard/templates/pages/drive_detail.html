@@ -84,6 +84,8 @@
     data-enclosure="{{ view_model.enclosure_id }}"
     data-slot="{{ view_model.slot_id }}"
     data-serial="{{ view_model.serial_number }}"
+    data-replace-offline-url="{{ request.url_for('drive_replace_offline', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+    data-replace-missing-url="{{ request.url_for('drive_replace_missing', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
   >
     <h2 class="replace-wizard__title">Replace drive</h2>
     <button type="button" class="button button--warning" data-replace-action="open">Begin replace</button>

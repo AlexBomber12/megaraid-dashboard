@@ -24,9 +24,9 @@
   }
 
   function init(root) {
-    const enclosure = root.dataset.enclosure;
-    const slot = root.dataset.slot;
     const expectedSerial = root.dataset.serial || "";
+    const offlineUrl = root.dataset.replaceOfflineUrl;
+    const missingUrl = root.dataset.replaceMissingUrl;
     const stages = {
       confirm: root.querySelector('[data-stage="confirm"]'),
       serial: root.querySelector('[data-stage="serial"]'),
@@ -58,6 +58,7 @@
       openButton.hidden = false;
       output.textContent = "";
       serialInput.value = "";
+      dryRunInput.checked = true;
       updateRunButton();
     }
 
@@ -92,9 +93,6 @@
           serial_number: serialInput.value.trim(),
           dry_run: dryRunInput.checked,
         };
-        const offlineUrl = "/drives/" + enclosure + ":" + slot + "/replace/offline";
-        const missingUrl = "/drives/" + enclosure + ":" + slot + "/replace/missing";
-
         output.textContent = "Running set offline...\n";
         const offline = await postJson(offlineUrl, body);
         appendResult("set offline response", offline);
