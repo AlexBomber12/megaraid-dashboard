@@ -81,6 +81,23 @@ def test_vd_and_raid_tiles_warn_for_one_degraded_drive(
     assert raid_tile.status == "warning"
 
 
+@pytest.mark.parametrize("state", ["Pdgd", "Partially Degraded"])
+def test_vd_and_raid_tiles_are_critical_for_partially_degraded_drive(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    state: str,
+) -> None:
+    snapshot = _latest(session, _snapshot(sample_snapshot, vd_states=("Optl", state)))
+
+    vd_tile = _load_vd_tile(snapshot)
+    raid_tile = _load_raid_tile(snapshot)
+
+    assert vd_tile.value == "1 degraded"
+    assert vd_tile.status == "critical"
+    assert raid_tile.value == "RAID6"
+    assert raid_tile.status == "critical"
+
+
 def test_bbu_tile_is_neutral_when_bbu_is_absent(
     session: Session,
     sample_snapshot: StorcliSnapshot,
@@ -104,6 +121,18 @@ def test_bbu_tile_warns_for_present_degraded_cachevault(
 
     assert tile.value == "Warning"
     assert tile.status == "warning"
+
+
+def test_bbu_tile_is_critical_when_cachevault_replacement_required(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    snapshot = _latest(session, _snapshot(sample_snapshot, cv_replacement_required=True))
+
+    tile = _load_bbu_tile(snapshot)
+
+    assert tile.value == "Replace"
+    assert tile.status == "critical"
 
 
 def test_max_temp_tile_uses_hottest_drive_and_thresholds(
@@ -165,6 +194,7 @@ def _snapshot(
     vd_states: tuple[str, ...] = ("Optl",),
     bbu_present: bool = True,
     cv_state: str = "Optimal",
+    cv_replacement_required: bool = False,
     temperatures: tuple[int | None, ...] = (40,),
     roc_temperature_celsius: int | None = 78,
 ) -> StorcliSnapshot:
@@ -187,7 +217,12 @@ def _snapshot(
     ]
     cachevault = sample_snapshot.cachevault
     if cachevault is not None:
-        cachevault = cachevault.model_copy(update={"state": cv_state})
+        cachevault = cachevault.model_copy(
+            update={
+                "state": cv_state,
+                "replacement_required": cv_replacement_required,
+            }
+        )
     return sample_snapshot.model_copy(
         update={
             "controller": controller,

@@ -31,7 +31,8 @@ _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 _VD_OPTIMAL_STATES = {"Optl", "Optimal"}
 _PD_OPTIMAL_STATES = {"Onln"}
 _CACHEVAULT_OPTIMAL_STATES = {"Optl", "Optimal"}
-_VD_DEGRADED_STATES = {"Degraded", "Pdgd", "Partially Degraded"}
+_VD_DEGRADED_STATES = {"Degraded"}
+_VD_PARTIALLY_DEGRADED_STATES = {"Pdgd", "Partially Degraded"}
 _VD_CRITICAL_STATES = {"Failed", "Offln", "Offline"}
 
 
@@ -315,7 +316,10 @@ def _load_bbu_tile(
         value = "None"
     elif latest_snapshot is not None and latest_snapshot.cachevault is not None:
         cachevault = latest_snapshot.cachevault
-        if cachevault.replacement_required or cachevault.state not in _CACHEVAULT_OPTIMAL_STATES:
+        if cachevault.replacement_required:
+            status = "critical"
+            value = "Replace"
+        elif cachevault.state not in _CACHEVAULT_OPTIMAL_STATES:
             status = "warning"
             value = "Warning"
         else:
@@ -705,7 +709,7 @@ def _virtual_drive_aggregate_status(virtual_drives: Sequence[VirtualDriveSnapsho
     if not virtual_drives:
         return "neutral"
     states = {virtual_drive.state for virtual_drive in virtual_drives}
-    if states & _VD_CRITICAL_STATES:
+    if states & (_VD_CRITICAL_STATES | _VD_PARTIALLY_DEGRADED_STATES):
         return "critical"
     if states & _VD_DEGRADED_STATES:
         return "warning"
@@ -725,7 +729,9 @@ def _virtual_drive_aggregate_value(virtual_drives: Sequence[VirtualDriveSnapshot
         return f"{critical_count} failed"
 
     degraded_count = sum(
-        1 for virtual_drive in virtual_drives if virtual_drive.state in _VD_DEGRADED_STATES
+        1
+        for virtual_drive in virtual_drives
+        if virtual_drive.state in (_VD_DEGRADED_STATES | _VD_PARTIALLY_DEGRADED_STATES)
     )
     if degraded_count > 0:
         return f"{degraded_count} degraded"
