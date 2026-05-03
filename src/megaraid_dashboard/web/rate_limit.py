@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
@@ -105,15 +106,22 @@ def _evict_expired(attempts: deque[_AttemptSlot], now: float) -> None:
 
 
 def _client_ip(scope: Scope) -> str:
+    client = scope.get("client")
+    peer_ip = str(client[0]) if isinstance(client, tuple) and client else "unknown"
+
     headers = Headers(raw=cast("list[tuple[bytes, bytes]]", scope["headers"]))
     forwarded_for = headers.get("x-forwarded-for")
-    if forwarded_for is not None:
+    if forwarded_for is not None and _is_trusted_proxy_peer(peer_ip):
         entries = [entry.strip() for entry in forwarded_for.split(",")]
         for entry in reversed(entries):
             if entry:
                 return entry
 
-    client = scope.get("client")
-    if isinstance(client, tuple) and client:
-        return str(client[0])
-    return "unknown"
+    return peer_ip
+
+
+def _is_trusted_proxy_peer(peer_ip: str) -> bool:
+    try:
+        return ipaddress.ip_address(peer_ip).is_loopback
+    except ValueError:
+        return False

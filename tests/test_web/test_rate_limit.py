@@ -132,9 +132,11 @@ async def test_whitelisted_path_is_not_rate_limited(settings: Settings) -> None:
     assert [response.status_code for response in responses] == [200] * 10
 
 
-async def test_limiter_uses_last_x_forwarded_for_value(settings: Settings) -> None:
+async def test_limiter_uses_last_x_forwarded_for_value_from_trusted_proxy(
+    settings: Settings,
+) -> None:
     settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
-    async with _rate_limited_client(settings=settings) as client:
+    async with _rate_limited_client(settings=settings, client=("127.0.0.1", 12345)) as client:
         first = await client.get(
             "/",
             headers={
@@ -160,6 +162,30 @@ async def test_limiter_uses_last_x_forwarded_for_value(settings: Settings) -> No
     assert first.status_code == 401
     assert second_same_proxy.status_code == 429
     assert different_proxy.status_code == 401
+
+
+async def test_limiter_ignores_spoofed_x_forwarded_for_from_untrusted_peer(
+    settings: Settings,
+) -> None:
+    settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
+    async with _rate_limited_client(settings=settings, client=("203.0.113.10", 12345)) as client:
+        first = await client.get(
+            "/",
+            headers={
+                "Authorization": _basic_header("admin", "wrong"),
+                "X-Forwarded-For": "198.51.100.10",
+            },
+        )
+        second = await client.get(
+            "/",
+            headers={
+                "Authorization": _basic_header("admin", "wrong"),
+                "X-Forwarded-For": "198.51.100.11",
+            },
+        )
+
+    assert first.status_code == 401
+    assert second.status_code == 429
 
 
 async def test_limiter_uses_client_host_without_x_forwarded_for(settings: Settings) -> None:
@@ -215,13 +241,14 @@ def _rate_limited_client(
     *,
     settings: Settings,
     time_func: Callable[[], float] | None = None,
+    client: tuple[str, int] = ("203.0.113.10", 12345),
 ) -> httpx.AsyncClient:
     inner_app = BasicAuthMiddleware(_ok_app, settings=settings)
     if time_func is None:
         app = AuthRateLimitMiddleware(inner_app, settings=settings)
     else:
         app = AuthRateLimitMiddleware(inner_app, settings=settings, time_func=time_func)
-    transport = httpx.ASGITransport(app=app, client=("203.0.113.10", 12345))
+    transport = httpx.ASGITransport(app=app, client=client)
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
