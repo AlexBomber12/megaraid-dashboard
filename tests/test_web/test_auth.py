@@ -142,6 +142,26 @@ async def test_middleware_allows_correct_credentials(settings: Settings) -> None
     assert response.content == b"ok"
 
 
+async def test_middleware_stores_verified_username_in_scope(settings: Settings) -> None:
+    captured_username: str | None = None
+
+    async def username_app(scope: Scope, receive: Receive, send: Send) -> None:
+        nonlocal captured_username
+        captured_username = str(scope.get("user_username"))
+        await _ok_app(scope, receive, send)
+
+    app = BasicAuthMiddleware(username_app, settings=settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(
+            "/",
+            headers={"Authorization": _basic_header("admin", _TEST_PASSWORD)},
+        )
+
+    assert response.status_code == 200
+    assert captured_username == "admin"
+
+
 async def test_middleware_reads_authorization_header_case_insensitively(
     settings: Settings,
 ) -> None:

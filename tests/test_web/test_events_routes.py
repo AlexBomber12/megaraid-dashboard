@@ -297,6 +297,7 @@ def test_events_category_filter_chips_use_persisted_category_keys() -> None:
         "controller_temperature",
         "disk_space",
         "system",
+        "operator_action",
     )
 
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:

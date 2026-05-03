@@ -114,6 +114,29 @@ def test_run_notifier_cycle_severity_filter(session: Session) -> None:
     assert refreshed.notified_at is None
 
 
+def test_run_notifier_cycle_skips_operator_action_by_default(session: Session) -> None:
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
+    event = _add_event(
+        session,
+        occurred_at=now - timedelta(minutes=5),
+        severity="info",
+        category="operator_action",
+        subject="Operator action",
+        summary="locate start drive 2:0",
+    )
+    session.commit()
+    transport = FakeAlertTransport()
+
+    result = run_notifier_cycle(session, transport, settings=_settings(), now=now)
+
+    assert result.attempted == 0
+    assert result.sent == 0
+    assert transport.sent == []
+    refreshed = session.get(Event, event.id)
+    assert refreshed is not None
+    assert refreshed.notified_at is None
+
+
 def test_run_notifier_cycle_threshold_warning_includes_critical(session: Session) -> None:
     now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
     settings = _settings(alert_severity_threshold="warning")
