@@ -174,6 +174,43 @@ def test_phase_finalize_retries_healthz_until_ready(tmp_path: Path) -> None:
     assert 'healthz: {"status":"ok"}' in result.stdout
 
 
+def test_phase_finalize_rejects_non_json_healthz_body(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    sleeps = tmp_path / "sleeps"
+
+    _write_executable(
+        bin_dir / "systemctl",
+        "#!/bin/sh\n"
+        'if [ "$1" = "is-active" ] && [ "$2" != "--quiet" ]; then\n'
+        "  printf 'active\\n'\n"
+        "fi\n",
+    )
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nprintf 'proxy is alive\\n'\n")
+    _write_executable(
+        bin_dir / "sleep",
+        f"#!/bin/sh\nprintf '%s\\n' \"$1\" >> {sleeps}\n",
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_finalize"],
+        check=False,
+        env={
+            **os.environ,
+            "APP_PORT": "18123",
+            "ENV_FILE": str(tmp_path / "env"),
+            "INSTALL_PREFIX": str(tmp_path / "prefix"),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "healthz did not return ok status: proxy is alive" in result.stderr
+    assert sleeps.read_text() == ("1\n" * 29)
+
+
 def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: Path) -> None:
     prefix = tmp_path / "prefix"
     unit_template = prefix / "src" / "deploy" / "megaraid-dashboard.service"
@@ -260,7 +297,7 @@ def test_phase_finalize_points_uninstall_to_root_owned_script_copy(tmp_path: Pat
         "  printf 'active\\n'\n"
         "fi\n",
     )
-    _write_executable(bin_dir / "curl", "#!/bin/sh\nprintf 'ok\\n'\n")
+    _write_executable(bin_dir / "curl", '#!/bin/sh\nprintf \'{"status":"ok"}\\n\'\n')
     _write_executable(bin_dir / "hostname", "#!/bin/sh\nprintf 'raid-host.example\\n'\n")
 
     prefix = tmp_path / "prefix"

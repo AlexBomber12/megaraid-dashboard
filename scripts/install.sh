@@ -39,6 +39,21 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+healthz_status_ok() {
+  local body="$1"
+  python3 -c '
+import json
+import sys
+
+try:
+    payload = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+    sys.exit(1)
+
+sys.exit(0 if payload.get("status") == "ok" else 1)
+' <<<"${body}"
+}
+
 source_repo_root() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -538,22 +553,30 @@ phase_finalize() {
   systemctl is-active --quiet megaraid-dashboard.service || \
     log_fail "service failed to become active"
 
-  local healthz
+  local healthz last_healthz
   healthz=""
+  last_healthz=""
   for ((attempt = 1; attempt <= 30; attempt++)); do
     healthz="$(curl -fsS --connect-timeout 2 --max-time 5 \
       "http://127.0.0.1:${APP_PORT}/healthz" || true)"
     if [[ -n "${healthz}" ]]; then
-      break
+      last_healthz="${healthz}"
+      if healthz_status_ok "${healthz}"; then
+        break
+      fi
+      healthz=""
     fi
     if [[ "${attempt}" -lt 30 ]]; then
       sleep 1
     fi
   done
-  if [[ -z "${healthz}" ]]; then
+  if [[ -n "${healthz}" ]]; then
+    log_info "healthz: ${healthz}"
+  elif [[ -n "${last_healthz}" ]]; then
+    log_fail "healthz did not return ok status: ${last_healthz}"
+  else
     log_fail "healthz did not respond"
   fi
-  log_info "healthz: ${healthz}"
 
   cat <<SUMMARY
 
