@@ -27,15 +27,32 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+os_release_value() {
+  local key="$1"
+  local value
+
+  value="$(awk -F= -v key="${key}" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
+    "${OS_RELEASE_FILE}")"
+
+  case "${value}" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+
+  printf "%s\n" "${value}"
+}
+
 phase_preflight() {
   log_info "Phase 1: pre-flight"
 
-  if ! grep -q '^ID=ubuntu' "${OS_RELEASE_FILE}"; then
+  local os_id
+  os_id="$(os_release_value ID)"
+  if [[ "${os_id}" != "ubuntu" ]]; then
     log_fail "expected Ubuntu, got $(grep '^ID=' "${OS_RELEASE_FILE}" || echo unknown)"
   fi
 
   local os_version
-  os_version="$(grep '^VERSION_ID=' "${OS_RELEASE_FILE}" | cut -d'"' -f2)"
+  os_version="$(os_release_value VERSION_ID)"
   [[ "${os_version}" == "24.04" ]] || log_warn "expected Ubuntu 24.04, got ${os_version}"
 
   command_exists python3 || log_fail "python3 not found"

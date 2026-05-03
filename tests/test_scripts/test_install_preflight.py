@@ -83,3 +83,33 @@ def test_install_fails_on_non_ubuntu_os_release(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "expected Ubuntu, got ID=fedora" in result.stderr
+
+
+def test_install_accepts_quoted_ubuntu_os_release(tmp_path: Path) -> None:
+    os_release = tmp_path / "os-release"
+    os_release.write_text('ID="ubuntu"\nVERSION_ID="24.04"\n')
+    storcli = tmp_path / "storcli64"
+    storcli.write_text("#!/bin/sh\nexit 0\n")
+    storcli.chmod(0o755)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ss = bin_dir / "ss"
+    ss.write_text(
+        "#!/bin/sh\nprintf 'State Recv-Q Send-Q Local Address:Port Peer Address:Port\\n'\n"
+    )
+    ss.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_preflight"],
+        check=False,
+        env={
+            **os.environ,
+            "OS_RELEASE_FILE": str(os_release),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "STORCLI_PATH": str(storcli),
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
