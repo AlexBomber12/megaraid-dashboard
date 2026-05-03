@@ -144,6 +144,9 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "/raid/static/js/csrf.js" in response.text
     assert "/raid/static/js/local-time.js" in response.text
     assert "/raid/static/vendor/chart.min.js" not in response.text
+    assert "Physical Drives" not in response.text
+    assert 'class="drive-table"' not in response.text
+    assert "8 drives, see Drives page for detail" in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
@@ -180,6 +183,8 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
+    assert "8 drives, see Drives page for detail" in response.text
+    assert 'class="drive-table"' not in response.text
     assert "/drives?sort=temperature-desc" not in _status_tile_hrefs(response.text)
     assert "/raid/" not in response.text
 
@@ -410,6 +415,7 @@ def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
 
     assert response.status_code == 200
     assert "Physical Drives" in response.text
+    assert 'class="drive-table"' in response.text
     assert response.history == []
     drive_links = {
         href

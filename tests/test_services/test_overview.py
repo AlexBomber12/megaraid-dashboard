@@ -49,6 +49,7 @@ def test_overview_view_model_all_optimal(
 
     assert view_model.has_snapshot is True
     assert view_model.captured_at == sample_snapshot.captured_at
+    assert view_model.drive_count == 8
     assert view_model.max_temperature_celsius == 40
     assert view_model.elevated_drive_count == 0
     assert view_model.critical_drive_count == 0
@@ -213,8 +214,8 @@ def test_overview_view_model_handles_missing_vd_temperatures_and_cachevault_capa
     assert _card(view_model, "Size").value == "Unknown"
     assert _card(view_model, "BBU/CV").value == "Unknown"
     assert _card(view_model, "Max Disk Temp").value == "Unknown"
-    assert view_model.physical_drives[0].temperature == "Unknown"
-    assert view_model.physical_drives[0].temperature_severity == "unknown"
+    assert view_model.drive_count == 8
+    assert not hasattr(view_model, "physical_drives")
 
 
 def test_overview_view_model_empty_database(session: Session) -> None:

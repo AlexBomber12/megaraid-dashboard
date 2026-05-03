@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import (
@@ -120,7 +120,7 @@ class OverviewViewModel:
     captured_at: datetime | None
     cards: tuple[StatCard, ...]
     strip: OverviewStripSection
-    physical_drives: tuple[PhysicalDriveRow, ...]
+    drive_count: int
     max_temperature_celsius: int | None
     elevated_drive_count: int
     critical_drive_count: int
@@ -151,6 +151,16 @@ class _Scheduler(Protocol):
     def get_job(self, job_id: str) -> _SchedulerJob | None: ...
 
 
+@dataclass(frozen=True)
+class _DriveSummary:
+    drive_count: int
+    max_temperature_celsius: int | None
+    elevated_drive_count: int
+    critical_drive_count: int
+    worst_state_severity: str
+    hottest_drive_url: str | None
+
+
 def load_overview_view_model(
     session: Session,
     *,
@@ -163,12 +173,20 @@ def load_overview_view_model(
     resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
     alert_status = _load_alert_status(session, settings=settings, now=resolved_now)
     recent_activity = tuple(_load_recent_activity(session))
-    snapshot = get_latest_snapshot(session)
+    snapshot = _get_latest_overview_snapshot(session)
     roc_temperature = _load_roc_temperature(session, settings=settings, latest_snapshot=snapshot)
+    drive_summary = _load_drive_summary(
+        session,
+        snapshot_id=None if snapshot is None else snapshot.id,
+        temp_warning=settings.temp_warning_celsius,
+        temp_critical=settings.temp_critical_celsius,
+        drives_url=drives_url,
+    )
     strip = _load_overview_strip(
         latest_snapshot=snapshot,
         settings=settings,
         roc=roc_temperature,
+        drive_summary=drive_summary,
         overview_url=overview_url,
         drives_url=drives_url,
     )
@@ -179,7 +197,7 @@ def load_overview_view_model(
             captured_at=None,
             cards=(),
             strip=strip,
-            physical_drives=(),
+            drive_count=0,
             max_temperature_celsius=None,
             elevated_drive_count=0,
             critical_drive_count=0,
@@ -194,23 +212,23 @@ def load_overview_view_model(
             ),
         )
 
-    sorted_drives = tuple(
-        sorted(snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id))
-    )
     overview_virtual_drive = _select_overview_virtual_drive(snapshot.virtual_drives)
     cachevault = snapshot.cachevault
     temp_warning = settings.temp_warning_celsius
     temp_critical = settings.temp_critical_celsius
-    max_temp = _max_temperature(sorted_drives)
-    elevated_count = _temperature_count(sorted_drives, threshold=temp_warning)
-    critical_count = _temperature_count(sorted_drives, threshold=temp_critical)
+    max_temp = drive_summary.max_temperature_celsius
+    elevated_count = drive_summary.elevated_drive_count
+    critical_count = drive_summary.critical_drive_count
 
     return OverviewViewModel(
         has_snapshot=True,
         controller_label=_CONTROLLER_LABEL,
         captured_at=snapshot.captured_at,
         cards=(
-            _controller_health_card(snapshot=snapshot),
+            _controller_health_card(
+                snapshot=snapshot,
+                physical_drive_severity=drive_summary.worst_state_severity,
+            ),
             _virtual_drive_card(overview_virtual_drive),
             _raid_type_card(overview_virtual_drive),
             _size_card(overview_virtual_drive),
@@ -227,14 +245,7 @@ def load_overview_view_model(
             ),
         ),
         strip=strip,
-        physical_drives=tuple(
-            _physical_drive_row(
-                drive,
-                temp_warning=temp_warning,
-                temp_critical=temp_critical,
-            )
-            for drive in sorted_drives
-        ),
+        drive_count=drive_summary.drive_count,
         max_temperature_celsius=max_temp,
         elevated_drive_count=elevated_count,
         critical_drive_count=critical_count,
@@ -252,6 +263,7 @@ def _load_overview_strip(
     latest_snapshot: ControllerSnapshot | None,
     settings: Settings,
     roc: RocTemperatureSection,
+    drive_summary: _DriveSummary,
     overview_url: str = "/",
     drives_url: str = "/drives",
 ) -> OverviewStripSection:
@@ -260,7 +272,11 @@ def _load_overview_strip(
         vd=_load_vd_tile(latest_snapshot, overview_url=overview_url),
         raid=_load_raid_tile(latest_snapshot, overview_url=overview_url),
         bbu=_load_bbu_tile(latest_snapshot, overview_url=overview_url, drives_url=drives_url),
-        max_temp=_load_max_temp_tile(latest_snapshot, settings=settings, drives_url=drives_url),
+        max_temp=_load_max_temp_tile(
+            drive_summary,
+            settings=settings,
+            drives_url=drives_url,
+        ),
         roc=_load_roc_tile(roc, overview_url=overview_url),
     )
 
@@ -351,14 +367,12 @@ def _load_bbu_tile(
 
 
 def _load_max_temp_tile(
-    latest_snapshot: ControllerSnapshot | None,
+    drive_summary: _DriveSummary,
     *,
     settings: Settings,
     drives_url: str = "/drives",
 ) -> StripTileViewModel:
-    physical_drives = () if latest_snapshot is None else tuple(latest_snapshot.physical_drives)
-    hottest_drive = _hottest_drive(physical_drives)
-    max_temp = None if hottest_drive is None else hottest_drive.temperature_celsius
+    max_temp = drive_summary.max_temperature_celsius
     value = "Unknown" if max_temp is None else f"{max_temp} C"
     status = (
         "neutral"
@@ -374,7 +388,7 @@ def _load_max_temp_tile(
         value=value,
         status=status,
         icon="thermometer",
-        href=drives_url if hottest_drive is None else _drive_detail_url(drives_url, hottest_drive),
+        href=drive_summary.hottest_drive_url or drives_url,
     )
 
 
@@ -436,6 +450,114 @@ def load_drive_list_view_model(
         empty_title="Waiting for first metrics collection",
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
+    )
+
+
+def _get_latest_overview_snapshot(session: Session) -> ControllerSnapshot | None:
+    return session.scalars(
+        select(ControllerSnapshot)
+        .options(
+            selectinload(ControllerSnapshot.virtual_drives),
+            selectinload(ControllerSnapshot.cachevault),
+        )
+        .order_by(ControllerSnapshot.captured_at.desc())
+        .limit(1)
+    ).one_or_none()
+
+
+def _load_drive_summary(
+    session: Session,
+    *,
+    snapshot_id: int | None,
+    temp_warning: int,
+    temp_critical: int,
+    drives_url: str,
+) -> _DriveSummary:
+    if snapshot_id is None:
+        return _DriveSummary(
+            drive_count=0,
+            max_temperature_celsius=None,
+            elevated_drive_count=0,
+            critical_drive_count=0,
+            worst_state_severity="optimal",
+            hottest_drive_url=None,
+        )
+
+    drive_count = (
+        session.scalar(
+            select(func.count(PhysicalDriveSnapshot.id)).where(
+                PhysicalDriveSnapshot.snapshot_id == snapshot_id
+            )
+        )
+        or 0
+    )
+    max_temperature = session.scalar(
+        select(func.max(PhysicalDriveSnapshot.temperature_celsius)).where(
+            PhysicalDriveSnapshot.snapshot_id == snapshot_id,
+            PhysicalDriveSnapshot.temperature_celsius.is_not(None),
+        )
+    )
+    elevated_count = (
+        session.scalar(
+            select(func.count(PhysicalDriveSnapshot.id)).where(
+                PhysicalDriveSnapshot.snapshot_id == snapshot_id,
+                PhysicalDriveSnapshot.temperature_celsius.is_not(None),
+                PhysicalDriveSnapshot.temperature_celsius >= temp_warning,
+            )
+        )
+        or 0
+    )
+    critical_count = (
+        session.scalar(
+            select(func.count(PhysicalDriveSnapshot.id)).where(
+                PhysicalDriveSnapshot.snapshot_id == snapshot_id,
+                PhysicalDriveSnapshot.temperature_celsius.is_not(None),
+                PhysicalDriveSnapshot.temperature_celsius >= temp_critical,
+            )
+        )
+        or 0
+    )
+    non_optimal_states = session.scalars(
+        select(PhysicalDriveSnapshot.state)
+        .where(
+            PhysicalDriveSnapshot.snapshot_id == snapshot_id,
+            PhysicalDriveSnapshot.state.not_in(_PD_OPTIMAL_STATES),
+        )
+        .distinct()
+    )
+    worst_state_severity = "optimal"
+    for state in non_optimal_states:
+        state_severity = _event_severity_to_status(physical_drive_state_severity("Onln", state))
+        if state_severity == "optimal":
+            state_severity = "warning"
+        worst_state_severity = _worst_severity(worst_state_severity, state_severity)
+
+    hottest_drive = session.execute(
+        select(PhysicalDriveSnapshot.enclosure_id, PhysicalDriveSnapshot.slot_id)
+        .where(
+            PhysicalDriveSnapshot.snapshot_id == snapshot_id,
+            PhysicalDriveSnapshot.temperature_celsius.is_not(None),
+        )
+        .order_by(
+            PhysicalDriveSnapshot.temperature_celsius.desc(),
+            PhysicalDriveSnapshot.enclosure_id,
+            PhysicalDriveSnapshot.slot_id,
+        )
+        .limit(1)
+    ).one_or_none()
+    hottest_drive_url = (
+        None
+        if hottest_drive is None
+        else f"{drives_url.rstrip('/')}/{hottest_drive.enclosure_id}/{hottest_drive.slot_id}"
+    )
+
+    return _DriveSummary(
+        drive_count=drive_count,
+        max_temperature_celsius=max_temperature,
+        elevated_drive_count=elevated_count,
+        critical_drive_count=critical_count,
+        worst_state_severity=worst_state_severity,
+        hottest_drive_url=hottest_drive_url,
     )
 
 
@@ -585,7 +707,11 @@ def _next_scheduler_run(scheduler: _Scheduler | None) -> datetime | None:
     return metrics_job.next_run_time
 
 
-def _controller_health_card(*, snapshot: ControllerSnapshot) -> StatCard:
+def _controller_health_card(
+    *,
+    snapshot: ControllerSnapshot,
+    physical_drive_severity: str,
+) -> StatCard:
     severity = "optimal"
     if snapshot.alarm_state != "Off":
         severity = _worst_severity(severity, "warning")
@@ -597,16 +723,7 @@ def _controller_health_card(*, snapshot: ControllerSnapshot) -> StatCard:
                 _event_severity_to_status(virtual_drive_state_severity(virtual_drive.state)),
             )
 
-    for physical_drive in snapshot.physical_drives:
-        if physical_drive.state not in _PD_OPTIMAL_STATES:
-            severity = _worst_severity(
-                severity,
-                _event_severity_to_status(
-                    physical_drive_state_severity("Onln", physical_drive.state)
-                ),
-            )
-            if severity == "optimal":
-                severity = "warning"
+    severity = _worst_severity(severity, physical_drive_severity)
 
     value_by_severity = {
         "optimal": "Optimal",
