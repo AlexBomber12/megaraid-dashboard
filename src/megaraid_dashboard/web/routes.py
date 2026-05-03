@@ -22,6 +22,7 @@ from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
+from megaraid_dashboard.services.drive_actions import LocateAction, build_locate_command
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
     DriveHistoryPointKey,
@@ -46,6 +47,7 @@ from megaraid_dashboard.services.overview import (
     load_overview_view_model,
     temperature_severity,
 )
+from megaraid_dashboard.storcli import run_storcli
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -273,6 +275,47 @@ def drive_detail_slot_ref(request: Request, slot_ref: str) -> Response:
     except ValueError as exc:
         raise HTTPException(status_code=404) from exc
     return drive_detail(request, enclosure_id=enclosure_id, slot_id=slot_id)
+
+
+@router.post("/drives/{enclosure}:{slot}/locate/start", name="drive_locate_start")
+async def drive_locate_start(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Start the locate LED for one physical drive URL-addressed as enclosure:slot."""
+    return await _run_locate(enclosure, slot, "start", request)
+
+
+@router.post("/drives/{enclosure}:{slot}/locate/stop", name="drive_locate_stop")
+async def drive_locate_stop(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Stop the locate LED for one physical drive URL-addressed as enclosure:slot."""
+    return await _run_locate(enclosure, slot, "stop", request)
+
+
+async def _run_locate(
+    enclosure: str,
+    slot: str,
+    action: LocateAction,
+    request: Request,
+) -> JSONResponse:
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+        argv = build_locate_command(enclosure_id, slot_id, action)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    settings: Settings = request.app.state.settings
+    result = await run_storcli(
+        argv,
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    return JSONResponse(
+        {
+            "action": action,
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "result": result,
+        }
+    )
 
 
 @router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
