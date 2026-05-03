@@ -11,6 +11,7 @@ ENV_FILE="${ENV_FILE:-${ETC_DIR}/env}"
 STORCLI_PATH="${STORCLI_PATH:-/usr/local/sbin/storcli64}"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 APP_PORT="${APP_PORT:-8090}"
+SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/megaraid-dashboard}"
 NON_INTERACTIVE="false"
 FORCE_RECONFIG="false"
 MISSING_CONFIG_VARS=()
@@ -400,6 +401,89 @@ EOF
   log_info "wrote ${ENV_FILE}"
 }
 
+phase_sudoers() {
+  log_info "Phase 8: sudoers"
+
+  local sudoers_dir sudoers_tmp
+  sudoers_dir="$(dirname "${SUDOERS_FILE}")"
+  sudoers_tmp="${SUDOERS_FILE}.tmp"
+
+  install -d -m 0755 "${sudoers_dir}"
+  cat >"${sudoers_tmp}" <<EOF
+${INSTALL_USER} ALL=(root) NOPASSWD: ${STORCLI_PATH}
+EOF
+  chmod 0440 "${sudoers_tmp}"
+  if visudo -c -f "${sudoers_tmp}" >/dev/null 2>&1; then
+    mv "${sudoers_tmp}" "${SUDOERS_FILE}"
+    log_info "wrote ${SUDOERS_FILE}"
+  else
+    rm -f "${sudoers_tmp}"
+    log_fail "sudoers fragment failed visudo check"
+  fi
+}
+
+phase_systemd() {
+  log_info "Phase 9: systemd unit"
+
+  install -m 0644 -o root -g root \
+    "${INSTALL_PREFIX}/src/deploy/megaraid-dashboard.service" \
+    /etc/systemd/system/megaraid-dashboard.service
+  systemctl daemon-reload
+  systemctl enable megaraid-dashboard.service
+  systemctl start megaraid-dashboard.service
+}
+
+phase_journald() {
+  log_info "Phase 10: journald drop-in"
+
+  install -d -m 0755 /etc/systemd/journald@megaraid-dashboard.conf.d
+  install -m 0644 -o root -g root \
+    "${INSTALL_PREFIX}/src/deploy/journald-megaraid.conf" \
+    /etc/systemd/journald@megaraid-dashboard.conf.d/00-retention.conf
+  systemctl restart "systemd-journald@megaraid-dashboard.service" 2>/dev/null || true
+}
+
+phase_finalize() {
+  log_info "Phase 11: start + smoke"
+
+  systemctl restart megaraid-dashboard.service
+
+  local i
+  for i in {1..30}; do
+    if systemctl is-active --quiet megaraid-dashboard.service; then
+      break
+    fi
+    sleep 1
+  done
+  systemctl is-active --quiet megaraid-dashboard.service || \
+    log_fail "service failed to become active"
+
+  local healthz
+  healthz="$(curl -fs "http://127.0.0.1:${APP_PORT}/healthz" || true)"
+  if [[ -z "${healthz}" ]]; then
+    log_fail "healthz did not respond"
+  fi
+  log_info "healthz: ${healthz}"
+
+  cat <<SUMMARY
+
+==============================
+INSTALL COMPLETE
+==============================
+Service:   megaraid-dashboard.service
+Status:    $(systemctl is-active megaraid-dashboard.service)
+URL:       http://$(hostname -f):${APP_PORT}/  (basic auth)
+Healthz:   http://$(hostname -f):${APP_PORT}/healthz
+Logs:      journalctl --namespace=megaraid-dashboard -f
+Config:    ${ENV_FILE}
+Reload:    sudo systemctl restart megaraid-dashboard.service
+Uninstall: sudo bash ${INSTALL_PREFIX}/src/scripts/uninstall.sh
+
+Reverse proxy: see ${INSTALL_PREFIX}/src/docs/PROXY-SETUP.md
+==============================
+SUMMARY
+}
+
 main() {
   parse_args "$@"
   require_root
@@ -410,6 +494,10 @@ main() {
   phase_pip
   phase_smoke
   phase_config
+  phase_sudoers
+  phase_systemd
+  phase_journald
+  phase_finalize
   log_info "install phases complete"
 }
 
