@@ -6,9 +6,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.db.models import Event
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -64,6 +67,40 @@ def test_drive_locate_start_returns_200_with_auth_and_csrf(
         "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
     }
     assert calls == [["/c0/e2/s0", "start", "locate", "J"]]
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+def test_drive_locate_records_operator_action(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    action: str,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(f"/drives/2:0/locate/{action}", headers=headers)
+
+        assert response.status_code == 200
+        session_factory = test_app.state.session_factory
+        assert isinstance(session_factory, sessionmaker)
+        with session_factory() as session:
+            assert isinstance(session, Session)
+            event = session.scalars(select(Event)).one()
+            assert event.category == "operator_action"
+            assert event.severity == "info"
+            assert event.subject == "Operator action"
+            assert event.summary == f"locate {action} drive 2:0"
+            assert event.operator_username == "admin"
 
 
 def test_drive_locate_start_without_csrf_returns_403(

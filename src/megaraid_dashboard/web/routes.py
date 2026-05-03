@@ -22,6 +22,7 @@ from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
+from megaraid_dashboard.services.audit import record_operator_action
 from megaraid_dashboard.services.drive_actions import LocateAction, build_locate_command
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
@@ -308,6 +309,12 @@ async def _run_locate(
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
+    with _session(request) as session, session.begin():
+        record_operator_action(
+            session,
+            username=str(request.scope.get("user_username", "unknown")),
+            message=f"locate {action} drive {enclosure_id}:{slot_id}",
+        )
     return JSONResponse(
         {
             "action": action,

@@ -205,6 +205,7 @@ class Event(TimestampedMixin, Base):
     summary: Mapped[str] = mapped_column(String, nullable=False)
     before_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     after_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    operator_username: Mapped[str | None] = mapped_column(String, nullable=True)
     notified_at: Mapped[datetime | None] = mapped_column(
         UTCDateTime(),
         nullable=True,

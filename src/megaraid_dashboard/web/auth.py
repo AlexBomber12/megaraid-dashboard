@@ -35,7 +35,8 @@ class BasicAuthMiddleware:
 
         header_value = _get_authorization_header(scope)
         authorization = header_value.decode("latin-1") if header_value is not None else None
-        credentials_valid = _verify_credentials(authorization, self.settings)
+        verified_username = _verified_username(authorization, self.settings)
+        credentials_valid = verified_username is not None
         notify_auth_result = cast(
             "Callable[[bool], Awaitable[None]] | None",
             scope.get(AUTH_RATE_LIMIT_NOTIFY_SCOPE_KEY),
@@ -52,6 +53,7 @@ class BasicAuthMiddleware:
             await response(scope, receive, send)
             return
 
+        scope["user_username"] = verified_username
         await self.app(scope, receive, send)
 
 
@@ -68,34 +70,38 @@ def _get_authorization_header(scope: Scope) -> bytes | None:
 
 
 def _verify_credentials(header_value: str | None, settings: Settings) -> bool:
+    return _verified_username(header_value, settings) is not None
+
+
+def _verified_username(header_value: str | None, settings: Settings) -> str | None:
     if header_value is None:
         LOGGER.info("auth_failure", reason="malformed_header")
-        return False
+        return None
 
     try:
         scheme, token = header_value.split(" ", 1)
     except ValueError:
         LOGGER.info("auth_failure", reason="malformed_header")
-        return False
+        return None
 
     if scheme.lower() != "basic":
         LOGGER.info("auth_failure", reason="malformed_header")
-        return False
+        return None
 
     if _BASIC_TOKEN_RE.fullmatch(token) is None:
         LOGGER.info("auth_failure", reason="malformed_header")
-        return False
+        return None
 
     try:
         decoded = base64.b64decode(token, validate=True).decode("utf-8")
         username, password = decoded.split(":", 1)
     except (binascii.Error, UnicodeDecodeError, ValueError):
         LOGGER.info("auth_failure", reason="malformed_header")
-        return False
+        return None
 
     if not hmac.compare_digest(username.encode(), settings.admin_username.encode()):
         LOGGER.info("auth_failure", reason="unknown_user", username=username[:64])
-        return False
+        return None
 
     try:
         password_valid = bcrypt.checkpw(
@@ -105,10 +111,10 @@ def _verify_credentials(header_value: str | None, settings: Settings) -> bool:
     except ValueError:
         LOGGER.error("bcrypt_hash_invalid")
         LOGGER.info("auth_failure", reason="bcrypt_hash_invalid", username=username[:64])
-        return False
+        return None
 
     if not password_valid:
         LOGGER.info("auth_failure", reason="bad_password", username=username[:64])
-        return False
+        return None
 
-    return True
+    return username

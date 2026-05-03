@@ -63,6 +63,24 @@ def test_alembic_adds_nullable_roc_temperature_column() -> None:
         engine.dispose()
 
 
+def test_alembic_adds_nullable_operator_username_column() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+
+            command.upgrade(config, "head")
+
+            columns = {
+                column["name"]: column for column in inspect(connection).get_columns("events")
+            }
+            operator_username_column = columns["operator_username"]
+            assert isinstance(operator_username_column["type"], sa.String)
+            assert operator_username_column["nullable"] is True
+    finally:
+        engine.dispose()
+
+
 def test_alembic_roc_temperature_downgrade_and_upgrade_round_trip() -> None:
     engine = get_engine("sqlite:///:memory:")
     try:
@@ -124,6 +142,59 @@ def test_alembic_roc_temperature_downgrade_and_upgrade_round_trip() -> None:
                 column["name"] for column in inspect(connection).get_columns("controller_snapshots")
             }
             assert "roc_temperature_celsius" in upgraded_columns
+    finally:
+        engine.dispose()
+
+
+def test_alembic_operator_username_downgrade_and_upgrade_round_trip() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+
+            command.upgrade(config, "head")
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO events (
+                        occurred_at,
+                        severity,
+                        category,
+                        subject,
+                        summary,
+                        operator_username
+                    )
+                    VALUES (
+                        :occurred_at,
+                        :severity,
+                        :category,
+                        :subject,
+                        :summary,
+                        :operator_username
+                    )
+                    """
+                ),
+                {
+                    "occurred_at": "2026-05-03 00:00:00",
+                    "severity": "info",
+                    "category": "operator_action",
+                    "subject": "Operator action",
+                    "summary": "locate start drive 2:0",
+                    "operator_username": "admin",
+                },
+            )
+
+            command.downgrade(config, "0004_controller_roc_temperature")
+            downgraded_columns = {
+                column["name"] for column in inspect(connection).get_columns("events")
+            }
+            assert "operator_username" not in downgraded_columns
+
+            command.upgrade(config, "head")
+            upgraded_columns = {
+                column["name"] for column in inspect(connection).get_columns("events")
+            }
+            assert "operator_username" in upgraded_columns
     finally:
         engine.dispose()
 
