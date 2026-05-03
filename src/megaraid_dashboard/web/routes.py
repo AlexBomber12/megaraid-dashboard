@@ -388,15 +388,42 @@ def _events_fragment_response(
     since_id = _parse_events_since(since)
     categories, severities = _event_filter_values(request)
     view_model: EventsPageViewModel | EventsFragmentViewModel
+    render_events_data_oob = False
+    render_events_load_more_oob = cursor is None and since_id is None
+    render_events_page_items = cursor is not None
+    render_events_poller_oob = False
+    render_events_since_oob = since_id is not None
     with _session(request) as session:
         if since_id is not None:
-            view_model = load_events_fragment(
-                session,
-                page_size=EVENTS_PAGE_SIZE,
-                categories=categories,
-                severities=severities,
-                since=since_id,
-            )
+            if since_id == 0:
+                page_view_model = load_events_page(
+                    session,
+                    page_size=EVENTS_PAGE_SIZE,
+                    categories=categories,
+                    severities=severities,
+                )
+                if page_view_model.events:
+                    view_model = page_view_model
+                    render_events_data_oob = True
+                    render_events_load_more_oob = True
+                    render_events_poller_oob = True
+                    render_events_since_oob = False
+                else:
+                    view_model = load_events_fragment(
+                        session,
+                        page_size=EVENTS_PAGE_SIZE,
+                        categories=categories,
+                        severities=severities,
+                        since=since_id,
+                    )
+            else:
+                view_model = load_events_fragment(
+                    session,
+                    page_size=EVENTS_PAGE_SIZE,
+                    categories=categories,
+                    severities=severities,
+                    since=since_id,
+                )
             template_name = "partials/events_data.html"
         elif cursor is None:
             view_model = load_events_page(
@@ -422,10 +449,12 @@ def _events_fragment_response(
         name=template_name,
         context={
             "events_poll_since": max(since_id or 0, view_model.latest_event_id),
-            "render_events_load_more_oob": cursor is None and since_id is None,
-            "render_events_since_oob": since_id is not None,
+            "render_events_data_oob": render_events_data_oob,
+            "render_events_load_more_oob": render_events_load_more_oob,
+            "render_events_poller_oob": render_events_poller_oob,
+            "render_events_since_oob": render_events_since_oob,
             "render_events_page_fragment": cursor is None and since_id is None,
-            "render_events_page_items": cursor is not None,
+            "render_events_page_items": render_events_page_items,
             "view_model": view_model,
             **_events_filter_context(request=request, categories=categories, severities=severities),
             **_events_empty_context(request=request, view_model=view_model),

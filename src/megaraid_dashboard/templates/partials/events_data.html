@@ -33,8 +33,8 @@
         class="button"
         type="button"
         hx-get="{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}before_occurred_at={{ cursor.before_occurred_at_iso | urlencode }}&before_id={{ cursor.before_id }}"
-        hx-target="#events-pagination"
-        hx-swap="outerHTML"
+        hx-target="#events-list"
+        hx-swap="beforeend"
       >Load more</button>
     {% endif %}
   </div>
@@ -59,9 +59,13 @@
   {% if view_model.events %}
     {{ event_items(view_model.events) }}
   {% endif %}
-  {{ load_more_button(view_model.next_cursor) }}
+  {{ load_more_button(view_model.next_cursor, swap_oob=true) }}
 {% else %}
-  <div id="events-data" class="data-block">
+  <div
+    id="events-data"
+    class="data-block"
+    {% if render_events_data_oob | default(false) %}hx-swap-oob="outerHTML"{% endif %}
+  >
     {% if view_model.events or view_model.latest_captured_at is not none %}
       <section class="page-title">
         <h1>Events</h1>
@@ -122,5 +126,8 @@
   </div>
 
   {{ load_more_button(view_model.next_cursor, swap_oob=render_events_load_more_oob | default(false)) }}
-  {{ events_poller(events_poll_since | default(view_model.latest_event_id)) }}
+  {{ events_poller(
+    events_poll_since | default(view_model.latest_event_id),
+    swap_oob=render_events_poller_oob | default(false),
+  ) }}
 {% endif %}

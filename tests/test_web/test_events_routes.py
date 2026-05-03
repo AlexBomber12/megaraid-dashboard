@@ -116,7 +116,8 @@ def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
         response = client.get("/partials/events")
 
     assert response.status_code == 200
-    assert response.text.lstrip().startswith('<div id="events-data"')
+    assert response.text.lstrip().startswith("<div")
+    assert 'id="events-data"' in response.text
     assert "event-50" in response.text
     assert "Load more" in response.text
     assert 'id="events-pagination"' in response.text
@@ -149,8 +150,8 @@ def test_events_partial_without_cursor_refreshes_header_timestamp(
 def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
-        inserted = _insert_app_events(test_app, count=51)
-        cursor_event = inserted[1]
+        inserted = _insert_app_events(test_app, count=102)
+        cursor_event = inserted[51]
 
         response = client.get(
             "/partials/events",
@@ -165,8 +166,11 @@ def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     assert "<thead>" not in response.text
     assert "<li" in response.text
     assert "<!doctype html>" not in response.text
-    assert "event-0" in response.text
-    assert "event-1" not in response.text
+    assert "event-50" in response.text
+    assert "event-51" not in response.text
+    assert 'id="events-pagination" hx-swap-oob="true"' in response.text
+    assert 'hx-target="#events-list"' in response.text
+    assert 'hx-swap="beforeend"' in response.text
 
 
 def test_events_category_filter_is_preserved_across_partial_requests() -> None:
@@ -282,6 +286,24 @@ def test_events_since_poll_returns_oob_newer_events_only() -> None:
     assert "new-event" in response.text
     assert "old-event" not in response.text
     assert 'id="events-poller"' in response.text
+
+
+def test_events_since_poll_replaces_empty_state_when_first_events_arrive() -> None:
+    test_app = create_app()
+    base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_event(test_app, occurred_at=base_time, subject="first-event")
+
+        response = client.get("/events", params={"since": "0"}, headers={"HX-Request": "true"})
+
+    assert response.status_code == 200
+    assert '<div\n    id="events-data"' in response.text
+    assert 'hx-swap-oob="outerHTML"' in response.text
+    assert 'id="events-list"' in response.text
+    assert "first-event" in response.text
+    assert 'hx-swap-oob="afterbegin:#events-list"' not in response.text
+    assert 'id="events-poller"' in response.text
+    assert 'hx-swap-oob="true"' in response.text
 
 
 def test_events_since_poll_preserves_since_when_no_new_events() -> None:
