@@ -696,6 +696,94 @@ def test_drive_replace_insert_matches_slot_when_audit_ends_at_slot(
         assert body["last_audit"] == "locate start drive 2:1"
 
 
+def test_drive_replace_topology_scopes_row_to_target_disk_group() -> None:
+    """On a multi-DG host, ``row`` must count only peers in the target's DG.
+
+    With two arrays (DG=0 at slots 2:0..2:2 and DG=1 at slots 2:5..2:7),
+    target slot 2:6 sits at row 1 of DG=1, not row 4 of the global member
+    list. Without DG-scoped row computation, drives from unrelated arrays
+    inflate the row index and misdirect the rebuild.
+    """
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Earlier snapshot recording the failed slot's prior DG=1 membership.
+        _seed_drives(
+            test_app,
+            drives=[(2, 6, "WD-DG1-1-OLD", "Failed", 1)],
+            captured_at=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+        )
+        # Latest snapshot: post-swap, target is UGood with no DG.
+        _seed_drives(
+            test_app,
+            drives=[
+                (2, 0, "WD-DG0-0", "Onln", 0),
+                (2, 1, "WD-DG0-1", "Onln", 0),
+                (2, 2, "WD-DG0-2", "Onln", 0),
+                (2, 5, "WD-DG1-0", "Onln", 1),
+                (2, 6, _NEW_SERIAL, "UGood", None),
+                (2, 7, "WD-DG1-2", "Onln", 1),
+            ],
+            captured_at=datetime(2026, 5, 3, 12, 0, tzinfo=UTC),
+        )
+        response = client.get("/drives/2:6/replace/topology")
+    assert response.status_code == 200
+    body = response.json()
+    # DG=1 members ordered by slot: 2:5, 2:6, 2:7 → target row=1.
+    assert body == {
+        "enclosure": 2,
+        "slot": 6,
+        "dg": 1,
+        "array": 0,
+        "row": 1,
+    }
+
+
+def test_drive_replace_topology_uses_disk_group_when_dg_and_vd_id_diverge() -> None:
+    """DG and VD IDs can diverge after VD delete/recreate workflows.
+
+    A snapshot may report DG=2 with a VD whose ``vd_id=0``. The ``dg``
+    argument must follow the physical drive's disk-group membership, not
+    the VD's identifier — otherwise ``insert dg=0 ...`` would target a
+    disk group that doesn't include the failed slot.
+    """
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drives(
+            test_app,
+            drives=[
+                (2, 0, _NEW_SERIAL, "Onln", 2),
+                (2, 1, "WD-PEER", "Onln", 2),
+            ],
+        )
+        # VD reuses id 0 even though the drives belong to DG=2.
+        _seed_virtual_drive(test_app, vd_id=0)
+        response = client.get("/drives/2:0/replace/topology")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["dg"] == 2
+        assert body["row"] == 0
+
+
+def test_drive_replace_topology_refuses_when_target_dg_unknown_in_multi_dg() -> None:
+    """If the target slot has no DG history and the snapshot has multiple
+    DGs, refuse to derive rather than guess. Returning a destructive ``dg=``
+    argument blindly here is what turned Step 3 into a mis-target risk.
+    """
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drives(
+            test_app,
+            drives=[
+                (2, 0, "WD-DG0-0", "Onln", 0),
+                (2, 1, "WD-DG0-1", "Onln", 0),
+                (2, 5, "WD-DG1-0", "Onln", 1),
+                (2, 6, _NEW_SERIAL, "UGood", None),
+            ],
+        )
+        response = client.get("/drives/2:6/replace/topology")
+        assert response.status_code == 404
+
+
 def test_drive_replace_topology_returns_404_when_no_snapshot() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
@@ -861,6 +949,7 @@ def _seed_drive(
     enclosure_id: int = 2,
     slot_id: int = 0,
     captured_at: datetime | None = None,
+    disk_group_id: int | None = 0,
 ) -> None:
     session_factory = test_app.state.session_factory
     assert isinstance(session_factory, sessionmaker)
@@ -891,6 +980,7 @@ def _seed_drive(
                 interface="SATA",
                 media_type="HDD",
                 state=state,
+                disk_group_id=disk_group_id,
                 temperature_celsius=40,
                 media_errors=0,
                 other_errors=0,
@@ -903,15 +993,33 @@ def _seed_drive(
         session.commit()
 
 
+_MEMBER_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Rbld", "Failed"})
+
+_DriveTuple = tuple[int, int, str, str] | tuple[int, int, str, str, int | None]
+
+
+def _default_dg_for_state(state: str) -> int | None:
+    """Default DG membership for legacy ``_seed_drives`` callers.
+
+    Member-like states (``Onln``/``Offln``/``Rbld``/``Failed``) historically
+    share a single DG=0; spares and unconfigured drives are not in any DG.
+    Multi-DG layouts must use the explicit-tuple form of ``_seed_drives``.
+    """
+    return 0 if state in _MEMBER_STATES else None
+
+
 def _seed_drives(
     test_app: FastAPI,
     *,
-    drives: list[tuple[int, int, str, str]],
+    drives: list[_DriveTuple],
     captured_at: datetime | None = None,
 ) -> None:
     """Seed a single controller snapshot containing multiple physical drives.
 
-    Each tuple is ``(enclosure_id, slot_id, serial_number, state)``.
+    Each tuple is ``(enclosure_id, slot_id, serial_number, state)`` or
+    ``(enclosure_id, slot_id, serial_number, state, disk_group_id)``. When
+    omitted, ``disk_group_id`` is inferred from state (member states default
+    to ``0``; spares/unconfigured drives default to ``None``).
     """
     session_factory = test_app.state.session_factory
     assert isinstance(session_factory, sessionmaker)
@@ -930,27 +1038,35 @@ def _seed_drives(
             bbu_present=False,
             roc_temperature_celsius=55,
         )
-        controller.physical_drives = [
-            PhysicalDriveSnapshot(
-                enclosure_id=enclosure_id,
-                slot_id=slot_id,
-                device_id=10 + index,
-                model="WDC WD30EFRX-68EUZN0",
-                serial_number=serial_number,
-                firmware_version="82.00A82",
-                size_bytes=3_000_000_000_000,
-                interface="SATA",
-                media_type="HDD",
-                state=state,
-                temperature_celsius=40,
-                media_errors=0,
-                other_errors=0,
-                predictive_failures=0,
-                smart_alert=False,
-                sas_address=f"0x4433221100000{index:03d}",
+        physical_drives: list[PhysicalDriveSnapshot] = []
+        for index, drive in enumerate(drives):
+            if len(drive) == 5:
+                enclosure_id, slot_id, serial_number, state, disk_group_id = drive
+            else:
+                enclosure_id, slot_id, serial_number, state = drive
+                disk_group_id = _default_dg_for_state(state)
+            physical_drives.append(
+                PhysicalDriveSnapshot(
+                    enclosure_id=enclosure_id,
+                    slot_id=slot_id,
+                    device_id=10 + index,
+                    model="WDC WD30EFRX-68EUZN0",
+                    serial_number=serial_number,
+                    firmware_version="82.00A82",
+                    size_bytes=3_000_000_000_000,
+                    interface="SATA",
+                    media_type="HDD",
+                    state=state,
+                    disk_group_id=disk_group_id,
+                    temperature_celsius=40,
+                    media_errors=0,
+                    other_errors=0,
+                    predictive_failures=0,
+                    smart_alert=False,
+                    sas_address=f"0x4433221100000{index:03d}",
+                )
             )
-            for index, (enclosure_id, slot_id, serial_number, state) in enumerate(drives)
-        ]
+        controller.physical_drives = physical_drives
         session.add(controller)
         session.commit()
 

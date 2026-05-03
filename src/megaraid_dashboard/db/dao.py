@@ -66,6 +66,7 @@ def insert_snapshot(
             interface=physical_drive.interface,
             media_type=physical_drive.media_type,
             state=physical_drive.state,
+            disk_group_id=physical_drive.disk_group_id,
             temperature_celsius=physical_drive.temperature_celsius,
             media_errors=physical_drive.media_errors,
             other_errors=physical_drive.other_errors,

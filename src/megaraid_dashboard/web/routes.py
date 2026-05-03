@@ -28,7 +28,6 @@ from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
     PhysicalDriveSnapshot,
-    VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.audit import record_operator_action
 from megaraid_dashboard.services.drive_actions import (
@@ -1010,64 +1009,73 @@ def _extract_serial_from_audit(message: str) -> str | None:
     return None
 
 
-_ARRAY_MEMBER_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Rbld", "Failed"})
-
-
 def _compute_slot_topology(
     *,
     request: Request,
     enclosure_id: int,
     slot_id: int,
 ) -> _SlotTopology | None:
-    """Derive ``dg`` / ``array`` / ``row`` for a slot from the latest snapshot.
+    """Derive ``dg`` / ``array`` / ``row`` for a slot from snapshot DG membership.
 
-    The schema does not store per-drive DG membership, so the row is
-    approximated as the target slot's position among slots whose state
-    indicates array membership (``Onln``/``Offln``/``Rbld``/``Failed``).
-    Hot spares (``GHS``/``DHS``) and unconfigured drives (``UGood``/``UBad``)
-    are excluded so gaps and spares do not skew the row index. The target
-    slot itself is always counted, since after the physical swap it holds a
-    fresh ``UGood`` drive that still occupies the failed member's position.
-    ``dg`` defaults to the lowest ``vd_id`` (production has a single DG) and
-    ``array`` defaults to ``0`` (single-span arrays). The PR description
-    documents that hand-verification on real hardware is the source of truth.
+    ``dg`` is the target slot's last-known disk group, looked up in the most
+    recent snapshot where this slot had a non-null ``disk_group_id`` (after a
+    physical swap the current snapshot may show a fresh ``UGood`` drive with
+    no DG, so we walk back to find the configured DG the slot belonged to).
+
+    ``row`` is the target slot's position among peer slots in the SAME DG,
+    sorted by ``(enclosure, slot)``. Drives outside the target DG never
+    influence the row, so a multi-DG host cannot inflate it. The target slot
+    is always included so a UGood replacement drive still occupies the failed
+    member's row.
+
+    ``array`` defaults to ``0`` (single-span arrays) — the production
+    deployment uses single-span RAID, and hand-verification on real hardware
+    against ``storcli /c0/eX/sY show all J`` is the final check.
     """
     with _session(request) as session:
+        latest_snapshot_id = session.scalar(
+            select(ControllerSnapshot.id).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
+        )
+        if latest_snapshot_id is None:
+            return None
         physical_slots = session.scalars(
-            select(PhysicalDriveSnapshot)
-            .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
-            .where(
-                ControllerSnapshot.id
-                == select(ControllerSnapshot.id)
-                .order_by(ControllerSnapshot.captured_at.desc())
-                .limit(1)
-                .scalar_subquery()
+            select(PhysicalDriveSnapshot).where(
+                PhysicalDriveSnapshot.snapshot_id == latest_snapshot_id
             )
         ).all()
         if not physical_slots:
             return None
         target = (enclosure_id, slot_id)
-        slot_states = {(pd.enclosure_id, pd.slot_id): pd.state for pd in physical_slots}
-        if target not in slot_states:
+        if target not in {(pd.enclosure_id, pd.slot_id) for pd in physical_slots}:
             return None
-        member_keys = {key for key, state in slot_states.items() if state in _ARRAY_MEMBER_STATES}
+        target_dg = session.scalar(
+            select(PhysicalDriveSnapshot.disk_group_id)
+            .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
+            .where(PhysicalDriveSnapshot.enclosure_id == enclosure_id)
+            .where(PhysicalDriveSnapshot.slot_id == slot_id)
+            .where(PhysicalDriveSnapshot.disk_group_id.is_not(None))
+            .order_by(ControllerSnapshot.captured_at.desc(), PhysicalDriveSnapshot.id.desc())
+            .limit(1)
+        )
+        if target_dg is None:
+            # No history of DG membership for this slot. Fall back to the
+            # current snapshot's DGs only when there is EXACTLY ONE — the
+            # single-DG production case. With multiple DGs present we have
+            # no safe way to pick, so refuse to derive rather than guess a
+            # destructive ``dg=`` argument.
+            distinct_dgs = {
+                pd.disk_group_id for pd in physical_slots if pd.disk_group_id is not None
+            }
+            if len(distinct_dgs) != 1:
+                return None
+            target_dg = next(iter(distinct_dgs))
+        member_keys = {
+            (pd.enclosure_id, pd.slot_id) for pd in physical_slots if pd.disk_group_id == target_dg
+        }
         member_keys.add(target)
         ordered = sorted(member_keys)
         row = ordered.index(target)
-        dg = session.scalar(
-            select(VirtualDriveSnapshot.vd_id)
-            .join(ControllerSnapshot, VirtualDriveSnapshot.snapshot_id == ControllerSnapshot.id)
-            .where(
-                ControllerSnapshot.id
-                == select(ControllerSnapshot.id)
-                .order_by(ControllerSnapshot.captured_at.desc())
-                .limit(1)
-                .scalar_subquery()
-            )
-            .order_by(VirtualDriveSnapshot.vd_id)
-            .limit(1)
-        )
-        return _SlotTopology(dg=int(dg) if dg is not None else 0, array=0, row=row)
+        return _SlotTopology(dg=int(target_dg), array=0, row=row)
 
 
 def _record_insert_operator_action_sync(
