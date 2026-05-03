@@ -89,6 +89,9 @@ def test_temperature_threshold_defaults_validate(monkeypatch: pytest.MonkeyPatch
     assert settings.auth_rate_limit_per_minute == 5
     assert settings.auth_rate_limit_burst == 2
     assert settings.trusted_proxy_ips == ""
+    assert settings.disk_warning_free_mb == 500
+    assert settings.disk_critical_free_mb == 100
+    assert settings.disk_check_interval_minutes == 60
 
 
 def test_temperature_critical_must_exceed_warning(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -210,6 +213,46 @@ def test_metrics_interval_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "0")
 
     with pytest.raises(ValidationError, match="metrics_interval_seconds"):
+        Settings()
+
+
+def test_disk_warning_free_mb_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("DISK_WARNING_FREE_MB", "0")
+
+    with pytest.raises(ValidationError, match="disk_warning_free_mb"):
+        Settings()
+
+
+def test_disk_critical_free_mb_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("DISK_CRITICAL_FREE_MB", "0")
+
+    with pytest.raises(ValidationError, match="disk_critical_free_mb"):
+        Settings()
+
+
+def test_disk_critical_free_mb_must_be_less_than_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("DISK_WARNING_FREE_MB", "500")
+    monkeypatch.setenv("DISK_CRITICAL_FREE_MB", "500")
+
+    with pytest.raises(
+        ValidationError,
+        match="disk_critical_free_mb must be less than disk_warning_free_mb",
+    ):
+        Settings()
+
+
+def test_disk_check_interval_minutes_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("DISK_CHECK_INTERVAL_MINUTES", "0")
+
+    with pytest.raises(ValidationError, match="disk_check_interval_minutes"):
         Settings()
 
 

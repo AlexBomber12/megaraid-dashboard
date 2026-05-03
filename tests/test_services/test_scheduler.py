@@ -301,7 +301,11 @@ async def test_start_registers_jobs_and_shutdown_stops_scheduler(
             "metrics_collector",
             "metrics_retention",
             "event_notifier",
+            "disk_space_monitor",
         }
+        disk_space_job = scheduler.get_job("disk_space_monitor")
+        assert disk_space_job is not None
+        assert str(disk_space_job.trigger) == "interval[1:00:00]"
     finally:
         await service.shutdown(scheduler)
 
