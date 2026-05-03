@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     roc_temp_critical_celsius: int = 105
     roc_temp_hysteresis_celsius: int = 5
     cv_capacitance_warning_percent: int = 70
+    disk_warning_free_mb: int = 500
+    disk_critical_free_mb: int = 100
+    disk_check_interval_minutes: int = 60
     database_url: str = "sqlite:///./megaraid.db"
     log_level: str = Field(...)
 
@@ -60,6 +63,18 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if not 1 <= self.cv_capacitance_warning_percent <= 100:
             msg = "cv_capacitance_warning_percent must be between 1 and 100"
+            raise ValueError(msg)
+        if self.disk_warning_free_mb <= 0:
+            msg = "disk_warning_free_mb must be positive"
+            raise ValueError(msg)
+        if self.disk_critical_free_mb <= 0:
+            msg = "disk_critical_free_mb must be positive"
+            raise ValueError(msg)
+        if self.disk_critical_free_mb >= self.disk_warning_free_mb:
+            msg = "disk_critical_free_mb must be less than disk_warning_free_mb"
+            raise ValueError(msg)
+        if self.disk_check_interval_minutes <= 0:
+            msg = "disk_check_interval_minutes must be positive"
             raise ValueError(msg)
         if not self.collector_lock_path.strip():
             msg = "collector_lock_path must not be empty"

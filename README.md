@@ -288,6 +288,9 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 | `ALERT_SEVERITY_THRESHOLD` | str | `critical` | Lowest severity that triggers an alert. One of `info`, `warning`, `critical`. Consumed by the notifier. |
 | `ALERT_SUPPRESS_WINDOW_MINUTES` | int | `60` | Minutes to suppress duplicate alerts for the same `(severity, category, subject)`. Consumed by the notifier. |
 | `ALERT_THROTTLE_PER_HOUR` | int | `20` | Soft cap on alerts sent per trailing hour. The notifier logs a warning when exceeded but continues sending. |
+| `DISK_WARNING_FREE_MB` | int | `500` | Warning threshold for free space on the partition containing `DATABASE_URL`; must be positive and above critical. |
+| `DISK_CRITICAL_FREE_MB` | int | `100` | Critical threshold for free space on the partition containing `DATABASE_URL`; must be positive and below warning. |
+| `DISK_CHECK_INTERVAL_MINUTES` | int | `60` | Minutes between free-space probes. Each probe can emit at most one `disk_space` event. |
 | `ROC_TEMP_WARNING_CELSIUS` | int | `95` | RoC warning threshold in C; must be in `[40, 130]` and below critical. |
 | `ROC_TEMP_CRITICAL_CELSIUS` | int | `105` | RoC critical threshold in C; must be in `[40, 130]` and above warning. |
 | `ROC_TEMP_HYSTERESIS_CELSIUS` | int | `5` | RoC hysteresis in C; must be at least 1 and below warning. |

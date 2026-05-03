@@ -32,6 +32,7 @@ from megaraid_dashboard.db.retention import (
     prune_raw_snapshots,
 )
 from megaraid_dashboard.services.collector import collect_storcli_snapshot
+from megaraid_dashboard.services.disk_monitor import check_data_partition_free_space
 from megaraid_dashboard.services.event_detector import DetectedEvent, EventDetector
 from megaraid_dashboard.services.notifier import _LOCK_PATH_DEFAULT, run_notifier_cycle
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
@@ -207,6 +208,16 @@ class CollectorService:
             coalesce=True,
             max_instances=1,
         )
+        scheduler.add_job(
+            self._run_disk_space_monitor_job,
+            "interval",
+            minutes=self.settings.disk_check_interval_minutes,
+            id="disk_space_monitor",
+            replace_existing=True,
+            misfire_grace_time=60,
+            coalesce=True,
+            max_instances=1,
+        )
         scheduler.start()
         return scheduler
 
@@ -228,6 +239,25 @@ class CollectorService:
 
     async def _run_notifier_job(self) -> None:
         await self._run_tracked_job(self._run_notifier_once)
+
+    async def _run_disk_space_monitor_job(self) -> None:
+        await self._run_tracked_job(self._run_disk_space_monitor_once)
+
+    async def _run_disk_space_monitor_once(self) -> None:
+        async with self._write_lock:
+            await asyncio.to_thread(self._run_disk_space_monitor_transaction)
+
+    def _run_disk_space_monitor_transaction(self) -> None:
+        with self.session_factory() as session:
+            events = check_data_partition_free_space(
+                session,
+                settings=self.settings,
+                now=self.clock(),
+            )
+            for event in events:
+                session.add(event)
+            if events:
+                session.commit()
 
     async def _run_notifier_once(self) -> None:
         async with self._write_lock:
