@@ -262,6 +262,8 @@ prompt_config_value() {
   local current
   current="$(env_file_value "${var}")"
 
+  # target is a nameref; assignments update the requested config variable.
+  # shellcheck disable=SC2034
   local -n target="${var}"
   if [[ -n "${current}" && "${FORCE_RECONFIG}" != "true" ]]; then
     log_info "${var} already set, keep"
