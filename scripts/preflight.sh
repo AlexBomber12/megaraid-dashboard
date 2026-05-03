@@ -1,23 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_ROOT="$(dirname "${SCRIPT_DIR}")"
+APP_ROOT="${INSTALL_ROOT}"
+if [[ ! -f "${APP_ROOT}/alembic.ini" && -f "${INSTALL_ROOT}/src/alembic.ini" ]]; then
+  APP_ROOT="${INSTALL_ROOT}/src"
+fi
 
-if [[ ! -x .venv/bin/alembic ]]; then
+if [[ ! -x "${INSTALL_ROOT}/.venv/bin/alembic" ]]; then
   echo "ERROR: .venv/bin/alembic not found or not executable" >&2
   exit 127
 fi
 
-if [[ ! -x .venv/bin/python ]]; then
+if [[ ! -x "${INSTALL_ROOT}/.venv/bin/python" ]]; then
   echo "ERROR: .venv/bin/python not found or not executable" >&2
   exit 127
 fi
 
+if [[ ! -f "${APP_ROOT}/alembic.ini" ]]; then
+  echo "ERROR: alembic.ini not found under ${APP_ROOT}" >&2
+  exit 1
+fi
+
+cd "${APP_ROOT}"
+
 echo "==> alembic upgrade head"
-.venv/bin/alembic upgrade head
+"${INSTALL_ROOT}/.venv/bin/alembic" -c "${APP_ROOT}/alembic.ini" upgrade head
 
 echo "==> DB writability probe"
-.venv/bin/python - <<'PY'
+"${INSTALL_ROOT}/.venv/bin/python" - <<'PY'
 from __future__ import annotations
 
 import os

@@ -11,6 +11,7 @@ ENV_FILE="${ENV_FILE:-${ETC_DIR}/env}"
 STORCLI_PATH="${STORCLI_PATH:-/usr/local/sbin/storcli64}"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 APP_PORT="${APP_PORT:-8090}"
+SUDOERS_FILE="${SUDOERS_FILE:-/etc/sudoers.d/megaraid-dashboard}"
 NON_INTERACTIVE="false"
 FORCE_RECONFIG="false"
 MISSING_CONFIG_VARS=()
@@ -22,12 +23,41 @@ log_fail() {
   exit 1
 }
 
+sed_replacement_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//&/\\&}"
+  value="${value//|/\\|}"
+  printf "%s\n" "${value}"
+}
+
 require_root() {
   [[ ${EUID} -eq 0 ]] || log_fail "must run as root"
 }
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+healthz_status_ok() {
+  local body="$1"
+  python3 -c '
+import json
+import sys
+
+try:
+    payload = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+    sys.exit(1)
+
+sys.exit(0 if payload.get("status") == "ok" else 1)
+' <<<"${body}"
+}
+
+source_repo_root() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  dirname "${script_dir}"
 }
 
 parse_args() {
@@ -68,6 +98,36 @@ validate_install_user() {
     log_fail "user ${INSTALL_USER} shell is ${shell}, expected /usr/sbin/nologin"
   [[ "${group_name}" == "${INSTALL_USER}" ]] || \
     log_fail "user ${INSTALL_USER} primary group is ${group_name}, expected ${INSTALL_USER}"
+}
+
+validate_root_owned_not_writable() {
+  local path="$1"
+  local owner perms
+
+  read -r owner perms < <(stat -Lc "%u %A" -- "${path}") || \
+    log_fail "failed to stat ${path}"
+
+  [[ "${owner}" == "0" ]] || log_fail "${path} must be owned by root before sudoers grant"
+  [[ "${perms:5:1}" != "w" && "${perms:8:1}" != "w" ]] || \
+    log_fail "${path} must not be writable by group or other before sudoers grant"
+}
+
+validate_storcli_sudo_target() {
+  [[ "${STORCLI_PATH}" = /* ]] || log_fail "storcli path must be absolute: ${STORCLI_PATH}"
+  [[ -e "${STORCLI_PATH}" ]] || log_fail "storcli64 not found at ${STORCLI_PATH}"
+  [[ -f "${STORCLI_PATH}" ]] || log_fail "storcli path is not a regular file: ${STORCLI_PATH}"
+  [[ -x "${STORCLI_PATH}" ]] || log_fail "storcli64 is not executable at ${STORCLI_PATH}"
+  [[ ! -L "${STORCLI_PATH}" ]] || log_fail "storcli path must not be a symlink: ${STORCLI_PATH}"
+
+  validate_root_owned_not_writable "${STORCLI_PATH}"
+
+  local parent
+  parent="$(dirname "${STORCLI_PATH}")"
+  while [[ "${parent}" != "/" ]]; do
+    validate_root_owned_not_writable "${parent}"
+    parent="$(dirname "${parent}")"
+  done
+  validate_root_owned_not_writable "/"
 }
 
 os_release_value() {
@@ -170,10 +230,8 @@ phase_pip() {
   require_pypi_reachable
 
   local src_dir="${INSTALL_PREFIX}/src"
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local repo_root
-  repo_root="$(dirname "${script_dir}")"
+  repo_root="$(source_repo_root)"
 
   command_exists git || log_fail "git not found"
   command_exists tar || log_fail "tar not found"
@@ -400,6 +458,145 @@ EOF
   log_info "wrote ${ENV_FILE}"
 }
 
+phase_sudoers() {
+  log_info "Phase 8: sudoers"
+
+  local sudoers_dir sudoers_tmp
+  sudoers_dir="$(dirname "${SUDOERS_FILE}")"
+  sudoers_tmp="${SUDOERS_FILE}.tmp"
+
+  validate_storcli_sudo_target
+
+  install -d -m 0755 "${sudoers_dir}"
+  cat >"${sudoers_tmp}" <<EOF
+Cmnd_Alias MEGARAID_DASHBOARD_STORCLI = ${STORCLI_PATH} /c0 show all J, \
+  ${STORCLI_PATH} /c0/vall show all J, \
+  ${STORCLI_PATH} /c0/eall/sall show all J, \
+  ${STORCLI_PATH} /c0/cv show all J, \
+  ${STORCLI_PATH} /c0/bbu show all J
+${INSTALL_USER} ALL=(root) NOPASSWD: MEGARAID_DASHBOARD_STORCLI
+EOF
+  chmod 0440 "${sudoers_tmp}"
+  if visudo -c -f "${sudoers_tmp}" >/dev/null 2>&1; then
+    mv "${sudoers_tmp}" "${SUDOERS_FILE}"
+    log_info "wrote ${SUDOERS_FILE}"
+  else
+    rm -f "${sudoers_tmp}"
+    log_fail "sudoers fragment failed visudo check"
+  fi
+}
+
+phase_systemd() {
+  log_info "Phase 9: systemd unit"
+
+  local repo_root unit_template unit_tmp
+  repo_root="$(source_repo_root)"
+  unit_template="${repo_root}/deploy/megaraid-dashboard.service"
+  unit_tmp="$(mktemp /tmp/megaraid-dashboard.service.XXXXXXXX)"
+
+  install -d -m 0750 -o root -g "${INSTALL_USER}" "${INSTALL_PREFIX}/scripts"
+  install -m 0750 -o root -g "${INSTALL_USER}" \
+    "${repo_root}/scripts/preflight.sh" \
+    "${INSTALL_PREFIX}/scripts/preflight.sh"
+  install -m 0750 -o root -g "${INSTALL_USER}" \
+    "${repo_root}/scripts/uninstall.sh" \
+    "${INSTALL_PREFIX}/scripts/uninstall.sh"
+
+  if ! sed \
+    -e "s|User=raid-monitor|User=$(sed_replacement_escape "${INSTALL_USER}")|" \
+    -e "s|Group=raid-monitor|Group=$(sed_replacement_escape "${INSTALL_USER}")|" \
+    -e "s|/opt/megaraid-dashboard|$(sed_replacement_escape "${INSTALL_PREFIX}")|g" \
+    -e "s|/var/lib/megaraid-dashboard|$(sed_replacement_escape "${DATA_DIR}")|g" \
+    -e "s|/etc/megaraid-dashboard/env|$(sed_replacement_escape "${ENV_FILE}")|g" \
+    -e "s|--port 8090|--port $(sed_replacement_escape "${APP_PORT}")|" \
+    "${unit_template}" >"${unit_tmp}"; then
+    rm -f "${unit_tmp}"
+    log_fail "failed to render systemd unit"
+  fi
+
+  if ! install -m 0644 -o root -g root "${unit_tmp}" /etc/systemd/system/megaraid-dashboard.service; then
+    rm -f "${unit_tmp}"
+    log_fail "failed to install systemd unit"
+  fi
+  rm -f "${unit_tmp}"
+  systemctl daemon-reload
+  systemctl enable megaraid-dashboard.service
+  systemctl start megaraid-dashboard.service
+}
+
+phase_journald() {
+  log_info "Phase 10: journald drop-in"
+
+  local repo_root
+  repo_root="$(source_repo_root)"
+
+  install -d -m 0755 /etc/systemd/journald@megaraid-dashboard.conf.d
+  install -m 0644 -o root -g root \
+    "${repo_root}/deploy/journald-megaraid.conf" \
+    /etc/systemd/journald@megaraid-dashboard.conf.d/00-retention.conf
+  systemctl restart "systemd-journald@megaraid-dashboard.service" 2>/dev/null || true
+}
+
+phase_finalize() {
+  log_info "Phase 11: start + smoke"
+
+  systemctl restart megaraid-dashboard.service
+
+  for ((attempt = 1; attempt <= 30; attempt++)); do
+    if systemctl is-active --quiet megaraid-dashboard.service; then
+      break
+    fi
+    if [[ "${attempt}" -lt 30 ]]; then
+      sleep 1
+    fi
+  done
+  systemctl is-active --quiet megaraid-dashboard.service || \
+    log_fail "service failed to become active"
+
+  local healthz last_healthz
+  healthz=""
+  last_healthz=""
+  for ((attempt = 1; attempt <= 30; attempt++)); do
+    healthz="$(curl -fsS --connect-timeout 2 --max-time 5 \
+      "http://127.0.0.1:${APP_PORT}/healthz" || true)"
+    if [[ -n "${healthz}" ]]; then
+      last_healthz="${healthz}"
+      if healthz_status_ok "${healthz}"; then
+        break
+      fi
+      healthz=""
+    fi
+    if [[ "${attempt}" -lt 30 ]]; then
+      sleep 1
+    fi
+  done
+  if [[ -n "${healthz}" ]]; then
+    log_info "healthz: ${healthz}"
+  elif [[ -n "${last_healthz}" ]]; then
+    log_fail "healthz did not return ok status: ${last_healthz}"
+  else
+    log_fail "healthz did not respond"
+  fi
+
+  cat <<SUMMARY
+
+==============================
+INSTALL COMPLETE
+==============================
+Service:   megaraid-dashboard.service
+Status:    $(systemctl is-active megaraid-dashboard.service)
+URL:       http://$(hostname -f):${APP_PORT}/  (basic auth)
+Healthz:   http://$(hostname -f):${APP_PORT}/healthz
+Logs:      journalctl --namespace=megaraid-dashboard -f
+Config:    ${ENV_FILE}
+Reload:    sudo systemctl restart megaraid-dashboard.service
+Uninstall: sudo bash ${INSTALL_PREFIX}/scripts/uninstall.sh
+
+Reverse proxy: see ${INSTALL_PREFIX}/src/docs/PROXY-SETUP.md
+==============================
+SUMMARY
+}
+
 main() {
   parse_args "$@"
   require_root
@@ -410,6 +607,10 @@ main() {
   phase_pip
   phase_smoke
   phase_config
+  phase_sudoers
+  phase_systemd
+  phase_journald
+  phase_finalize
   log_info "install phases complete"
 }
 
