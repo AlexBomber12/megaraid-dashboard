@@ -14,6 +14,8 @@ from pathlib import Path
 import structlog
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from fastapi import FastAPI
 from sqlalchemy.engine import Connection, make_url
@@ -205,6 +207,8 @@ def _upgrade_database(database_url: str, *, connection: Connection | None = None
     if connection is not None:
         alembic_config.attributes["connection"] = connection
     try:
+        current_heads = _current_database_heads(connection)
+        target_heads = set(ScriptDirectory.from_config(alembic_config).get_heads())
         command.upgrade(alembic_config, "head")
     except Exception as exc:
         LOGGER.exception(
@@ -213,6 +217,21 @@ def _upgrade_database(database_url: str, *, connection: Connection | None = None
         )
         msg = "database migration failed"
         raise RuntimeError(msg) from exc
+    if current_heads is not None and current_heads == target_heads:
+        LOGGER.debug("database_at_head_revision", revision=",".join(sorted(target_heads)))
+    elif current_heads is not None:
+        LOGGER.info(
+            "database_migration_applied",
+            from_revision=",".join(sorted(current_heads)) or None,
+            to_revision=",".join(sorted(target_heads)) or None,
+        )
+
+
+def _current_database_heads(connection: Connection | None) -> set[str] | None:
+    if connection is None:
+        return None
+    context = MigrationContext.configure(connection)
+    return set(context.get_current_heads())
 
 
 def _try_acquire_collector_lock(lock_path: str) -> int | None:

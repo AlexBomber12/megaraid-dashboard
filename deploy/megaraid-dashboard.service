@@ -1,0 +1,25 @@
+[Unit]
+Description=MegaRAID Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raid-monitor
+Group=raid-monitor
+WorkingDirectory=/opt/megaraid-dashboard
+Environment=DATABASE_URL=sqlite:////var/lib/megaraid-dashboard/megaraid.db
+EnvironmentFile=/etc/megaraid-dashboard/env
+ExecStartPre=/opt/megaraid-dashboard/scripts/preflight.sh
+ExecStart=/opt/megaraid-dashboard/.venv/bin/uvicorn megaraid_dashboard.app:create_app --factory --host 0.0.0.0 --port 8090
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/megaraid-dashboard
+
+[Install]
+WantedBy=multi-user.target
