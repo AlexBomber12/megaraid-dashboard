@@ -472,6 +472,9 @@ def _detector() -> EventDetector:
         temp_warning=55,
         temp_critical=60,
         temp_hysteresis=5,
+        roc_temp_warning=95,
+        roc_temp_critical=105,
+        roc_temp_hysteresis=5,
         cv_capacitance_warning_percent=70,
     )
 
@@ -549,6 +552,7 @@ def _previous(
     cv_state: str = "Optimal",
     cv_replacement_required: bool = False,
     cv_capacitance_percent: int | None = 89,
+    roc_temperature_celsius: int | None = 78,
 ) -> ControllerSnapshot:
     snapshot = ControllerSnapshot(
         captured_at=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
@@ -560,6 +564,7 @@ def _previous(
         alarm_state=alarm_state,
         cv_present=True,
         bbu_present=False,
+        roc_temperature_celsius=roc_temperature_celsius,
     )
     snapshot.virtual_drives = [_previous_virtual_drive(vd_state)]
     snapshot.physical_drives = [
@@ -641,6 +646,7 @@ def _current(
     cv_state: str = "Optimal",
     cv_replacement_required: bool = False,
     cv_capacitance_percent: int | None = 89,
+    roc_temperature_celsius: int | None = 78,
 ) -> StorcliSnapshot:
     return StorcliSnapshot(
         controller=ControllerInfo(
@@ -655,6 +661,7 @@ def _current(
             alarm_state=controller_alarm_state,
             cv_present=True,
             bbu_present=False,
+            roc_temperature_celsius=roc_temperature_celsius,
         ),
         virtual_drives=[_virtual_drive(0, vd_state)],
         physical_drives=[

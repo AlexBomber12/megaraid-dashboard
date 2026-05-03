@@ -24,6 +24,10 @@ _LOG = structlog.get_logger(__name__)
 _LOCK_PATH_DEFAULT = "/tmp/megaraid-dashboard-notifier.lock"
 _SUBJECT_MAX_LENGTH = 200
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
+# RoC overheating is slow-moving; one reminder per day avoids noisy hourly repeats.
+_PER_CATEGORY_SUPPRESS_MINUTES: dict[str, int] = {
+    "controller_temperature": 1440,
+}
 
 
 @dataclass(frozen=True)
@@ -46,13 +50,13 @@ def run_notifier_cycle(
         msg = "now must be a timezone-aware UTC datetime"
         raise ValueError(msg)
     now_utc = now.astimezone(UTC)
-    since = now_utc - timedelta(minutes=settings.alert_suppress_window_minutes)
+    earliest_since = now_utc - timedelta(minutes=_max_suppress_window_minutes(settings))
 
     pending = list(
         iter_pending_events(
             session,
             severity_threshold=settings.alert_severity_threshold,
-            since=since,
+            since=earliest_since,
         )
     )
 
@@ -72,8 +76,11 @@ def run_notifier_cycle(
     failed = 0
 
     for event in pending:
+        event_since = now_utc - timedelta(minutes=_suppress_window_minutes(event, settings))
+        if _to_aware_utc(event.occurred_at) < event_since:
+            continue
         attempted += 1
-        if _event_was_notified_recently(session, event, since=since):
+        if _event_was_notified_recently(session, event, since=event_since):
             mark_event_notified(session, event.id, now_utc)
             deduplicated += 1
             _LOG.info(
@@ -114,6 +121,21 @@ def run_notifier_cycle(
         failed=failed,
         throttle_warning=throttle_warning,
     )
+
+
+def _suppress_window_minutes(event: Event, settings: Settings) -> int:
+    return _PER_CATEGORY_SUPPRESS_MINUTES.get(
+        event.category,
+        settings.alert_suppress_window_minutes,
+    )
+
+
+def _max_suppress_window_minutes(settings: Settings) -> int:
+    configured_windows = [
+        settings.alert_suppress_window_minutes,
+        *_PER_CATEGORY_SUPPRESS_MINUTES.values(),
+    ]
+    return max(configured_windows)
 
 
 def _event_was_notified_recently(
