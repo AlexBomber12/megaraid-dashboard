@@ -140,6 +140,8 @@ def test_replace_wizard_js_validates_serial_and_posts_steps_in_order() -> None:
     assert "const missingUrl = root.dataset.replaceMissingUrl;" in source
     assert "dryRunInput.checked = true;" in source
     assert "if (!offline.ok) return;" in source
+    assert "try {" in source
+    assert 'appendRequestError("replace request failed", error);' in source
     assert '"X-CSRF-Token": getCookie("__Host-csrf") || ""' in source
 
 

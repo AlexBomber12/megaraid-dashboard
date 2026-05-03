@@ -68,6 +68,18 @@
       output.textContent += "\n";
     }
 
+    function appendRequestError(label, error) {
+      output.textContent += label + "\n";
+      output.textContent += JSON.stringify(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        null,
+        2
+      );
+      output.textContent += "\n";
+    }
+
     serialInput.addEventListener("input", updateRunButton);
 
     root.addEventListener("click", async function (evt) {
@@ -93,14 +105,18 @@
           serial_number: serialInput.value.trim(),
           dry_run: dryRunInput.checked,
         };
-        output.textContent = "Running set offline...\n";
-        const offline = await postJson(offlineUrl, body);
-        appendResult("set offline response", offline);
-        if (!offline.ok) return;
+        try {
+          output.textContent = "Running set offline...\n";
+          const offline = await postJson(offlineUrl, body);
+          appendResult("set offline response", offline);
+          if (!offline.ok) return;
 
-        output.textContent += "Running set missing...\n";
-        const missing = await postJson(missingUrl, body);
-        appendResult("set missing response", missing);
+          output.textContent += "Running set missing...\n";
+          const missing = await postJson(missingUrl, body);
+          appendResult("set missing response", missing);
+        } catch (error) {
+          appendRequestError("replace request failed", error);
+        }
       }
     });
   }
