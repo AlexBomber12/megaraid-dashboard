@@ -12,7 +12,12 @@
 {% block content %}
   <section class="page-title">
     <h1>{{ view_model.title }}</h1>
-    <p><span class="mono">{{ view_model.model }}</span> &middot; Updated: {{ view_model.captured_at | utc_to_cest }}</p>
+    <p>
+      <span class="mono">{{ view_model.model }}</span>
+      &middot; Updated:
+      <noscript>{{ view_model.captured_at | iso_utc }} UTC</noscript>
+      <time datetime="{{ view_model.captured_at | iso_utc }}" data-local-time>{{ view_model.captured_at | iso_utc }} UTC</time>
+    </p>
   </section>
 
   <section class="drive-detail" aria-label="Drive attributes">
