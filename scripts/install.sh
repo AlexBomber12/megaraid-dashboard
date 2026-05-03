@@ -125,12 +125,71 @@ phase_dirs() {
   fi
 }
 
+phase_venv() {
+  log_info "Phase 4: venv"
+
+  command_exists python3 || log_fail "python3 not found"
+
+  local venv="${INSTALL_PREFIX}/.venv"
+  if [[ ! -d "${venv}" ]]; then
+    sudo -u "${INSTALL_USER}" python3 -m venv "${venv}"
+    log_info "created venv at ${venv}"
+  else
+    log_info "venv exists, skip"
+  fi
+
+  sudo -u "${INSTALL_USER}" "${venv}/bin/pip" install --upgrade "pip>=24" >/dev/null
+}
+
+phase_pip() {
+  log_info "Phase 5: pip install"
+
+  command_exists curl || log_fail "curl not found"
+  command_exists rsync || log_fail "rsync not found"
+
+  local src_dir="${INSTALL_PREFIX}/src"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local repo_root
+  repo_root="$(dirname "${script_dir}")"
+
+  if ! curl -fsSI -o /dev/null https://pypi.org/simple/; then
+    log_fail "pypi.org unreachable; cannot pip install"
+  fi
+
+  install -d -m 0750 -o "${INSTALL_USER}" -g "${INSTALL_USER}" "${src_dir}"
+  rsync -a --delete \
+    --exclude='.git/' \
+    --exclude='.venv/' \
+    --exclude='__pycache__/' \
+    --exclude='*.egg-info/' \
+    --exclude='dist/' \
+    --exclude='build/' \
+    "${repo_root}/" "${src_dir}/"
+  chown -R "${INSTALL_USER}:${INSTALL_USER}" "${src_dir}"
+
+  sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/pip" install -e "${src_dir}"
+  log_info "package installed"
+}
+
+phase_smoke() {
+  log_info "Phase 6: smoke"
+
+  local out
+  out="$(sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/python" -c \
+    "import megaraid_dashboard; print(megaraid_dashboard.__version__)")"
+  log_info "imported megaraid_dashboard ${out}"
+}
+
 main() {
   require_root
   phase_preflight
   phase_user
   phase_dirs
-  log_info "PR-028 phases complete; continue with venv / pip / config / systemd via PR-029..PR-031"
+  phase_venv
+  phase_pip
+  phase_smoke
+  log_info "PR-029 phases complete; continue with config wizard via PR-030"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
