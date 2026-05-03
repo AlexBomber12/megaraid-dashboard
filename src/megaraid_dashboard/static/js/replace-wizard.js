@@ -37,6 +37,7 @@
     const runButton = root.querySelector('[data-replace-action="run-step1"]');
     const output = root.querySelector("[data-replace-output]");
     const openButton = root.querySelector('[data-replace-action="open"]');
+    let inFlight = false;
 
     function show(name) {
       Object.keys(stages).forEach(function (key) {
@@ -50,7 +51,23 @@
     }
 
     function updateRunButton() {
-      runButton.disabled = serialInput.value.trim() !== expectedSerial.trim();
+      runButton.disabled = inFlight || serialInput.value.trim() !== expectedSerial.trim();
+    }
+
+    function updateCloseControls() {
+      const closeControls = root.querySelectorAll(
+        '[data-replace-action="cancel"], [data-replace-action="close"]'
+      );
+      closeControls.forEach(function (button) {
+        button.disabled = inFlight;
+      });
+    }
+
+    function setInFlight(value) {
+      inFlight = value;
+      root.setAttribute("aria-busy", value ? "true" : "false");
+      updateRunButton();
+      updateCloseControls();
     }
 
     function close() {
@@ -87,6 +104,8 @@
       if (!button) return;
 
       const action = button.dataset.replaceAction;
+      if (inFlight) return;
+
       if (action === "open") {
         openButton.hidden = true;
         show("confirm");
@@ -98,7 +117,7 @@
         show("serial");
       }
       if (action === "run-step1") {
-        runButton.disabled = true;
+        setInFlight(true);
         show("result");
 
         const body = {
@@ -116,6 +135,8 @@
           appendResult("set missing response", missing);
         } catch (error) {
           appendRequestError("replace request failed", error);
+        } finally {
+          setInFlight(false);
         }
       }
     });
