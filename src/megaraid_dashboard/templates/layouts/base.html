@@ -24,6 +24,10 @@
       src="{{ request.url_for('static', path='js/data-table.js').path }}?v={{ static_asset_version }}"
       defer
     ></script>
+    <script
+      src="{{ request.url_for('static', path='js/drive-actions.js').path }}?v={{ static_asset_version }}"
+      defer
+    ></script>
     {% block extra_scripts %}{% endblock %}
   </head>
   <body>
