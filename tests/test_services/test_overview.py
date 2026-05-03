@@ -8,11 +8,12 @@ import pytest
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
-from megaraid_dashboard.db.dao import insert_snapshot
+from megaraid_dashboard.db.dao import get_latest_snapshot, insert_snapshot
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services.overview import (
     OverviewViewModel,
     _load_alert_status,
+    _load_roc_temperature,
     load_overview_view_model,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
@@ -59,6 +60,9 @@ def test_overview_view_model_all_optimal(
     assert _card(view_model, "Size").value.endswith(" TB")
     assert _card(view_model, "BBU/CV").value == "Opt"
     assert _card(view_model, "BBU/CV").severity == "optimal"
+    assert view_model.roc_temperature.value == 78
+    assert view_model.roc_temperature.status == "optimal"
+    assert view_model.roc_temperature.label == "78 C"
 
 
 def test_overview_view_model_degraded_virtual_drive(
@@ -217,6 +221,9 @@ def test_overview_view_model_empty_database(session: Session) -> None:
     view_model = load_overview_view_model(session)
 
     assert view_model.has_snapshot is False
+    assert view_model.roc_temperature.value is None
+    assert view_model.roc_temperature.status == "neutral"
+    assert view_model.roc_temperature.label == "Unknown"
     assert view_model.alert_status.last_alert_sent_at is None
     assert view_model.alert_status.pending_count == 0
     assert view_model.alert_status.sent_last_hour == 0
@@ -373,6 +380,68 @@ def test_load_alert_status_rejects_naive_now(session: Session) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("roc_temperature_celsius", "expected_status", "expected_label"),
+    [
+        (78, "optimal", "78 C"),
+        (95, "warning", "95 C (warning)"),
+        (104, "warning", "104 C (warning)"),
+        (105, "critical", "105 C (critical)"),
+    ],
+)
+def test_load_roc_temperature_maps_current_value_to_status(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    roc_temperature_celsius: int,
+    expected_status: str,
+    expected_label: str,
+) -> None:
+    _insert(
+        session,
+        _snapshot(sample_snapshot, roc_temperature_celsius=roc_temperature_celsius),
+    )
+
+    section = _load_roc_temperature(
+        session,
+        settings=get_settings(),
+        latest_snapshot=get_latest_snapshot(session),
+    )
+
+    assert section.value == roc_temperature_celsius
+    assert section.status == expected_status
+    assert section.label == expected_label
+
+
+def test_load_roc_temperature_missing_value_or_snapshot_is_neutral(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    _insert(
+        session,
+        _snapshot(sample_snapshot, roc_temperature_celsius=None),
+    )
+
+    section = _load_roc_temperature(
+        session,
+        settings=get_settings(),
+        latest_snapshot=get_latest_snapshot(session),
+    )
+
+    assert section.value is None
+    assert section.status == "neutral"
+    assert section.label == "Unknown"
+
+    section = _load_roc_temperature(
+        session,
+        settings=get_settings(),
+        latest_snapshot=None,
+    )
+
+    assert section.value is None
+    assert section.status == "neutral"
+    assert section.label == "Unknown"
+
+
 def _insert(session: Session, snapshot: StorcliSnapshot) -> None:
     insert_snapshot(session, snapshot)
     session.commit()
@@ -388,8 +457,14 @@ def _snapshot(
     cv_replacement_required: bool = False,
     cv_capacitance_percent: int | None = 89,
     cachevault_present: bool = True,
+    roc_temperature_celsius: int | None = 78,
 ) -> StorcliSnapshot:
-    controller = sample_snapshot.controller.model_copy(update={"alarm_state": "Off"})
+    controller = sample_snapshot.controller.model_copy(
+        update={
+            "alarm_state": "Off",
+            "roc_temperature_celsius": roc_temperature_celsius,
+        }
+    )
     virtual_drive = sample_snapshot.virtual_drives[0].model_copy(
         update={"state": vd_state, "raid_level": "RAID6"}
     )
