@@ -27,7 +27,7 @@
       <button
         class="button"
         type="button"
-        hx-get="{{ request.url_for('events_partial').path }}"
+        hx-get="{{ request.url_for('events_partial').path }}{% if view_model.category_filter %}?category={{ view_model.category_filter | urlencode }}{% endif %}"
         hx-vals='{{ {"before_occurred_at": cursor.before_occurred_at_iso, "before_id": cursor.before_id} | tojson }}'
         hx-target="#events-load-more-row"
         hx-swap="outerHTML"

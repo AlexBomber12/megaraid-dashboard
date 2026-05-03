@@ -26,6 +26,7 @@ from megaraid_dashboard.services.event_detector import (
     physical_drive_state_severity,
     virtual_drive_state_severity,
 )
+from megaraid_dashboard.services.events import list_recent_events
 
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 _VD_OPTIMAL_STATES = {"Optl", "Optimal"}
@@ -85,6 +86,15 @@ class RocTemperatureSection:
 
 
 @dataclass(frozen=True)
+class RecentActivityItem:
+    category: str
+    message: str
+    severity: str
+    severity_icon: str
+    occurred_at: datetime
+
+
+@dataclass(frozen=True)
 class StripTileViewModel:
     label: str
     value: str
@@ -116,6 +126,7 @@ class OverviewViewModel:
     critical_drive_count: int
     alert_status: AlertStatusSection
     roc_temperature: RocTemperatureSection
+    recent_activity: tuple[RecentActivityItem, ...]
     empty_title: str
     empty_body: str
     empty_next_run: str
@@ -151,6 +162,7 @@ def load_overview_view_model(
     settings = get_settings()
     resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
     alert_status = _load_alert_status(session, settings=settings, now=resolved_now)
+    recent_activity = tuple(_load_recent_activity(session))
     snapshot = get_latest_snapshot(session)
     roc_temperature = _load_roc_temperature(session, settings=settings, latest_snapshot=snapshot)
     strip = _load_overview_strip(
@@ -173,6 +185,7 @@ def load_overview_view_model(
             critical_drive_count=0,
             alert_status=alert_status,
             roc_temperature=roc_temperature,
+            recent_activity=recent_activity,
             empty_title="Waiting for first metrics collection",
             empty_body="The collector has not yet completed its first run.",
             empty_next_run=_empty_next_run_text(
@@ -227,6 +240,7 @@ def load_overview_view_model(
         critical_drive_count=critical_count,
         alert_status=alert_status,
         roc_temperature=roc_temperature,
+        recent_activity=recent_activity,
         empty_title="Waiting for first metrics collection",
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
@@ -423,6 +437,27 @@ def load_drive_list_view_model(
         empty_body="The collector has not yet completed its first run.",
         empty_next_run="",
     )
+
+
+def _load_recent_activity(session: Session, *, limit: int = 8) -> list[RecentActivityItem]:
+    return [
+        RecentActivityItem(
+            category=event.category,
+            message=event.summary,
+            severity=event.severity,
+            severity_icon=_severity_icon(event.severity),
+            occurred_at=_require_aware_utc(event.occurred_at),
+        )
+        for event in list_recent_events(session, limit=limit)
+    ]
+
+
+def _severity_icon(severity: str) -> str:
+    return {
+        "critical": "x-circle",
+        "warning": "alert-triangle",
+        "info": "check-circle",
+    }.get(severity, "info")
 
 
 def _load_alert_status(

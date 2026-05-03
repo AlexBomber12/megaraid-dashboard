@@ -282,9 +282,9 @@ def drive_charts(
 
 
 @router.get("/events", name="events")
-def events(request: Request) -> Response:
+def events(request: Request, category: str | None = None) -> Response:
     started_at = perf_counter()
-    view_model = _load_events_page(request)
+    view_model = _load_events_page(request, category=category)
     response = TEMPLATES.TemplateResponse(
         request=request,
         name="pages/events.html",
@@ -305,6 +305,7 @@ def events_partial(
     request: Request,
     before_occurred_at: str | None = None,
     before_id: str | None = None,
+    category: str | None = None,
 ) -> Response:
     started_at = perf_counter()
     cursor = _parse_events_cursor(
@@ -314,7 +315,11 @@ def events_partial(
     view_model: EventsPageViewModel | EventsFragmentViewModel
     with _session(request) as session:
         if cursor is None:
-            view_model = load_events_page(session, page_size=EVENTS_PAGE_SIZE)
+            view_model = load_events_page(
+                session,
+                page_size=EVENTS_PAGE_SIZE,
+                category=category,
+            )
             template_name = "partials/events_data.html"
         else:
             cursor_occurred_at, cursor_id = cursor
@@ -323,6 +328,7 @@ def events_partial(
                 page_size=EVENTS_PAGE_SIZE,
                 before_occurred_at=cursor_occurred_at,
                 before_id=cursor_id,
+                category=category,
             )
             template_name = "partials/events_table.html"
     response = TEMPLATES.TemplateResponse(
@@ -417,9 +423,9 @@ def _load_drive_list(request: Request) -> DriveListViewModel:
         )
 
 
-def _load_events_page(request: Request) -> EventsPageViewModel:
+def _load_events_page(request: Request, *, category: str | None = None) -> EventsPageViewModel:
     with _session(request) as session:
-        return load_events_page(session, page_size=EVENTS_PAGE_SIZE)
+        return load_events_page(session, page_size=EVENTS_PAGE_SIZE, category=category)
 
 
 def _parse_events_cursor(

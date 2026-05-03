@@ -1,7 +1,7 @@
 <div
   id="events-data"
   class="data-block"
-  hx-get="{{ request.url_for('events_partial').path }}"
+  hx-get="{{ request.url_for('events_partial').path }}{% if view_model.category_filter %}?category={{ view_model.category_filter | urlencode }}{% endif %}"
   hx-trigger="every 30s"
   hx-target="this"
   hx-swap="outerHTML"
