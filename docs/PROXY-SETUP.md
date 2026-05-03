@@ -95,6 +95,7 @@ server {
 
     location ~ ^/raid/(login|auth) {
         limit_req zone=raid_login burst=2 nodelay;
+        limit_req_status 429;
 
         proxy_pass http://127.0.0.1:8090;
         proxy_set_header Host $host;
@@ -207,6 +208,7 @@ Apply it to the likely auth endpoint paths:
 ```nginx
 location ~ ^/raid/(login|auth) {
     limit_req zone=raid_login burst=2 nodelay;
+    limit_req_status 429;
 
     proxy_pass http://127.0.0.1:8090;
     proxy_set_header Host $host;
