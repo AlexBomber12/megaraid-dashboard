@@ -80,6 +80,21 @@ def test_upgrade_database_uses_existing_in_memory_connection() -> None:
         engine.dispose()
 
 
+def test_upgrade_database_wraps_revision_discovery_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_from_config(_config: Config) -> object:
+        msg = "migration scripts unavailable"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(app.ScriptDirectory, "from_config", fail_from_config)
+
+    with pytest.raises(RuntimeError, match="database migration failed") as exc_info:
+        app._upgrade_database("sqlite:///:memory:")
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+
+
 def test_collector_lock_is_exclusive(tmp_path: Path) -> None:
     lock_path = str(tmp_path / "collector.lock")
     first_lock = app._try_acquire_collector_lock(lock_path)

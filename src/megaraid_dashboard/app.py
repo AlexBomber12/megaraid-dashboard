@@ -206,9 +206,9 @@ def _upgrade_database(database_url: str, *, connection: Connection | None = None
     alembic_config.set_main_option("sqlalchemy.url", _configparser_value(database_url))
     if connection is not None:
         alembic_config.attributes["connection"] = connection
-    current_heads = _current_database_heads(connection)
-    target_heads = set(ScriptDirectory.from_config(alembic_config).get_heads())
     try:
+        current_heads = _current_database_heads(connection)
+        target_heads = set(ScriptDirectory.from_config(alembic_config).get_heads())
         command.upgrade(alembic_config, "head")
     except Exception as exc:
         LOGGER.exception(
