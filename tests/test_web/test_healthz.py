@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.web.routes import _database_health_for_request
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH
 
 
@@ -61,16 +65,32 @@ def test_healthz_returns_degraded_when_database_check_fails() -> None:
     assert response.json() == {"status": "degraded", "database": "error", "collector": "idle"}
 
 
-def test_healthz_returns_degraded_when_database_check_is_already_running() -> None:
-    test_app = create_app()
+async def test_database_health_waits_when_probe_is_already_running() -> None:
+    probe_lock = asyncio.Lock()
+    await probe_lock.acquire()
+    executor = ThreadPoolExecutor(max_workers=1)
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                health_probe_lock=probe_lock,
+                health_engine=_HealthyEngine(),
+                health_executor=executor,
+            )
+        )
+    )
 
-    with TestClient(test_app) as client:
-        test_app.state.health_probe_lock = _LockedProbe()
+    try:
+        database_health = asyncio.create_task(_database_health_for_request(request))
+        await asyncio.sleep(0)
 
-        response = client.get("/healthz")
+        assert not database_health.done()
 
-    assert response.status_code == 503
-    assert response.json() == {"status": "degraded", "database": "error", "collector": "idle"}
+        probe_lock.release()
+        assert await asyncio.wait_for(database_health, timeout=1.0) == "ok"
+    finally:
+        if probe_lock.locked():
+            probe_lock.release()
+        executor.shutdown(wait=True)
 
 
 def test_healthz_reports_disabled_collector_as_idle() -> None:
@@ -124,9 +144,23 @@ class _BrokenEngine:
         raise RuntimeError("database unavailable")
 
 
-class _LockedProbe:
-    def locked(self) -> bool:
-        return True
+class _HealthyEngine:
+    def connect(self) -> _HealthyConnection:
+        return _HealthyConnection()
+
+
+class _HealthyConnection:
+    def __enter__(self) -> _HealthyConnection:
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        return None
+
+    def execution_options(self, *, isolation_level: str) -> _HealthyConnection:
+        return self
+
+    def execute(self, statement: object) -> None:
+        return None
 
 
 class _RetryTask:

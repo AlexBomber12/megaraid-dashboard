@@ -346,12 +346,6 @@ def _session(request: Request) -> Session:
 
 async def _database_health_for_request(request: Request) -> DatabaseHealth:
     probe_lock = cast(asyncio.Lock, request.app.state.health_probe_lock)
-    if probe_lock.locked():
-        LOGGER.warning(
-            "healthz_database_check_already_running",
-        )
-        return "error"
-
     async with probe_lock:
         engine = cast(Engine, request.app.state.health_engine)
         executor = cast(Executor, request.app.state.health_executor)
