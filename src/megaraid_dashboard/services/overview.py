@@ -312,10 +312,9 @@ def _load_bbu_tile(
     status = "neutral"
     value = "Unknown"
     href = overview_url
-    if latest_snapshot is not None and not latest_snapshot.bbu_present:
-        value = "None"
-    elif latest_snapshot is not None and latest_snapshot.cachevault is not None:
+    if latest_snapshot is not None and latest_snapshot.cachevault is not None:
         cachevault = latest_snapshot.cachevault
+        href = drives_url
         if cachevault.replacement_required:
             status = "critical"
             value = "Replace"
@@ -325,7 +324,8 @@ def _load_bbu_tile(
         else:
             status = "optimal"
             value = "Optimal"
-            href = drives_url
+    elif latest_snapshot is not None and not latest_snapshot.bbu_present:
+        value = "None"
 
     return StripTileViewModel(
         label="BBU",

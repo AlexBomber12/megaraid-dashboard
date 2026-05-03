@@ -102,13 +102,48 @@ def test_bbu_tile_is_neutral_when_bbu_is_absent(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    snapshot = _latest(session, _snapshot(sample_snapshot, bbu_present=False))
+    snapshot = _latest(
+        session,
+        _snapshot(sample_snapshot, bbu_present=False, cachevault_present=False),
+    )
 
     tile = _load_bbu_tile(snapshot)
 
     assert tile.value == "None"
     assert tile.status == "neutral"
     assert tile.icon == "lightbulb"
+
+
+@pytest.mark.parametrize(
+    ("cv_state", "cv_replacement_required", "expected_value", "expected_status"),
+    [
+        ("Degraded", False, "Warning", "warning"),
+        ("Optimal", True, "Replace", "critical"),
+    ],
+)
+def test_bbu_tile_uses_cachevault_state_when_bbu_is_absent(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    cv_state: str,
+    cv_replacement_required: bool,
+    expected_value: str,
+    expected_status: str,
+) -> None:
+    snapshot = _latest(
+        session,
+        _snapshot(
+            sample_snapshot,
+            bbu_present=False,
+            cv_state=cv_state,
+            cv_replacement_required=cv_replacement_required,
+        ),
+    )
+
+    tile = _load_bbu_tile(snapshot)
+
+    assert tile.value == expected_value
+    assert tile.status == expected_status
+    assert tile.href == "/drives"
 
 
 def test_bbu_tile_warns_for_present_degraded_cachevault(
@@ -121,6 +156,7 @@ def test_bbu_tile_warns_for_present_degraded_cachevault(
 
     assert tile.value == "Warning"
     assert tile.status == "warning"
+    assert tile.href == "/drives"
 
 
 def test_bbu_tile_is_critical_when_cachevault_replacement_required(
@@ -133,6 +169,7 @@ def test_bbu_tile_is_critical_when_cachevault_replacement_required(
 
     assert tile.value == "Replace"
     assert tile.status == "critical"
+    assert tile.href == "/drives"
 
 
 def test_max_temp_tile_uses_hottest_drive_and_thresholds(
@@ -195,6 +232,7 @@ def _snapshot(
     bbu_present: bool = True,
     cv_state: str = "Optimal",
     cv_replacement_required: bool = False,
+    cachevault_present: bool = True,
     temperatures: tuple[int | None, ...] = (40,),
     roc_temperature_celsius: int | None = 78,
 ) -> StorcliSnapshot:
@@ -216,7 +254,9 @@ def _snapshot(
         for drive, temperature in zip(sample_snapshot.physical_drives, temperatures, strict=False)
     ]
     cachevault = sample_snapshot.cachevault
-    if cachevault is not None:
+    if not cachevault_present:
+        cachevault = None
+    elif cachevault is not None:
         cachevault = cachevault.model_copy(
             update={
                 "state": cv_state,
