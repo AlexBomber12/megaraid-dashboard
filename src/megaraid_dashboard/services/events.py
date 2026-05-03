@@ -31,6 +31,7 @@ class EventRow:
     category: str
     subject: str
     summary: str
+    operator_username: str | None = None
 
     @property
     def severity_label(self) -> str:
@@ -205,6 +206,7 @@ def _event_row(event: Event) -> EventRow:
         category=event.category,
         subject=event.subject,
         summary=event.summary,
+        operator_username=event.operator_username,
     )
 
 
