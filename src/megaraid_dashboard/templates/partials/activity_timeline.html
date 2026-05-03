@@ -11,7 +11,7 @@
             <a class="timeline__category" href="{{ request.url_for('events').path }}?category={{ event.category | urlencode }}">
               {{ event.category }}
             </a>
-            <span class="timeline__message">{{ event.message }}</span>
+            <span class="timeline__message">{{ event.message | slot_link | safe }}</span>
           </div>
           <time class="timeline__time" datetime="{{ event.occurred_at | iso_utc }}" data-local-time>
             {{ event.occurred_at | iso_utc }} UTC

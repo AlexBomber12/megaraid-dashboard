@@ -160,6 +160,8 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert status_tile_hrefs
     assert all(href.startswith("/raid/") for href in status_tile_hrefs)
     assert "/raid/drives?sort=temperature-desc" not in status_tile_hrefs
+    assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
+    assert 'title="Current 110 C / Warning 95 C / Critical 105 C"' in response.text
 
 
 def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
@@ -463,6 +465,7 @@ def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapsh
         assert f'data-sort-key="{sort_key}"' in response.text
     assert response.text.count("<tr data-row-state=") == 8
     assert re.search(r"8 drives,\s+\d+ optimal,\s+\d+ warning,\s+\d+ critical", response.text)
+    assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
 
 
 def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:

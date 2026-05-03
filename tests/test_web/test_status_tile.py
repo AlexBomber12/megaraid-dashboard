@@ -73,6 +73,15 @@ def test_status_tile_renders_icon_reference() -> None:
     assert '<use href="/static/icons.svg?v=asset123#icon-hard-drive"/>' in rendered
 
 
+def test_status_tile_renders_tooltip_title_when_provided() -> None:
+    rendered = render_status_tile(
+        status="warning",
+        tooltip="Current 58 C / Warning 55 C / Critical 60 C",
+    )
+
+    assert 'title="Current 58 C / Warning 55 C / Critical 60 C"' in rendered
+
+
 def test_status_tile_defaults_to_neutral_status() -> None:
     rendered = render_status_tile()
 

@@ -37,6 +37,7 @@
           <td
             class="numeric status-text status-text--{{ drive.temperature_severity }}"
             data-sort-value="{{ drive.temperature_sort }}"
+            {% if drive.temperature_tooltip %}title="{{ drive.temperature_tooltip }}"{% endif %}
           >
             <span class="temperature-inline temperature-inline--{{ drive.temperature_severity }}">
               <span class="temperature-inline__dot" aria-hidden="true"></span>

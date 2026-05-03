@@ -64,6 +64,7 @@ class PhysicalDriveRow:
     temperature: str
     temperature_sort: int
     temperature_severity: str
+    temperature_tooltip: str | None
     size: str
     size_bytes: int
     media_errors: int
@@ -116,6 +117,7 @@ class StripTileViewModel:
     status: str
     icon: str
     href: str
+    tooltip: str | None = None
 
 
 @dataclass(frozen=True)
@@ -405,6 +407,11 @@ def _load_max_temp_tile(
         status=status,
         icon="thermometer",
         href=drive_summary.hottest_drive_url or drives_url,
+        tooltip=_temperature_tooltip(
+            max_temp,
+            warning=settings.temp_warning_celsius,
+            critical=settings.temp_critical_celsius,
+        ),
     )
 
 
@@ -419,6 +426,11 @@ def _load_roc_tile(
         status=roc.status,
         icon="thermometer",
         href=overview_url,
+        tooltip=_temperature_tooltip(
+            roc.value,
+            warning=roc.warning_threshold,
+            critical=roc.critical_threshold,
+        ),
     )
 
 
@@ -867,6 +879,11 @@ def _physical_drive_row(
             temp_critical=temp_critical,
             row_state=row_state,
         ),
+        temperature_tooltip=_temperature_tooltip(
+            drive.temperature_celsius,
+            warning=temp_warning,
+            critical=temp_critical,
+        ),
         size=format_tb(drive.size_bytes),
         size_bytes=drive.size_bytes,
         media_errors=drive.media_errors,
@@ -1059,6 +1076,17 @@ def temperature_severity(
     if temperature_celsius >= temp_warning:
         return "warning"
     return "optimal"
+
+
+def _temperature_tooltip(
+    value: int | None,
+    *,
+    warning: int,
+    critical: int,
+) -> str | None:
+    if value is None:
+        return None
+    return f"Current {value} C / Warning {warning} C / Critical {critical} C"
 
 
 def _temperature_severity(

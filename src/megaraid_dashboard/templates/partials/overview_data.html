@@ -18,22 +18,22 @@
     </section>
 
     <section class="status-strip" aria-label="System status overview">
-      {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href %}
+      {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href, tooltip=view_model.strip.controller.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.vd.label, value=view_model.strip.vd.value, status=view_model.strip.vd.status, icon=view_model.strip.vd.icon, href=view_model.strip.vd.href %}
+      {% with label=view_model.strip.vd.label, value=view_model.strip.vd.value, status=view_model.strip.vd.status, icon=view_model.strip.vd.icon, href=view_model.strip.vd.href, tooltip=view_model.strip.vd.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.raid.label, value=view_model.strip.raid.value, status=view_model.strip.raid.status, icon=view_model.strip.raid.icon, href=view_model.strip.raid.href %}
+      {% with label=view_model.strip.raid.label, value=view_model.strip.raid.value, status=view_model.strip.raid.status, icon=view_model.strip.raid.icon, href=view_model.strip.raid.href, tooltip=view_model.strip.raid.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.bbu.label, value=view_model.strip.bbu.value, status=view_model.strip.bbu.status, icon=view_model.strip.bbu.icon, href=view_model.strip.bbu.href %}
+      {% with label=view_model.strip.bbu.label, value=view_model.strip.bbu.value, status=view_model.strip.bbu.status, icon=view_model.strip.bbu.icon, href=view_model.strip.bbu.href, tooltip=view_model.strip.bbu.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.max_temp.label, value=view_model.strip.max_temp.value, status=view_model.strip.max_temp.status, icon=view_model.strip.max_temp.icon, href=view_model.strip.max_temp.href %}
+      {% with label=view_model.strip.max_temp.label, value=view_model.strip.max_temp.value, status=view_model.strip.max_temp.status, icon=view_model.strip.max_temp.icon, href=view_model.strip.max_temp.href, tooltip=view_model.strip.max_temp.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.roc.label, value=view_model.strip.roc.value, status=view_model.strip.roc.status, icon=view_model.strip.roc.icon, href=view_model.strip.roc.href %}
+      {% with label=view_model.strip.roc.label, value=view_model.strip.roc.value, status=view_model.strip.roc.status, icon=view_model.strip.roc.icon, href=view_model.strip.roc.href, tooltip=view_model.strip.roc.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
     </section>
@@ -46,22 +46,22 @@
     </p>
   {% else %}
     <section class="status-strip" aria-label="System status overview">
-      {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href %}
+      {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href, tooltip=view_model.strip.controller.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.vd.label, value=view_model.strip.vd.value, status=view_model.strip.vd.status, icon=view_model.strip.vd.icon, href=view_model.strip.vd.href %}
+      {% with label=view_model.strip.vd.label, value=view_model.strip.vd.value, status=view_model.strip.vd.status, icon=view_model.strip.vd.icon, href=view_model.strip.vd.href, tooltip=view_model.strip.vd.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.raid.label, value=view_model.strip.raid.value, status=view_model.strip.raid.status, icon=view_model.strip.raid.icon, href=view_model.strip.raid.href %}
+      {% with label=view_model.strip.raid.label, value=view_model.strip.raid.value, status=view_model.strip.raid.status, icon=view_model.strip.raid.icon, href=view_model.strip.raid.href, tooltip=view_model.strip.raid.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.bbu.label, value=view_model.strip.bbu.value, status=view_model.strip.bbu.status, icon=view_model.strip.bbu.icon, href=view_model.strip.bbu.href %}
+      {% with label=view_model.strip.bbu.label, value=view_model.strip.bbu.value, status=view_model.strip.bbu.status, icon=view_model.strip.bbu.icon, href=view_model.strip.bbu.href, tooltip=view_model.strip.bbu.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.max_temp.label, value=view_model.strip.max_temp.value, status=view_model.strip.max_temp.status, icon=view_model.strip.max_temp.icon, href=view_model.strip.max_temp.href %}
+      {% with label=view_model.strip.max_temp.label, value=view_model.strip.max_temp.value, status=view_model.strip.max_temp.status, icon=view_model.strip.max_temp.icon, href=view_model.strip.max_temp.href, tooltip=view_model.strip.max_temp.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
-      {% with label=view_model.strip.roc.label, value=view_model.strip.roc.value, status=view_model.strip.roc.status, icon=view_model.strip.roc.icon, href=view_model.strip.roc.href %}
+      {% with label=view_model.strip.roc.label, value=view_model.strip.roc.value, status=view_model.strip.roc.status, icon=view_model.strip.roc.icon, href=view_model.strip.roc.href, tooltip=view_model.strip.roc.tooltip %}
         {% include "partials/status_tile.html" %}
       {% endwith %}
     </section>
