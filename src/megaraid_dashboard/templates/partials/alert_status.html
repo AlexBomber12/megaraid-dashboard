@@ -1,39 +1,36 @@
-<section class="data-block alert-status" aria-label="Alert status">
-  <div class="section-heading">
-    <h2>Alert Status</h2>
+<section class="alert-status" aria-label="Alert pipeline status">
+  <div class="alert-status__cell alert-status__cell--{{ view_model.alert_status.health_status }}">
+    <div class="alert-status__label">Last sent</div>
+    <div class="alert-status__value mono">
+      {% if view_model.alert_status.last_alert_sent_at %}
+        <time
+          datetime="{{ view_model.alert_status.last_alert_sent_at | iso_utc }}"
+          data-local-time
+        >
+          {{ view_model.alert_status.last_alert_sent_at | iso_utc }} UTC
+        </time>
+      {% else %}
+        Never
+      {% endif %}
+    </div>
   </div>
-  <table class="drive-table">
-    <tbody>
-      <tr>
-        <th scope="row">Last alert sent at</th>
-        <td class="mono">
-          {% if view_model.alert_status.last_alert_sent_at is none %}
-            Never
-          {% else %}
-            <noscript>{{ view_model.alert_status.last_alert_sent_at | iso_utc }} UTC</noscript>
-            <time datetime="{{ view_model.alert_status.last_alert_sent_at | iso_utc }}" data-local-time hidden>{{ view_model.alert_status.last_alert_sent_at | iso_utc }} UTC</time>
-          {% endif %}
-        </td>
-      </tr>
-      <tr>
-        <th scope="row">Pending alerts</th>
-        <td class="numeric">{{ view_model.alert_status.pending_count }}</td>
-      </tr>
-      <tr>
-        <th scope="row">Sent in last hour</th>
-        <td class="numeric">{{ view_model.alert_status.sent_last_hour }}</td>
-      </tr>
-      <tr>
-        <th scope="row">Notifier health</th>
-        <td>
-          <span
-            class="status-badge status-badge--{{ view_model.alert_status.health_status }}"
-          >
-            {{ view_model.alert_status.health_label }}
-          </span>
-          <span class="mono">{{ view_model.alert_status.health }}</span>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+
+  <div class="alert-status__cell alert-status__cell--{{ 'warning' if view_model.alert_status.pending_count else 'neutral' }}">
+    <div class="alert-status__label">Pending</div>
+    <div class="alert-status__value mono">{{ view_model.alert_status.pending_count }}</div>
+  </div>
+
+  <div class="alert-status__cell">
+    <div class="alert-status__label">Sent last hour</div>
+    <div class="alert-status__value mono">{{ view_model.alert_status.sent_last_hour }}</div>
+  </div>
+
+  <div class="alert-status__cell alert-status__cell--{{ view_model.alert_status.health_status }}">
+    <div class="alert-status__label">Notifier</div>
+    <div class="alert-status__value">
+      <span class="status-badge status-badge--{{ view_model.alert_status.health_status }}">
+        {{ view_model.alert_status.health_label }}
+      </span>
+    </div>
+  </div>
 </section>

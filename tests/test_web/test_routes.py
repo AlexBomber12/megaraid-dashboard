@@ -17,7 +17,7 @@ from megaraid_dashboard import __version__
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot
-from megaraid_dashboard.db.models import PhysicalDriveMetricsHourly
+from megaraid_dashboard.db.models import Event, PhysicalDriveMetricsHourly
 from megaraid_dashboard.storcli import StorcliSnapshot
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
@@ -134,8 +134,11 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     for label in ("Controller", "VD", "RAID", "BBU", "MaxTemp", "RoC"):
         assert label in response.text
     assert "status-tile--optimal" in response.text
-    assert 'class="data-block alert-status"' in response.text
+    assert 'class="alert-status"' in response.text
+    assert response.text.count('class="alert-status__cell') == 4
+    assert "alert-status__cell--neutral" in response.text
     assert "Notifier OK" in response.text
+    assert "status-badge--optimal" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
     assert "/raid/static/js/csrf.js" in response.text
@@ -195,7 +198,9 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "Waiting for first metrics collection" in full_response.text
     assert "The collector has not yet completed its first run." in full_response.text
     assert "Metrics collection is disabled; no collection run is scheduled." in full_response.text
-    assert 'class="data-block alert-status"' in full_response.text
+    assert 'class="alert-status"' in full_response.text
+    assert full_response.text.count('class="alert-status__cell') == 4
+    assert "alert-status__cell--neutral" in full_response.text
     assert "Never" in full_response.text
     assert "Notifier OK" in full_response.text
     assert "Waiting for first metrics collection" in partial_response.text
@@ -205,7 +210,8 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert (
         "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
     )
-    assert 'class="data-block alert-status"' in partial_response.text
+    assert 'class="alert-status"' in partial_response.text
+    assert partial_response.text.count('class="alert-status__cell') == 4
     assert "Never" in partial_response.text
     assert "<!doctype html>" not in partial_response.text
     assert "site-header" not in partial_response.text
@@ -237,7 +243,25 @@ def test_partial_endpoint_returns_data_block_fragment(
     assert response.text.count('class="status-tile status-tile--') == 6
     assert "RoC" in response.text
     assert "status-tile--optimal" in response.text
-    assert 'class="data-block alert-status"' in response.text
+    assert 'class="alert-status"' in response.text
+    assert response.text.count('class="alert-status__cell') == 4
+
+
+def test_alert_status_pending_count_uses_warning_cell(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_pending_alert(test_app)
+
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text.count('class="alert-status__cell') == 4
+    assert "alert-status__cell--warning" in response.text
+    assert "status-badge--critical" in response.text
+    assert "Pending" in response.text
 
 
 def test_data_block_has_auto_refresh_attributes() -> None:
@@ -784,6 +808,21 @@ def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) ->
     session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
     with session_factory() as session:
         insert_snapshot(session, sample_snapshot)
+        session.commit()
+
+
+def _insert_pending_alert(test_app: FastAPI) -> None:
+    session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
+    with session_factory() as session:
+        session.add(
+            Event(
+                occurred_at=datetime.now(UTC),
+                severity="critical",
+                category="physical_drive",
+                subject="e252:s4",
+                summary="Drive state changed",
+            )
+        )
         session.commit()
 
 
