@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.web import routes
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH
 
 
@@ -55,6 +57,24 @@ def test_healthz_returns_degraded_when_database_check_fails() -> None:
     with TestClient(test_app) as client:
         test_app.state.engine = _BrokenEngine()
 
+        response = client.get("/healthz")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "degraded", "database": "error", "collector": "idle"}
+
+
+def test_healthz_returns_degraded_when_database_check_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def blocked_to_thread(*_args: Any, **_kwargs: Any) -> str:
+        await routes.asyncio.sleep(60)
+        return "ok"
+
+    monkeypatch.setattr(routes.asyncio, "to_thread", blocked_to_thread)
+    monkeypatch.setattr(routes, "_DATABASE_HEALTH_TIMEOUT_SECONDS", 0.01)
+    test_app = create_app()
+
+    with TestClient(test_app) as client:
         response = client.get("/healthz")
 
     assert response.status_code == 503
