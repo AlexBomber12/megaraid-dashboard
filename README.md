@@ -59,6 +59,8 @@ script into startup. The sample unit sets a production default of
 `sqlite:////var/lib/megaraid-dashboard/megaraid.db`, which is covered by its systemd
 `ReadWritePaths` hardening rule.
 
+Reverse proxy: see `docs/PROXY-SETUP.md` and `deploy/nginx/megaraid.conf.sample`.
+
 ### History Aggregation
 
 Drive detail graphs read history from three layers: raw `pd_snapshots` joined to
@@ -144,6 +146,10 @@ slash behavior.
 Example nginx location:
 
 ```nginx
+location = /raid {
+    return 301 /raid/;
+}
+
 location /raid/ {
     proxy_pass http://127.0.0.1:8090/;
     proxy_set_header Host $host;
