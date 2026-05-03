@@ -163,10 +163,43 @@ phase_pip() {
     log_fail "${repo_root} is not a git work tree"
   fi
 
-  install -d -m 0750 -o "${INSTALL_USER}" -g "${INSTALL_USER}" "${src_dir}"
-  find "${src_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-  git -C "${repo_root}" archive --format=tar HEAD | tar -x -C "${src_dir}"
-  chown -R "${INSTALL_USER}:${INSTALL_USER}" "${src_dir}"
+  install -d -m 0750 -o root -g "${INSTALL_USER}" "${INSTALL_PREFIX}"
+
+  local staging_dir
+  staging_dir="$(mktemp -d "${INSTALL_PREFIX}/src.staged.XXXXXXXX")"
+  local backup_dir
+  backup_dir=""
+
+  if ! git -C "${repo_root}" archive --format=tar HEAD | tar -x -C "${staging_dir}"; then
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to export source tree"
+  fi
+  if ! chown -R "${INSTALL_USER}:${INSTALL_USER}" "${staging_dir}"; then
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to set source tree ownership"
+  fi
+  if ! chmod 0750 "${staging_dir}"; then
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to set source tree permissions"
+  fi
+
+  if [[ -e "${src_dir}" ]]; then
+    backup_dir="$(mktemp -d "${INSTALL_PREFIX}/src.previous.XXXXXXXX")"
+    rmdir "${backup_dir}"
+    mv "${src_dir}" "${backup_dir}"
+  fi
+
+  if ! mv "${staging_dir}" "${src_dir}"; then
+    if [[ -n "${backup_dir}" ]]; then
+      mv "${backup_dir}" "${src_dir}"
+    fi
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to promote staged source tree"
+  fi
+
+  if [[ -n "${backup_dir}" ]]; then
+    rm -rf -- "${backup_dir}"
+  fi
 
   sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/pip" install -e "${src_dir}"
   log_info "package installed"
