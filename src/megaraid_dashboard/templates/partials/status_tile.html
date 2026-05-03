@@ -4,6 +4,7 @@
   class="status-tile status-tile--{{ tile_status }}"
   {% if href %}href="{{ href }}"{% endif %}
   {% if aria_label %}aria-label="{{ aria_label }}"{% endif %}
+  {% if tooltip %}title="{{ tooltip }}"{% endif %}
 >
   {% if icon %}
     <svg class="status-tile__icon" aria-hidden="true">
