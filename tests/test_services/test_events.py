@@ -117,21 +117,76 @@ def test_events_page_filters_by_category(session: Session) -> None:
     _insert_event(
         session,
         occurred_at=occurred_at,
-        category="physical_drive",
+        category="pd_state",
         summary="Drive state changed",
     )
     _insert_event(
         session,
         occurred_at=occurred_at + timedelta(minutes=1),
-        category="cachevault",
+        category="cv_state",
         summary="CacheVault state changed",
     )
     session.commit()
 
-    view_model = load_events_page(session, category="cachevault")
+    view_model = load_events_page(session, category="cv_state")
 
     assert [event.summary for event in view_model.events] == ["CacheVault state changed"]
-    assert view_model.category_filter == "cachevault"
+    assert view_model.category_filter == "cv_state"
+
+
+def test_events_page_filters_by_multiple_categories_and_severities(session: Session) -> None:
+    occurred_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _insert_event(
+        session,
+        occurred_at=occurred_at,
+        severity="critical",
+        category="pd_state",
+        summary="matching pd",
+    )
+    _insert_event(
+        session,
+        occurred_at=occurred_at + timedelta(minutes=1),
+        severity="warning",
+        category="temperature",
+        summary="matching temperature",
+    )
+    _insert_event(
+        session,
+        occurred_at=occurred_at + timedelta(minutes=2),
+        severity="info",
+        category="pd_state",
+        summary="wrong severity",
+    )
+    session.commit()
+
+    view_model = load_events_page(
+        session,
+        categories=("pd_state", "temperature"),
+        severities=("critical", "warning"),
+    )
+
+    assert [event.summary for event in view_model.events] == [
+        "matching temperature",
+        "matching pd",
+    ]
+    assert view_model.category_filters == ("pd_state", "temperature")
+    assert view_model.severity_filters == ("critical", "warning")
+
+
+def test_events_fragment_since_returns_newer_event_ids(session: Session) -> None:
+    occurred_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    old_event = _insert_event(session, occurred_at=occurred_at, summary="old")
+    newer_event = _insert_event(
+        session,
+        occurred_at=occurred_at + timedelta(minutes=1),
+        summary="newer",
+    )
+    session.commit()
+
+    view_model = load_events_fragment(session, since=old_event.id)
+
+    assert [event.id for event in view_model.events] == [newer_event.id]
+    assert view_model.next_cursor is None
 
 
 def test_load_events_page_populates_latest_captured_at_when_available(
