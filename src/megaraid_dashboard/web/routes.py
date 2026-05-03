@@ -57,15 +57,17 @@ _ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
 _EVENT_SEVERITY_FILTERS = ("info", "warning", "critical")
 _EVENT_CATEGORY_FILTERS = (
     "controller",
-    "vd",
-    "pd",
     "pd_state",
+    "vd_state",
+    "cv_state",
     "smart_alert",
+    "media_errors",
+    "other_errors",
+    "predictive_failures",
     "temperature",
     "controller_temperature",
     "disk_space",
-    "cachevault",
-    "physical_drive",
+    "system",
 )
 
 HealthStatus = Literal["ok", "degraded"]

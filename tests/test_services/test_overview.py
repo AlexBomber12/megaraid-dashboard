@@ -535,7 +535,7 @@ def _event(
     return Event(
         occurred_at=occurred_at,
         severity=severity,
-        category="physical_drive",
+        category="pd_state",
         subject="e252:s4",
         summary="Drive state changed",
         notified_at=notified_at,

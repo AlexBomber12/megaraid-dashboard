@@ -117,21 +117,21 @@ def test_events_page_filters_by_category(session: Session) -> None:
     _insert_event(
         session,
         occurred_at=occurred_at,
-        category="physical_drive",
+        category="pd_state",
         summary="Drive state changed",
     )
     _insert_event(
         session,
         occurred_at=occurred_at + timedelta(minutes=1),
-        category="cachevault",
+        category="cv_state",
         summary="CacheVault state changed",
     )
     session.commit()
 
-    view_model = load_events_page(session, category="cachevault")
+    view_model = load_events_page(session, category="cv_state")
 
     assert [event.summary for event in view_model.events] == ["CacheVault state changed"]
-    assert view_model.category_filter == "cachevault"
+    assert view_model.category_filter == "cv_state"
 
 
 def test_events_page_filters_by_multiple_categories_and_severities(session: Session) -> None:

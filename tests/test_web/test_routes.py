@@ -278,13 +278,13 @@ def test_overview_renders_recent_activity_timeline_with_links(
         _insert_app_event(
             test_app,
             occurred_at=datetime(2026, 4, 25, 12, 1, tzinfo=UTC),
-            category="physical_drive",
+            category="pd_state",
             summary="Drive state changed",
         )
         _insert_app_event(
             test_app,
             occurred_at=datetime(2026, 4, 25, 12, 2, tzinfo=UTC),
-            category="cachevault",
+            category="cv_state",
             summary="CacheVault state changed",
             severity="warning",
         )
@@ -295,8 +295,8 @@ def test_overview_renders_recent_activity_timeline_with_links(
     assert '<section class="timeline"' in response.text
     assert "Drive state changed" in response.text
     assert "CacheVault state changed" in response.text
-    assert '<a class="timeline__category" href="/events?category=physical_drive">' in response.text
-    assert '<a class="timeline__category" href="/events?category=cachevault">' in response.text
+    assert '<a class="timeline__category" href="/events?category=pd_state">' in response.text
+    assert '<a class="timeline__category" href="/events?category=cv_state">' in response.text
     assert 'datetime="2026-04-25T12:02:00Z" data-local-time' in response.text
     assert "#icon-alert-triangle" in response.text
 
@@ -320,17 +320,17 @@ def test_timeline_category_link_filters_events_page(sample_snapshot: StorcliSnap
         _insert_app_event(
             test_app,
             occurred_at=datetime(2026, 4, 25, 12, 1, tzinfo=UTC),
-            category="physical_drive",
+            category="pd_state",
             summary="Drive state changed",
         )
         _insert_app_event(
             test_app,
             occurred_at=datetime(2026, 4, 25, 12, 2, tzinfo=UTC),
-            category="cachevault",
+            category="cv_state",
             summary="CacheVault state changed",
         )
 
-        response = client.get("/events?category=cachevault")
+        response = client.get("/events?category=cv_state")
 
     assert response.status_code == 200
     assert "CacheVault state changed" in response.text
@@ -920,7 +920,7 @@ def _insert_pending_alert(test_app: FastAPI) -> None:
             Event(
                 occurred_at=datetime.now(UTC),
                 severity="critical",
-                category="physical_drive",
+                category="pd_state",
                 subject="e252:s4",
                 summary="Drive state changed",
             )

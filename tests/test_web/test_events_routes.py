@@ -181,7 +181,7 @@ def test_events_category_filter_is_preserved_across_partial_requests() -> None:
             _insert_app_event(
                 test_app,
                 occurred_at=base_time + timedelta(minutes=index),
-                category="cachevault",
+                category="cv_state",
                 subject=f"cachevault-{index}",
             )
             for index in range(52)
@@ -189,28 +189,28 @@ def test_events_category_filter_is_preserved_across_partial_requests() -> None:
         _insert_app_event(
             test_app,
             occurred_at=base_time + timedelta(minutes=1, seconds=30),
-            category="physical_drive",
+            category="pd_state",
             subject="physical-drive-leak",
         )
 
-        initial_page_response = client.get("/events", params={"category": "cachevault"})
-        refresh_response = client.get("/partials/events", params={"category": "cachevault"})
+        initial_page_response = client.get("/events", params={"category": "cv_state"})
+        refresh_response = client.get("/partials/events", params={"category": "cv_state"})
         cursor_event = cachevault_events[2]
         pagination_response = client.get(
             "/partials/events",
             params={
                 "before_occurred_at": cursor_event.occurred_at.isoformat(),
                 "before_id": str(cursor_event.id),
-                "category": "cachevault",
+                "category": "cv_state",
             },
         )
 
     assert initial_page_response.status_code == 200
     assert refresh_response.status_code == 200
     assert pagination_response.status_code == 200
-    assert "category=cachevault" in initial_page_response.text
+    assert "category=cv_state" in initial_page_response.text
     assert "since=" in initial_page_response.text
-    assert "category=cachevault" in refresh_response.text
+    assert "category=cv_state" in refresh_response.text
     assert "since=" in refresh_response.text
     assert "cachevault-51" in refresh_response.text
     assert "physical-drive-leak" not in refresh_response.text
@@ -264,6 +264,33 @@ def test_events_filter_chips_reflect_active_state() -> None:
     assert 'class="filter-chip filter-chip--active"' in response.text
     assert 'href="/events?category=pd_state"' in response.text
     assert 'href="/events?severity=critical"' in response.text
+
+
+def test_events_category_filter_chips_use_persisted_category_keys() -> None:
+    test_app = create_app()
+    expected_categories = (
+        "controller",
+        "pd_state",
+        "vd_state",
+        "cv_state",
+        "smart_alert",
+        "media_errors",
+        "other_errors",
+        "predictive_failures",
+        "temperature",
+        "controller_temperature",
+        "disk_space",
+        "system",
+    )
+
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/events")
+
+    assert response.status_code == 200
+    for category in expected_categories:
+        assert f'href="/events?category={category}"' in response.text
+    for legacy_category in ("vd", "pd", "cachevault", "physical_drive"):
+        assert f'href="/events?category={legacy_category}"' not in response.text
 
 
 def test_events_since_poll_returns_oob_newer_events_only() -> None:
@@ -397,7 +424,7 @@ def _insert_app_event(
     *,
     occurred_at: datetime,
     severity: str = "info",
-    category: str = "physical_drive",
+    category: str = "pd_state",
     subject: str = "event",
     summary: str = "Drive state changed",
 ) -> _InsertedEvent:
