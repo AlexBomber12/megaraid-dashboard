@@ -188,6 +188,315 @@ def test_install_accepts_existing_service_user(tmp_path: Path) -> None:
     assert "matches service account policy" in result.stdout
 
 
+def test_phase_venv_reuses_existing_venv_and_upgrades_pip(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    pip = prefix / ".venv" / "bin" / "pip"
+    pip.parent.mkdir(parents=True)
+    log = tmp_path / "commands.log"
+    pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\n")
+    pip.chmod(0o755)
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_venv",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "venv exists, skip" in result.stdout
+    assert log.read_text() == "pip install --upgrade pip>=24\n"
+
+
+def test_phase_venv_fails_fast_when_pypi_unreachable(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    pip = prefix / ".venv" / "bin" / "pip"
+    pip.parent.mkdir(parents=True)
+    log = tmp_path / "commands.log"
+    pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\n")
+    pip.chmod(0o755)
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 7\n")
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_venv",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "pypi.org unreachable; cannot pip install" in result.stderr
+    assert not log.exists()
+
+
+def test_phase_venv_creates_root_bootstrapped_venv_then_fixes_ownership(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    prefix.mkdir(mode=0o750)
+    log = tmp_path / "commands.log"
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        bin_dir / "python3",
+        "#!/bin/sh\n"
+        f"printf 'python3 %s\\n' \"$*\" >> {log}\n"
+        'if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then\n'
+        '  mkdir -p "$3/bin"\n'
+        "  cat > \"$3/bin/pip\" <<'PIP'\n"
+        "#!/bin/sh\n"
+        f"printf 'pip %s\\n' \"$*\" >> {log}\n"
+        "PIP\n"
+        '  chmod 755 "$3/bin/pip"\n'
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "chown",
+        f"#!/bin/sh\nprintf 'chown %s\\n' \"$*\" >> {log}\n",
+    )
+    _write_executable(
+        bin_dir / "sudo",
+        f"#!/bin/sh\nprintf 'sudo %s\\n' \"$*\" >> {log}\n"
+        'if [ "$1" = "-u" ]; then\n'
+        "  shift 2\n"
+        "fi\n"
+        'exec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_venv",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"created venv at {prefix}/.venv" in result.stdout
+    assert log.read_text() == (
+        f"python3 -m venv {prefix}/.venv\n"
+        f"chown -R raid-monitor:raid-monitor {prefix}/.venv\n"
+        f"sudo -u raid-monitor {prefix}/.venv/bin/pip install --upgrade pip>=24\n"
+        "pip install --upgrade pip>=24\n"
+    )
+
+
+def test_phase_pip_fails_fast_when_pypi_unreachable(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 7\n")
+
+    result = _run_phase(
+        "phase_pip",
+        env={
+            "INSTALL_PREFIX": str(tmp_path / "prefix"),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "pypi.org unreachable; cannot pip install" in result.stderr
+
+
+def test_phase_pip_copies_checkout_source_and_installs_editable_package(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    pip = prefix / ".venv" / "bin" / "pip"
+    pip.parent.mkdir(parents=True)
+    log = tmp_path / "commands.log"
+    pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\n")
+    pip.chmod(0o755)
+
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        bin_dir / "install",
+        '#!/bin/sh\nwhile [ $# -gt 1 ]; do\n  shift\ndone\nmkdir -p "$1"\n',
+    )
+    _write_executable(
+        bin_dir / "git",
+        "#!/bin/sh\n"
+        f"printf 'git %s\\n' \"$*\" >> {log}\n"
+        'if [ "$3" = "rev-parse" ]; then\n'
+        "  printf 'true\\n'\n"
+        'elif [ "$1" = "ls-files" ]; then\n'
+        "  printf 'scripts/install.sh\\0pyproject.toml\\0'\n"
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "tar",
+        f"#!/bin/sh\nprintf 'tar %s\\n' \"$*\" >> {log}\ncat >/dev/null\n",
+    )
+    _write_executable(
+        bin_dir / "chown",
+        f"#!/bin/sh\nprintf 'chown %s\\n' \"$*\" >> {log}\n",
+    )
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_pip",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    logged = log.read_text()
+    assert f"git -C {REPO_ROOT} rev-parse --is-inside-work-tree" in logged
+    assert "git ls-files -z --cached --others --exclude-standard" in logged
+    assert "git -C" not in logged.partition("rev-parse --is-inside-work-tree")[2]
+    assert "archive --format=tar HEAD" not in logged
+    assert "tar --null --files-from=- --create --file=-" in logged
+    assert f"tar -x -C {prefix}/src.staged." in logged
+    assert f"chown -R raid-monitor:raid-monitor {prefix}/src.staged." in logged
+    assert f"pip install -e {prefix}/src" in logged
+
+
+def test_phase_pip_preserves_existing_source_when_checkout_copy_fails(
+    tmp_path: Path,
+) -> None:
+    prefix = tmp_path / "prefix"
+    src = prefix / "src"
+    src.mkdir(parents=True)
+    existing_file = src / "existing.py"
+    existing_file.write_text("working code\n")
+    pip = prefix / ".venv" / "bin" / "pip"
+    pip.parent.mkdir(parents=True)
+    log = tmp_path / "commands.log"
+    pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\n")
+    pip.chmod(0o755)
+
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        bin_dir / "install",
+        '#!/bin/sh\nwhile [ $# -gt 1 ]; do\n  shift\ndone\nmkdir -p "$1"\n',
+    )
+    _write_executable(
+        bin_dir / "git",
+        "#!/bin/sh\n"
+        f"printf 'git %s\\n' \"$*\" >> {log}\n"
+        'if [ "$3" = "rev-parse" ]; then\n'
+        "  printf 'true\\n'\n"
+        'elif [ "$1" = "ls-files" ]; then\n'
+        "  printf 'scripts/install.sh\\0'\n"
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "tar",
+        f"#!/bin/sh\nprintf 'tar %s\\n' \"$*\" >> {log}\ncat >/dev/null\nexit 2\n",
+    )
+
+    result = _run_phase(
+        "phase_pip",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "failed to export source tree" in result.stderr
+    assert existing_file.read_text() == "working code\n"
+    assert not list(prefix.glob("src.staged.*"))
+    assert "pip install -e" not in log.read_text()
+
+
+def test_phase_pip_restores_previous_source_when_pip_install_fails(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    src = prefix / "src"
+    src.mkdir(parents=True)
+    existing_file = src / "existing.py"
+    existing_file.write_text("working code\n")
+    pip = prefix / ".venv" / "bin" / "pip"
+    pip.parent.mkdir(parents=True)
+    log = tmp_path / "commands.log"
+    pip.write_text(f"#!/bin/sh\nprintf 'pip %s\\n' \"$*\" >> {log}\nexit 9\n")
+    pip.chmod(0o755)
+
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        bin_dir / "install",
+        '#!/bin/sh\nwhile [ $# -gt 1 ]; do\n  shift\ndone\nmkdir -p "$1"\n',
+    )
+    _write_executable(
+        bin_dir / "git",
+        "#!/bin/sh\n"
+        f"printf 'git %s\\n' \"$*\" >> {log}\n"
+        'if [ "$3" = "rev-parse" ]; then\n'
+        "  printf 'true\\n'\n"
+        'elif [ "$1" = "ls-files" ]; then\n'
+        "  printf 'scripts/install.sh\\0'\n"
+        "fi\n",
+    )
+    _write_executable(
+        bin_dir / "tar",
+        f"#!/bin/sh\nprintf 'tar %s\\n' \"$*\" >> {log}\ncat >/dev/null\n",
+    )
+    _write_executable(
+        bin_dir / "chown",
+        f"#!/bin/sh\nprintf 'chown %s\\n' \"$*\" >> {log}\n",
+    )
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_pip",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "pip install failed; restored previous source tree" in result.stderr
+    assert existing_file.read_text() == "working code\n"
+    assert not list(prefix.glob("src.previous.*"))
+    assert not list(prefix.glob("src.staged.*"))
+    assert f"pip install -e {prefix}/src" in log.read_text()
+
+
+def test_phase_smoke_logs_imported_version(tmp_path: Path) -> None:
+    prefix = tmp_path / "prefix"
+    python = prefix / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("#!/bin/sh\nprintf '9.8.7-test\\n'\n")
+    python.chmod(0o755)
+
+    bin_dir = _stub_bin(tmp_path)
+    _write_executable(
+        bin_dir / "sudo",
+        '#!/bin/sh\nif [ "$1" = "-u" ]; then\n  shift 2\nfi\nexec "$@"\n',
+    )
+
+    result = _run_phase(
+        "phase_smoke",
+        env={
+            "INSTALL_PREFIX": str(prefix),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "imported megaraid_dashboard 9.8.7-test" in result.stdout
+
+
 def _existing_user_stub_bin(tmp_path: Path, *, passwd_entry: str, group_entry: str) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -218,3 +527,24 @@ def _existing_user_stub_bin(tmp_path: Path, *, passwd_entry: str, group_entry: s
     getent.chmod(0o755)
 
     return bin_dir
+
+
+def _run_phase(phase: str, *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; {phase}"],
+        check=False,
+        env={**os.environ, **env},
+        text=True,
+        capture_output=True,
+    )
+
+
+def _stub_bin(tmp_path: Path) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    return bin_dir
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content)
+    path.chmod(0o755)

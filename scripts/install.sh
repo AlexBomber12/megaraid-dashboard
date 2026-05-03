@@ -27,6 +27,14 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+require_pypi_reachable() {
+  command_exists curl || log_fail "curl not found"
+
+  if ! curl -fsSI -o /dev/null https://pypi.org/simple/; then
+    log_fail "pypi.org unreachable; cannot pip install"
+  fi
+}
+
 validate_install_user() {
   local passwd_entry
   passwd_entry="$(getent passwd "${INSTALL_USER}")" || log_fail "user ${INSTALL_USER} not found"
@@ -125,12 +133,116 @@ phase_dirs() {
   fi
 }
 
+phase_venv() {
+  log_info "Phase 4: venv"
+
+  command_exists python3 || log_fail "python3 not found"
+
+  local venv="${INSTALL_PREFIX}/.venv"
+  if [[ ! -d "${venv}" ]]; then
+    python3 -m venv "${venv}"
+    chown -R "${INSTALL_USER}:${INSTALL_USER}" "${venv}"
+    log_info "created venv at ${venv}"
+  else
+    log_info "venv exists, skip"
+  fi
+
+  require_pypi_reachable
+  sudo -u "${INSTALL_USER}" "${venv}/bin/pip" install --upgrade "pip>=24" >/dev/null
+}
+
+phase_pip() {
+  log_info "Phase 5: pip install"
+
+  require_pypi_reachable
+
+  local src_dir="${INSTALL_PREFIX}/src"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local repo_root
+  repo_root="$(dirname "${script_dir}")"
+
+  command_exists git || log_fail "git not found"
+  command_exists tar || log_fail "tar not found"
+  if [[ "$(git -C "${repo_root}" rev-parse --is-inside-work-tree)" != "true" ]]; then
+    log_fail "${repo_root} is not a git work tree"
+  fi
+
+  install -d -m 0750 -o root -g "${INSTALL_USER}" "${INSTALL_PREFIX}"
+
+  local staging_dir
+  staging_dir="$(mktemp -d "${INSTALL_PREFIX}/src.staged.XXXXXXXX")"
+  local backup_dir
+  backup_dir=""
+
+  if ! (
+    cd "${repo_root}"
+    git ls-files -z --cached --others --exclude-standard |
+      while IFS= read -r -d '' path; do
+        [[ -e "${path}" ]] && printf '%s\0' "${path}"
+      done |
+      tar --null --files-from=- --create --file=- |
+      tar -x -C "${staging_dir}"
+  ); then
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to export source tree"
+  fi
+  if ! chown -R "${INSTALL_USER}:${INSTALL_USER}" "${staging_dir}"; then
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to set source tree ownership"
+  fi
+  if ! chmod 0750 "${staging_dir}"; then
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to set source tree permissions"
+  fi
+
+  if [[ -e "${src_dir}" ]]; then
+    backup_dir="$(mktemp -d "${INSTALL_PREFIX}/src.previous.XXXXXXXX")"
+    rmdir "${backup_dir}"
+    mv "${src_dir}" "${backup_dir}"
+  fi
+
+  if ! mv "${staging_dir}" "${src_dir}"; then
+    if [[ -n "${backup_dir}" ]]; then
+      mv "${backup_dir}" "${src_dir}"
+    fi
+    rm -rf -- "${staging_dir}"
+    log_fail "failed to promote staged source tree"
+  fi
+
+  if ! sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/pip" install -e "${src_dir}"; then
+    rm -rf -- "${src_dir}"
+    if [[ -n "${backup_dir}" ]]; then
+      mv "${backup_dir}" "${src_dir}"
+    fi
+    log_fail "pip install failed; restored previous source tree"
+  fi
+
+  if [[ -n "${backup_dir}" ]]; then
+    rm -rf -- "${backup_dir}"
+  fi
+
+  log_info "package installed"
+}
+
+phase_smoke() {
+  log_info "Phase 6: smoke"
+
+  local out
+  out="$(sudo -u "${INSTALL_USER}" "${INSTALL_PREFIX}/.venv/bin/python" -c \
+    "import megaraid_dashboard; print(megaraid_dashboard.__version__)")"
+  log_info "imported megaraid_dashboard ${out}"
+}
+
 main() {
   require_root
   phase_preflight
   phase_user
   phase_dirs
-  log_info "PR-028 phases complete; continue with venv / pip / config / systemd via PR-029..PR-031"
+  phase_venv
+  phase_pip
+  phase_smoke
+  log_info "PR-029 phases complete; continue with config wizard via PR-030"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
