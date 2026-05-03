@@ -61,6 +61,9 @@ script into startup. The sample unit sets a production default of
 
 Reverse proxy: see `docs/PROXY-SETUP.md` and `deploy/nginx/megaraid.conf.sample`.
 
+Install: see `scripts/install.sh` for the current installer scaffold. `INSTALL.md` is
+forthcoming.
+
 ### Log retention
 
 Logs go to systemd journald. To cap this unit's journal at 200 MB on disk, copy
