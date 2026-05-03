@@ -774,15 +774,6 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
             status_code=404,
         )
-    if drive.serial_number != body.serial_number:
-        # Same reasoning as Step 1: do not echo the canonical serial back. The
-        # operator must type the NEW (replacement) drive's serial; a mismatch
-        # against the latest snapshot for this slot means either the snapshot
-        # is stale or the operator typed the wrong value.
-        return JSONResponse(
-            {"error": "serial mismatch (replacement drive)"},
-            status_code=409,
-        )
 
     last_audit = await run_in_threadpool(
         _load_last_operator_action_for_slot,
@@ -808,6 +799,23 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
                     "expected the new replacement drive's serial"
                 )
             },
+            status_code=409,
+        )
+    # The snapshot is allowed to lag the physical swap: after the operator
+    # pulls the failed drive and seats the replacement, the next collector
+    # poll may not have happened yet, so the persisted serial can still be
+    # the outgoing drive's. Accept either the typed replacement serial
+    # (snapshot already refreshed) or the outgoing serial (snapshot still
+    # pre-swap); the live storcli precheck below is the authoritative
+    # identity check before any destructive command. Reject only when the
+    # snapshot serial matches neither — that signals an unrelated drive in
+    # the slot or a mistyped value.
+    if drive.serial_number != body.serial_number and (
+        outgoing_serial is None or drive.serial_number != outgoing_serial
+    ):
+        # Same reasoning as Step 1: do not echo the canonical serial back.
+        return JSONResponse(
+            {"error": "serial mismatch (replacement drive)"},
             status_code=409,
         )
 
@@ -1009,6 +1017,11 @@ def _extract_serial_from_audit(message: str) -> str | None:
     return None
 
 
+_ARRAY_MEMBER_STATES: frozenset[str] = frozenset(
+    {"Onln", "Offln", "Failed", "Rbld", "Cpybck", "Msng", "Missing"}
+)
+
+
 def _compute_slot_topology(
     *,
     request: Request,
@@ -1022,10 +1035,12 @@ def _compute_slot_topology(
     physical swap the current snapshot may show a fresh ``UGood`` drive with
     no DG, so we walk back to find the configured DG the slot belonged to).
 
-    ``row`` is the target slot's position among peer slots in the SAME DG,
-    sorted by ``(enclosure, slot)``. Drives outside the target DG never
-    influence the row, so a multi-DG host cannot inflate it. The target slot
-    is always included so a UGood replacement drive still occupies the failed
+    ``row`` is the target slot's position among peer slots in the SAME DG
+    whose state marks them as actual array members (``Onln`` / ``Offln`` /
+    ``Failed`` / ``Rbld`` / ``Cpybck`` / ``Msng``), sorted by ``(enclosure,
+    slot)``. Hot spares (``DHS`` / ``GHS``) are associated to a DG but do not
+    occupy an array row, so they must not shift the index. The target slot is
+    always included so a UGood replacement drive still occupies the failed
     member's row.
 
     ``array`` defaults to ``0`` (single-span arrays) — the production
@@ -1070,7 +1085,9 @@ def _compute_slot_topology(
                 return None
             target_dg = next(iter(distinct_dgs))
         member_keys = {
-            (pd.enclosure_id, pd.slot_id) for pd in physical_slots if pd.disk_group_id == target_dg
+            (pd.enclosure_id, pd.slot_id)
+            for pd in physical_slots
+            if pd.disk_group_id == target_dg and pd.state in _ARRAY_MEMBER_STATES
         }
         member_keys.add(target)
         ordered = sorted(member_keys)

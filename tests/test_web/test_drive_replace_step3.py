@@ -199,6 +199,97 @@ def test_drive_replace_insert_returns_409_on_replacement_serial_mismatch(
         assert _NEW_SERIAL not in response.text
 
 
+def test_drive_replace_insert_dry_run_accepts_stale_snapshot_with_outgoing_serial(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    """The persisted snapshot may still record the outgoing drive when the
+    operator runs Step 3 only seconds after the physical swap (the collector
+    interval is on the order of minutes). Dry-run must accept the typed
+    replacement serial in that case, deferring identity verification to the
+    live storcli precheck — otherwise the replacement workflow stalls until
+    the next collector cycle.
+    """
+
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for dry runs")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Snapshot is pre-swap: the slot still records the outgoing serial.
+        _seed_drive(test_app, serial_number=_OUTGOING_SERIAL, state="Offln")
+        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            headers=headers,
+            json={
+                "serial_number": _NEW_SERIAL,
+                "dry_run": True,
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["dry_run"] is True
+        assert body["serial_number"] == _NEW_SERIAL
+        assert body["argv"] == [
+            "/c0/e2/s0",
+            "insert",
+            "dg=0",
+            "array=0",
+            "row=0",
+            "J",
+        ]
+
+
+def test_drive_replace_insert_success_with_stale_snapshot_serial(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    """End-to-end: snapshot still has the outgoing serial but the live drive
+    is the replacement. The handler must run the live precheck, observe the
+    new serial, and proceed with the destructive insert.
+    """
+    runner_calls: list[list[str]] = []
+
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del use_sudo, binary_path
+        runner_calls.append(list(args))
+        if list(args) == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number=_NEW_SERIAL)
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        # Snapshot lags: still records the outgoing drive in the slot.
+        _seed_drive(test_app, serial_number=_OUTGOING_SERIAL, state="Offln")
+        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            headers=headers,
+            json={"serial_number": _NEW_SERIAL},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["serial_number"] == _NEW_SERIAL
+        assert runner_calls == [
+            ["/c0/e2/s0", "show", "all", "J"],
+            ["/c0/e2/s0", "insert", "dg=0", "array=0", "row=0", "J"],
+        ]
+
+
 def test_drive_replace_insert_returns_409_when_serial_matches_outgoing(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -605,6 +696,47 @@ def test_drive_replace_topology_skips_hot_spare_when_computing_row() -> None:
         body = response.json()
         # Members ordered by slot: 0, 1, 2, 3, 5(target), 6, 7 → row=4.
         assert body["row"] == 4
+
+
+def test_drive_replace_topology_skips_dedicated_hot_spare_with_dg() -> None:
+    """A Dedicated Hot Spare carries a ``disk_group_id`` (it is associated to
+    the DG it backs) but is not an array member, so it must not shift the
+    row index. Filtering only by DG would inflate the target slot's row by
+    every DHS that precedes it.
+    """
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drives(
+            test_app,
+            drives=[
+                # Three array members of DG=0.
+                (2, 0, "WD-A0", "Onln", 0),
+                (2, 1, "WD-A1", "Onln", 0),
+                (2, 2, "WD-A2", "Onln", 0),
+                # Dedicated hot spare backing DG=0 sits before the target.
+                (2, 3, "WD-DHS", "DHS", 0),
+                # The target slot — fresh replacement drive in UGood, but
+                # historic DG=0 membership for the failed slot is recorded
+                # in an earlier snapshot below.
+                (2, 4, _NEW_SERIAL, "UGood", None),
+                (2, 5, "WD-A4", "Onln", 0),
+            ],
+            captured_at=datetime(2026, 5, 3, 12, 0, tzinfo=UTC),
+        )
+        # Earlier snapshot: target slot used to be a DG=0 member.
+        _seed_drives(
+            test_app,
+            drives=[(2, 4, "WD-A3-OLD", "Failed", 0)],
+            captured_at=datetime(2026, 5, 3, 9, 0, tzinfo=UTC),
+        )
+        response = client.get("/drives/2:4/replace/topology")
+
+        assert response.status_code == 200
+        body = response.json()
+        # Members of DG=0 by slot: 0, 1, 2, 4(target), 5 → row=3 (DHS at
+        # slot 3 is a spare and must not bump the index).
+        assert body["dg"] == 0
+        assert body["row"] == 3
 
 
 def test_drive_replace_insert_skips_substring_slot_audit(
