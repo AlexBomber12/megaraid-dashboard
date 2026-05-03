@@ -4,6 +4,7 @@ import base64
 import binascii
 import hmac
 import re
+from collections.abc import Awaitable, Callable
 from typing import cast
 
 import bcrypt
@@ -13,6 +14,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.web._whitelist import is_whitelisted
+from megaraid_dashboard.web.rate_limit import AUTH_RATE_LIMIT_NOTIFY_SCOPE_KEY
 
 LOGGER = structlog.get_logger(__name__)
 
@@ -33,7 +35,15 @@ class BasicAuthMiddleware:
 
         header_value = _get_authorization_header(scope)
         authorization = header_value.decode("latin-1") if header_value is not None else None
-        if not _verify_credentials(authorization, self.settings):
+        credentials_valid = _verify_credentials(authorization, self.settings)
+        notify_auth_result = cast(
+            "Callable[[bool], Awaitable[None]] | None",
+            scope.get(AUTH_RATE_LIMIT_NOTIFY_SCOPE_KEY),
+        )
+        if notify_auth_result is not None:
+            await notify_auth_result(credentials_valid)
+
+        if not credentials_valid:
             response = PlainTextResponse(
                 "Unauthorized",
                 status_code=401,

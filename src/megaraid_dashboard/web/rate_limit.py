@@ -4,7 +4,7 @@ import asyncio
 import ipaddress
 import time
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import cast
 
@@ -18,6 +18,9 @@ from megaraid_dashboard.web._whitelist import is_whitelisted
 _WINDOW_SECONDS = 60.0
 _RETRY_AFTER_SECONDS = 60
 _GLOBAL_PRUNE_INTERVAL_SECONDS = 60.0
+AUTH_RATE_LIMIT_NOTIFY_SCOPE_KEY = "megaraid_dashboard.auth_rate_limit_notify"
+
+AuthRateLimitNotify = Callable[[bool], Awaitable[None]]
 
 
 @dataclass(eq=False)
@@ -46,7 +49,8 @@ class AuthRateLimitMiddleware:
             return
 
         client_ip = _client_ip(scope)
-        if await self._is_limited(client_ip, self._time_func()):
+        reserved_slot = await self._reserve_attempt_slot(client_ip, self._time_func())
+        if reserved_slot is None:
             response = JSONResponse(
                 {"error": "rate_limit_exceeded"},
                 status_code=429,
@@ -56,6 +60,13 @@ class AuthRateLimitMiddleware:
             return
 
         status_code: int | None = None
+        auth_result_received = False
+
+        async def notify_auth_result(credentials_valid: bool) -> None:
+            nonlocal auth_result_received
+            auth_result_received = True
+            if credentials_valid:
+                await self._release_attempt_slot(client_ip, reserved_slot)
 
         async def send_with_status_capture(message: Message) -> None:
             nonlocal status_code
@@ -63,10 +74,18 @@ class AuthRateLimitMiddleware:
                 status_code = int(message["status"])
             await send(message)
 
-        await self.app(scope, receive, send_with_status_capture)
+        rate_limited_scope = dict(scope)
+        rate_limited_scope[AUTH_RATE_LIMIT_NOTIFY_SCOPE_KEY] = notify_auth_result
 
-        if status_code == 401:
-            await self._record_failed_attempt(client_ip, self._time_func())
+        try:
+            await self.app(rate_limited_scope, receive, send_with_status_capture)
+        except Exception:
+            if not auth_result_received:
+                await self._release_attempt_slot(client_ip, reserved_slot)
+            raise
+
+        if not auth_result_received and status_code != 401:
+            await self._release_attempt_slot(client_ip, reserved_slot)
 
     async def _is_limited(self, client_ip: str, now: float) -> bool:
         async with self._lock:
@@ -86,6 +105,31 @@ class AuthRateLimitMiddleware:
             attempts = self._attempts[client_ip]
             _evict_expired(attempts, now)
             attempts.append(_AttemptSlot(recorded_at=now))
+
+    async def _reserve_attempt_slot(self, client_ip: str, now: float) -> _AttemptSlot | None:
+        async with self._lock:
+            self._prune_expired_attempts(now)
+            attempts = self._attempts[client_ip]
+            _evict_expired(attempts, now)
+            if len(attempts) >= self.limit:
+                if not attempts:
+                    self._attempts.pop(client_ip, None)
+                return None
+            slot = _AttemptSlot(recorded_at=now)
+            attempts.append(slot)
+            return slot
+
+    async def _release_attempt_slot(self, client_ip: str, slot: _AttemptSlot) -> None:
+        async with self._lock:
+            attempts = self._attempts.get(client_ip)
+            if attempts is None:
+                return
+            try:
+                attempts.remove(slot)
+            except ValueError:
+                return
+            if not attempts:
+                self._attempts.pop(client_ip, None)
 
     def _prune_expired_attempts(self, now: float) -> None:
         if now < self._next_global_prune_at:

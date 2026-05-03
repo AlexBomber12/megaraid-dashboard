@@ -84,6 +84,25 @@ async def test_in_flight_successful_requests_do_not_reserve_rate_limit_slots(
     assert inner_app.started == 2
 
 
+async def test_in_flight_failed_request_reserves_rate_limit_slot(settings: Settings) -> None:
+    settings = settings.model_copy(update={"auth_rate_limit_per_minute": 1})
+    inner_app = _SlowUnauthorizedApp()
+    app = AuthRateLimitMiddleware(inner_app, settings=settings)
+    transport = httpx.ASGITransport(app=app, client=("203.0.113.10", 12345))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first_task = asyncio.create_task(client.get("/"))
+        await inner_app.entered.wait()
+
+        second = await client.get("/")
+        inner_app.release.set()
+        first = await first_task
+
+    assert first.status_code == 401
+    assert second.status_code == 429
+    assert inner_app.started == 1
+
+
 async def test_window_expiry_allows_new_attempt(settings: Settings) -> None:
     clock = _Clock()
     async with _rate_limited_client(settings=settings, time_func=clock.monotonic) as client:
@@ -299,4 +318,19 @@ class _SlowOkApp:
         if self.started == 1:
             await self.release.wait()
         response = PlainTextResponse("ok")
+        await response(scope, receive, send)
+
+
+class _SlowUnauthorizedApp:
+    def __init__(self) -> None:
+        self.started = 0
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        assert scope["type"] == "http"
+        self.started += 1
+        self.entered.set()
+        await self.release.wait()
+        response = PlainTextResponse("Unauthorized", status_code=401)
         await response(scope, receive, send)
