@@ -420,11 +420,9 @@ def test_drive_replace_offline_returns_409_on_serial_mismatch(
         )
 
         assert response.status_code == 409
-        assert response.json() == {
-            "error": "serial mismatch",
-            "expected": _DEFAULT_SERIAL,
-            "supplied": "WD-WRONG",
-        }
+        body = response.json()
+        assert body == {"error": "serial mismatch"}
+        assert _DEFAULT_SERIAL not in response.text
         _assert_no_audit_event(test_app)
 
 
@@ -529,9 +527,8 @@ def test_drive_replace_offline_rejects_when_live_serial_mismatches(
 
         assert response.status_code == 409
         body = response.json()
-        assert body["error"] == "live serial mismatch"
-        assert body["expected"] == _DEFAULT_SERIAL
-        assert body["live"] == "OTHER-DRIVE-SN"
+        assert body == {"error": "live serial mismatch"}
+        assert "OTHER-DRIVE-SN" not in response.text
         assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
         _assert_no_audit_event(test_app)
 
@@ -568,9 +565,8 @@ def test_drive_replace_missing_rejects_when_live_serial_mismatches(
 
         assert response.status_code == 409
         body = response.json()
-        assert body["error"] == "live serial mismatch"
-        assert body["expected"] == _DEFAULT_SERIAL
-        assert body["live"] == "OTHER-DRIVE-SN"
+        assert body == {"error": "live serial mismatch"}
+        assert "OTHER-DRIVE-SN" not in response.text
         assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
         _assert_no_audit_event(test_app)
 
@@ -639,11 +635,8 @@ def test_drive_replace_uses_latest_snapshot_serial(
         )
 
         assert response_old.status_code == 409
-        assert response_old.json() == {
-            "error": "serial mismatch",
-            "expected": "NEW-SERIAL",
-            "supplied": "OLD-SERIAL",
-        }
+        assert response_old.json() == {"error": "serial mismatch"}
+        assert "NEW-SERIAL" not in response_old.text
         assert response_new.status_code == 200
 
 

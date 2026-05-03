@@ -422,12 +422,11 @@ async def _run_replace_step(
             status_code=404,
         )
     if drive.serial_number != body.serial_number:
+        # Do not echo the canonical serial: returning it would let an
+        # operator probe with a placeholder value, read back the true serial,
+        # and replay the destructive call with that value.
         return JSONResponse(
-            {
-                "error": "serial mismatch",
-                "expected": drive.serial_number,
-                "supplied": body.serial_number,
-            },
+            {"error": "serial mismatch"},
             status_code=409,
         )
 
@@ -494,12 +493,10 @@ async def _run_replace_step(
             status_code=502,
         )
     if live.serial_number != body.serial_number:
+        # Same reasoning as the snapshot mismatch above: do not return the
+        # live drive's serial in the response.
         return JSONResponse(
-            {
-                "error": "live serial mismatch",
-                "expected": body.serial_number,
-                "live": live.serial_number,
-            },
+            {"error": "live serial mismatch"},
             status_code=409,
         )
     if not can_transition(live.state, step):
