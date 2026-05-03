@@ -83,6 +83,10 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header X-Frame-Options "DENY" always;
 
+    location = /raid {
+        return 301 /raid/;
+    }
+
     location = /raid/healthz {
         proxy_pass http://127.0.0.1:8090/healthz;
         proxy_set_header Host $host;
@@ -134,6 +138,14 @@ sudo systemctl reload nginx
 
 ## Location Block
 
+Redirect the bare prefix to the canonical trailing-slash URL:
+
+```nginx
+location = /raid {
+    return 301 /raid/;
+}
+```
+
 The main dashboard location is:
 
 ```nginx
@@ -173,6 +185,9 @@ proxy_set_header X-Forwarded-Prefix /raid;
 FastAPI and the templates can then continue using `request.url_for(...)`; generated links and
 static asset URLs include `/raid` for production traffic and omit it for local development.
 
+The exact `/raid` redirect keeps manually typed URLs and bookmarks from falling through to
+another nginx location before the dashboard's `/raid/` location can match.
+
 ## Security Headers
 
 The sample sets these headers at the TLS edge:
@@ -209,6 +224,10 @@ limit_req_zone $binary_remote_addr zone=raid_login:10m rate=5r/m;
 Apply it to the auth-required dashboard paths:
 
 ```nginx
+location = /raid {
+    return 301 /raid/;
+}
+
 location /raid/ {
     limit_req zone=raid_login burst=2 nodelay;
     limit_req_status 429;
@@ -272,7 +291,15 @@ Run these commands from a workstation that resolves `server.alexbomber.com` to t
 
    Expected: HTTP 301 with `Location: https://server.alexbomber.com/raid/`.
 
-3. Confirm the dashboard is auth-protected:
+3. Confirm the bare dashboard prefix redirects to the canonical trailing-slash URL:
+
+   ```bash
+   curl -I https://server.alexbomber.com/raid
+   ```
+
+   Expected: HTTP 301 with `Location: /raid/`.
+
+4. Confirm the dashboard is auth-protected:
 
    ```bash
    curl -i https://server.alexbomber.com/raid/
@@ -280,7 +307,7 @@ Run these commands from a workstation that resolves `server.alexbomber.com` to t
 
    Expected: HTTP 401 with `WWW-Authenticate: Basic realm="megaraid-dashboard"`.
 
-4. Confirm the auth-required dashboard rate limit triggers:
+5. Confirm the auth-required dashboard rate limit triggers:
 
    ```bash
    for i in {1..10}; do curl -o /dev/null -s -w "%{http_code}\n" https://server.alexbomber.com/raid/; done
@@ -288,7 +315,7 @@ Run these commands from a workstation that resolves `server.alexbomber.com` to t
 
    Expected: several `429` responses after the first five to seven requests within a minute.
 
-5. Confirm prefix injection works for authenticated HTML:
+6. Confirm prefix injection works for authenticated HTML:
 
    ```bash
    curl -i -u admin:test-password https://server.alexbomber.com/raid/

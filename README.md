@@ -146,6 +146,10 @@ slash behavior.
 Example nginx location:
 
 ```nginx
+location = /raid {
+    return 301 /raid/;
+}
+
 location /raid/ {
     proxy_pass http://127.0.0.1:8090/;
     proxy_set_header Host $host;
