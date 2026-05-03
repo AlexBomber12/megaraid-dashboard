@@ -882,6 +882,8 @@ def _drive_row_state(
     temp_critical: int,
 ) -> str:
     state_status = _event_severity_to_status(physical_drive_state_severity("Onln", drive.state))
+    if drive.state not in _PD_OPTIMAL_STATES and state_status == "optimal":
+        state_status = "warning"
     if state_status == "unknown":
         state_status = "warning"
     temp_status = temperature_severity(
