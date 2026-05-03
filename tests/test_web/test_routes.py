@@ -130,8 +130,10 @@ def test_overview_navigation_and_assets_are_prefix_aware(
 
     assert response.status_code == 200
     assert "SERVER RAID Status" in response.text
-    assert "RoC temp" in response.text
-    assert "status-badge--optimal" in response.text
+    assert response.text.count('class="status-tile status-tile--') == 6
+    for label in ("Controller", "VD", "RAID", "BBU", "MaxTemp", "RoC"):
+        assert label in response.text
+    assert "status-tile--optimal" in response.text
     assert 'class="data-block alert-status"' in response.text
     assert "Notifier OK" in response.text
     assert "/raid/static/css/app.css" in response.text
@@ -181,8 +183,9 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
         partial_response = client.get("/partials/overview")
 
     assert full_response.status_code == 200
-    assert "RoC temp" in full_response.text
-    assert "status-badge--neutral" in full_response.text
+    assert full_response.text.count('class="status-tile status-tile--') == 6
+    assert "RoC" in full_response.text
+    assert "status-tile--neutral" in full_response.text
     assert "Unknown" in full_response.text
     assert "Waiting for first metrics collection" in full_response.text
     assert "The collector has not yet completed its first run." in full_response.text
@@ -191,8 +194,9 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "Never" in full_response.text
     assert "Notifier OK" in full_response.text
     assert "Waiting for first metrics collection" in partial_response.text
-    assert "RoC temp" in partial_response.text
-    assert "status-badge--neutral" in partial_response.text
+    assert partial_response.text.count('class="status-tile status-tile--') == 6
+    assert "RoC" in partial_response.text
+    assert "status-tile--neutral" in partial_response.text
     assert (
         "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
     )
@@ -225,8 +229,9 @@ def test_partial_endpoint_returns_data_block_fragment(
     assert "<!doctype html>" not in response.text
     assert "site-header" not in response.text
     assert "SERVER RAID Status" in response.text
-    assert "RoC temp" in response.text
-    assert "status-badge--optimal" in response.text
+    assert response.text.count('class="status-tile status-tile--') == 6
+    assert "RoC" in response.text
+    assert "status-tile--optimal" in response.text
     assert 'class="data-block alert-status"' in response.text
 
 

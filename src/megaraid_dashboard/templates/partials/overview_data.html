@@ -17,27 +17,25 @@
       </p>
     </section>
 
-    <section class="stat-grid" aria-label="RAID summary">
-      {% for card in view_model.cards %}
-        <article class="stat-card stat-card--{{ card.severity }}">
-          <span class="stat-card__label">{{ card.label }}</span>
-          <strong class="stat-card__value status-text status-text--{{ card.severity }}">{{ card.value }}</strong>
-          {% if card.badges %}
-            <div class="stat-card__badges">
-              {% for badge in card.badges %}
-                <span class="status-badge status-badge--{{ badge.severity }}">{{ badge.label }}</span>
-              {% endfor %}
-            </div>
-          {% endif %}
-        </article>
-      {% endfor %}
-      <article class="stat-card stat-card--{{ view_model.roc_temperature.status }}">
-        <span class="stat-card__label">RoC temp</span>
-        <strong class="stat-card__value status-text status-text--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.label }}</strong>
-        <div class="stat-card__badges">
-          <span class="status-badge status-badge--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.status }}</span>
-        </div>
-      </article>
+    <section class="status-strip" aria-label="System status overview">
+      {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.vd.label, value=view_model.strip.vd.value, status=view_model.strip.vd.status, icon=view_model.strip.vd.icon, href=view_model.strip.vd.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.raid.label, value=view_model.strip.raid.value, status=view_model.strip.raid.status, icon=view_model.strip.raid.icon, href=view_model.strip.raid.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.bbu.label, value=view_model.strip.bbu.value, status=view_model.strip.bbu.status, icon=view_model.strip.bbu.icon, href=view_model.strip.bbu.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.max_temp.label, value=view_model.strip.max_temp.value, status=view_model.strip.max_temp.status, icon=view_model.strip.max_temp.icon, href=view_model.strip.max_temp.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.roc.label, value=view_model.strip.roc.value, status=view_model.strip.roc.status, icon=view_model.strip.roc.icon, href=view_model.strip.roc.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
     </section>
 
     {% include "partials/alert_status.html" %}
@@ -51,14 +49,25 @@
       {% endwith %}
     </section>
   {% else %}
-    <section class="stat-grid" aria-label="RAID summary">
-      <article class="stat-card stat-card--{{ view_model.roc_temperature.status }}">
-        <span class="stat-card__label">RoC temp</span>
-        <strong class="stat-card__value status-text status-text--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.label }}</strong>
-        <div class="stat-card__badges">
-          <span class="status-badge status-badge--{{ view_model.roc_temperature.status }}">{{ view_model.roc_temperature.status }}</span>
-        </div>
-      </article>
+    <section class="status-strip" aria-label="System status overview">
+      {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.vd.label, value=view_model.strip.vd.value, status=view_model.strip.vd.status, icon=view_model.strip.vd.icon, href=view_model.strip.vd.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.raid.label, value=view_model.strip.raid.value, status=view_model.strip.raid.status, icon=view_model.strip.raid.icon, href=view_model.strip.raid.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.bbu.label, value=view_model.strip.bbu.value, status=view_model.strip.bbu.status, icon=view_model.strip.bbu.icon, href=view_model.strip.bbu.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.max_temp.label, value=view_model.strip.max_temp.value, status=view_model.strip.max_temp.status, icon=view_model.strip.max_temp.icon, href=view_model.strip.max_temp.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
+      {% with label=view_model.strip.roc.label, value=view_model.strip.roc.value, status=view_model.strip.roc.status, icon=view_model.strip.roc.icon, href=view_model.strip.roc.href %}
+        {% include "partials/status_tile.html" %}
+      {% endwith %}
     </section>
     <section class="empty-state empty-state--centered">
       <h1>{{ view_model.empty_title }}</h1>
