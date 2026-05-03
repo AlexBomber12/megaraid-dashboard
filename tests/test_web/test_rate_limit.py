@@ -100,6 +100,19 @@ async def test_window_expiry_allows_new_attempt(settings: Settings) -> None:
     assert response.status_code == 401
 
 
+async def test_expired_inactive_ip_buckets_are_pruned(settings: Settings) -> None:
+    clock = _Clock()
+    limiter = AuthRateLimitMiddleware(_ok_app, settings=settings, time_func=clock.monotonic)
+
+    for index in range(3):
+        assert await limiter._reserve_attempt(f"203.0.113.{index}", clock.monotonic()) is not None
+
+    clock.advance(60.1)
+    assert await limiter._reserve_attempt("203.0.113.100", clock.monotonic()) is not None
+
+    assert sorted(limiter._attempts) == ["203.0.113.100"]
+
+
 async def test_successful_response_does_not_reset_failed_attempt_bucket(settings: Settings) -> None:
     async with _rate_limited_client(settings=settings) as client:
         for _ in range(3):

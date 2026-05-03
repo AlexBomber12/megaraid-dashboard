@@ -18,6 +18,7 @@ from megaraid_dashboard.web._whitelist import is_whitelisted
 
 _WINDOW_SECONDS = 60.0
 _RETRY_AFTER_SECONDS = 60
+_GLOBAL_PRUNE_INTERVAL_SECONDS = 60.0
 
 
 @dataclass(eq=False)
@@ -38,6 +39,7 @@ class AuthRateLimitMiddleware:
         self._attempts: defaultdict[str, deque[_AttemptSlot]] = defaultdict(deque)
         self._lock = asyncio.Lock()
         self._time_func = time_func
+        self._next_global_prune_at = self._time_func() + _GLOBAL_PRUNE_INTERVAL_SECONDS
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or is_whitelisted(str(scope.get("path", ""))):
@@ -74,6 +76,7 @@ class AuthRateLimitMiddleware:
 
     async def _reserve_attempt(self, client_ip: str, now: float) -> _AttemptSlot | None:
         async with self._lock:
+            self._prune_expired_attempts(now)
             attempts = self._attempts[client_ip]
             _evict_expired(attempts, now)
             if len(attempts) >= self.limit:
@@ -97,6 +100,16 @@ class AuthRateLimitMiddleware:
                 attempts.remove(attempt_slot)
             if not attempts:
                 self._attempts.pop(client_ip, None)
+
+    def _prune_expired_attempts(self, now: float) -> None:
+        if now < self._next_global_prune_at:
+            return
+
+        for client_ip, attempts in list(self._attempts.items()):
+            _evict_expired(attempts, now)
+            if not attempts:
+                self._attempts.pop(client_ip, None)
+        self._next_global_prune_at = now + _GLOBAL_PRUNE_INTERVAL_SECONDS
 
 
 def _evict_expired(attempts: deque[_AttemptSlot], now: float) -> None:
