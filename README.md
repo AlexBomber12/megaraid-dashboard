@@ -55,7 +55,9 @@ writability by creating and dropping a temporary `_preflight` table. If `DATABAS
 set by the service environment, it falls back to `sqlite:///./megaraid.db`.
 
 See `deploy/megaraid-dashboard.service` for a sample unit fragment that wires the preflight
-script into startup.
+script into startup. The sample unit sets a production default of
+`sqlite:////var/lib/megaraid-dashboard/megaraid.db`, which is covered by its systemd
+`ReadWritePaths` hardening rule.
 
 ### History Aggregation
 
