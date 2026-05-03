@@ -14,6 +14,7 @@ from megaraid_dashboard.services.overview import (
     OverviewViewModel,
     _load_alert_status,
     _load_roc_temperature,
+    load_drive_list_view_model,
     load_overview_view_model,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
@@ -107,6 +108,26 @@ def test_overview_view_model_failed_physical_drive(
 
     assert _card(view_model, "Controller Health").value == "Critical"
     assert _card(view_model, "Controller Health").severity == "critical"
+
+
+def test_drive_list_marks_non_online_info_state_as_warning(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    _insert(session, _snapshot(sample_snapshot, pd_state="Rbld"))
+
+    view_model = load_drive_list_view_model(
+        session,
+        slot_url_factory=lambda enclosure_id, slot_id: f"/drives/{enclosure_id}:{slot_id}",
+    )
+
+    rebuilding_drive = view_model.physical_drives[0]
+    assert rebuilding_drive.state == "Rbld"
+    assert rebuilding_drive.row_state == "warning"
+    assert rebuilding_drive.status_icon == "alert-triangle"
+    assert view_model.drive_summary.optimal == 7
+    assert view_model.drive_summary.warning == 1
+    assert view_model.drive_summary.critical == 0
 
 
 def test_overview_view_model_warning_temperature(

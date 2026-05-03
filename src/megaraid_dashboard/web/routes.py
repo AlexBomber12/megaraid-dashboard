@@ -238,6 +238,19 @@ def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
     )
 
 
+@router.get("/drives/{slot_ref}", name="drive_detail_slot_ref")
+def drive_detail_slot_ref(request: Request, slot_ref: str) -> Response:
+    enclosure_text, separator, slot_text = slot_ref.partition(":")
+    if separator == "":
+        raise HTTPException(status_code=404)
+    try:
+        enclosure_id = int(enclosure_text)
+        slot_id = int(slot_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=404) from exc
+    return drive_detail(request, enclosure_id=enclosure_id, slot_id=slot_id)
+
+
 @router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
 def drive_charts(
     request: Request,
@@ -409,9 +422,8 @@ def _load_drive_list(request: Request) -> DriveListViewModel:
     def slot_url(enclosure_id: int, slot_id: int) -> str:
         return str(
             request.url_for(
-                "drive_detail",
-                enclosure_id=enclosure_id,
-                slot_id=slot_id,
+                "drive_detail_slot_ref",
+                slot_ref=f"{enclosure_id}:{slot_id}",
             ).path
         )
 
