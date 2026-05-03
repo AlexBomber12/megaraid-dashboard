@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # MegaRAID Dashboard installer.
-# Usage: sudo bash scripts/install.sh [--non-interactive]
+# Usage: sudo bash scripts/install.sh [--non-interactive] [--force-reconfigure]
 set -euo pipefail
 
 INSTALL_USER="${INSTALL_USER:-raid-monitor}"
@@ -11,6 +11,9 @@ ENV_FILE="${ENV_FILE:-${ETC_DIR}/env}"
 STORCLI_PATH="${STORCLI_PATH:-/usr/local/sbin/storcli64}"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 APP_PORT="${APP_PORT:-8090}"
+NON_INTERACTIVE="false"
+FORCE_RECONFIG="false"
+MISSING_CONFIG_VARS=()
 
 log_info() { printf "\033[1;34m[info]\033[0m %s\n" "$*"; }
 log_warn() { printf "\033[1;33m[warn]\033[0m %s\n" "$*" >&2; }
@@ -25,6 +28,16 @@ require_root() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+parse_args() {
+  for arg in "$@"; do
+    case "${arg}" in
+      --non-interactive) NON_INTERACTIVE="true" ;;
+      --force-reconfigure) FORCE_RECONFIG="true" ;;
+      *) log_fail "unknown argument: ${arg}" ;;
+    esac
+  done
 }
 
 require_pypi_reachable() {
@@ -234,7 +247,161 @@ phase_smoke() {
   log_info "imported megaraid_dashboard ${out}"
 }
 
+env_file_value() {
+  local var="$1"
+
+  awk -F= -v key="${var}" '$1 == key { print substr($0, index($0, "=") + 1); exit }' \
+    "${ENV_FILE}" 2>/dev/null || true
+}
+
+prompt_config_value() {
+  local var="$1"
+  local msg="$2"
+  local default="${3:-}"
+  local secret="${4:-}"
+  local current
+  current="$(env_file_value "${var}")"
+
+  if [[ -n "${current}" && "${FORCE_RECONFIG}" != "true" ]]; then
+    log_info "${var} already set, keep"
+    printf -v "${var}" "%s" "${current}"
+    return
+  fi
+
+  local env_var="MEGARAID_INSTALL_${var}"
+  if [[ -n "${!env_var:-}" ]]; then
+    printf -v "${var}" "%s" "${!env_var}"
+    return
+  fi
+
+  if [[ "${NON_INTERACTIVE}" == "true" ]]; then
+    if [[ -n "${default}" ]]; then
+      printf -v "${var}" "%s" "${default}"
+    else
+      MISSING_CONFIG_VARS+=("${env_var}")
+      printf -v "${var}" "%s" ""
+    fi
+    return
+  fi
+
+  local input
+  if [[ -n "${secret}" ]]; then
+    read -r -s -p "${msg}: " input
+    echo
+  else
+    read -r -p "${msg}${default:+ [${default}]}: " input
+  fi
+  [[ -n "${input}" ]] || input="${default}"
+  [[ -n "${input}" ]] || log_fail "${var} required"
+  printf -v "${var}" "%s" "${input}"
+}
+
+managed_config_keys() {
+  cat <<EOF
+ADMIN_USERNAME
+ADMIN_PASSWORD_HASH
+ALERT_SMTP_HOST
+ALERT_SMTP_PORT
+ALERT_SMTP_USER
+ALERT_SMTP_PASSWORD
+ALERT_SMTP_USE_STARTTLS
+ALERT_FROM
+ALERT_TO
+STORCLI_PATH
+STORCLI_USE_SUDO
+LOG_LEVEL
+METRICS_INTERVAL_SECONDS
+DATABASE_URL
+EOF
+}
+
+write_preserved_env_lines() {
+  local target="$1"
+  local managed_keys
+  managed_keys="$(managed_config_keys)"
+
+  awk -F= -v managed_keys="${managed_keys}" '
+    BEGIN {
+      split(managed_keys, keys, "\n")
+      for (idx in keys) {
+        managed[keys[idx]] = 1
+      }
+    }
+    $1 in managed { next }
+    { print }
+  ' "${ENV_FILE}" >"${target}"
+}
+
+bcrypt_hash() {
+  local plain="$1"
+
+  "${INSTALL_PREFIX}/.venv/bin/python" -c \
+    'import bcrypt, sys; print(bcrypt.hashpw(sys.argv[1].encode(), bcrypt.gensalt()).decode())' \
+    "${plain}"
+}
+
+phase_config() {
+  log_info "Phase 7: config wizard"
+  MISSING_CONFIG_VARS=()
+
+  local ADMIN_USERNAME ADMIN_PASSWORD ALERT_SMTP_HOST ALERT_SMTP_PORT ALERT_SMTP_USER
+  local ALERT_SMTP_PASSWORD ALERT_FROM ALERT_TO LOG_LEVEL METRICS_INTERVAL_SECONDS
+  local ADMIN_PASSWORD_HASH
+  local preserve_existing_hash="false"
+
+  ADMIN_PASSWORD_HASH="$(env_file_value ADMIN_PASSWORD_HASH)"
+  if [[ -n "${ADMIN_PASSWORD_HASH}" && "${FORCE_RECONFIG}" != "true" ]]; then
+    log_info "ADMIN_PASSWORD_HASH already set, keep"
+    preserve_existing_hash="true"
+  else
+    prompt_config_value ADMIN_PASSWORD "admin password" "" "secret"
+  fi
+
+  prompt_config_value ADMIN_USERNAME "admin username" "admin"
+  prompt_config_value ALERT_SMTP_HOST "SMTP host"
+  prompt_config_value ALERT_SMTP_PORT "SMTP port" "587"
+  prompt_config_value ALERT_SMTP_USER "SMTP user"
+  prompt_config_value ALERT_SMTP_PASSWORD "SMTP password / app token" "" "secret"
+  prompt_config_value ALERT_FROM "from address"
+  prompt_config_value ALERT_TO "to address"
+  prompt_config_value STORCLI_PATH "storcli path" "${STORCLI_PATH}"
+  prompt_config_value LOG_LEVEL "log level" "info"
+  prompt_config_value METRICS_INTERVAL_SECONDS "collector interval seconds" "300"
+
+  if [[ "${#MISSING_CONFIG_VARS[@]}" -gt 0 ]]; then
+    log_fail "required config missing in non-interactive mode: ${MISSING_CONFIG_VARS[*]}"
+  fi
+
+  if [[ "${preserve_existing_hash}" != "true" ]]; then
+    ADMIN_PASSWORD_HASH="$(bcrypt_hash "${ADMIN_PASSWORD}")"
+  fi
+
+  install -m 0600 -o root -g "${INSTALL_USER}" /dev/null "${ENV_FILE}.tmp"
+  write_preserved_env_lines "${ENV_FILE}.tmp"
+  cat >>"${ENV_FILE}.tmp" <<EOF
+ADMIN_USERNAME=${ADMIN_USERNAME}
+ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+ALERT_SMTP_HOST=${ALERT_SMTP_HOST}
+ALERT_SMTP_PORT=${ALERT_SMTP_PORT}
+ALERT_SMTP_USER=${ALERT_SMTP_USER}
+ALERT_SMTP_PASSWORD=${ALERT_SMTP_PASSWORD}
+ALERT_SMTP_USE_STARTTLS=true
+ALERT_FROM=${ALERT_FROM}
+ALERT_TO=${ALERT_TO}
+STORCLI_PATH=${STORCLI_PATH}
+STORCLI_USE_SUDO=true
+LOG_LEVEL=${LOG_LEVEL}
+METRICS_INTERVAL_SECONDS=${METRICS_INTERVAL_SECONDS}
+DATABASE_URL=sqlite:///${DATA_DIR}/megaraid.db
+EOF
+  chmod 0600 "${ENV_FILE}.tmp"
+  chown "root:${INSTALL_USER}" "${ENV_FILE}.tmp"
+  mv "${ENV_FILE}.tmp" "${ENV_FILE}"
+  log_info "wrote ${ENV_FILE}"
+}
+
 main() {
+  parse_args "$@"
   require_root
   phase_preflight
   phase_user
@@ -242,7 +409,8 @@ main() {
   phase_venv
   phase_pip
   phase_smoke
-  log_info "PR-029 phases complete; continue with config wizard via PR-030"
+  phase_config
+  log_info "install phases complete"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
