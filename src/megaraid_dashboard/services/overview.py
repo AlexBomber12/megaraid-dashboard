@@ -35,6 +35,7 @@ _CACHEVAULT_OPTIMAL_STATES = {"Optl", "Optimal"}
 _VD_DEGRADED_STATES = {"Dgrd", "Degraded"}
 _VD_PARTIALLY_DEGRADED_STATES = {"Pdgd", "Partially Degraded"}
 _VD_CRITICAL_STATES = {"Failed", "Offln", "Offline"}
+_SEVERITY_RANK = ("critical", "warning", "info", "optimal", "neutral", "unknown")
 
 
 @dataclass(frozen=True)
@@ -809,9 +810,19 @@ def _max_disk_temp_card(
 
     badges: list[StatusBadge] = []
     if critical_count > 0:
-        badges.append(StatusBadge(label=f"{critical_count} drives critical", severity="critical"))
-    if elevated_count > 0:
-        badges.append(StatusBadge(label=f"{elevated_count} drives elevated", severity="warning"))
+        badges.append(
+            StatusBadge(
+                label=f"{critical_count} {_pluralize(critical_count, 'drive', 'drives')} critical",
+                severity="critical",
+            )
+        )
+    elif elevated_count > 0:
+        badges.append(
+            StatusBadge(
+                label=f"{elevated_count} {_pluralize(elevated_count, 'drive', 'drives')} elevated",
+                severity="warning",
+            )
+        )
 
     return StatCard(
         label="Max Disk Temp",
@@ -850,10 +861,11 @@ def _physical_drive_row(
         if drive.temperature_celsius is None
         else f"{drive.temperature_celsius} C",
         temperature_sort=-1 if drive.temperature_celsius is None else drive.temperature_celsius,
-        temperature_severity=temperature_severity(
-            drive.temperature_celsius,
+        temperature_severity=_drive_temperature_badge(
+            drive,
             temp_warning=temp_warning,
             temp_critical=temp_critical,
+            row_state=row_state,
         ),
         size=format_tb(drive.size_bytes),
         size_bytes=drive.size_bytes,
@@ -881,6 +893,24 @@ def _drive_row_state(
     temp_warning: int,
     temp_critical: int,
 ) -> str:
+    return _drive_state_badge(
+        drive,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
+
+
+def _drive_state_badge(
+    drive: PhysicalDriveSnapshot,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+) -> str:
+    """Return the single row badge; state and temperature are mutually exclusive.
+
+    Critical wins over warning, both win over optimal, and unknown drive states
+    are treated as warning so a non-online state is never hidden by temperature.
+    """
     state_status = _event_severity_to_status(physical_drive_state_severity("Onln", drive.state))
     if drive.state not in _PD_OPTIMAL_STATES and state_status == "optimal":
         state_status = "warning"
@@ -893,7 +923,26 @@ def _drive_row_state(
     )
     if temp_status == "unknown":
         temp_status = "optimal"
-    return _worst_severity(state_status, temp_status)
+    return _higher_severity(state_status, temp_status)
+
+
+def _drive_temperature_badge(
+    drive: PhysicalDriveSnapshot,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+    row_state: str,
+) -> str:
+    temp_status = temperature_severity(
+        drive.temperature_celsius,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
+    if temp_status == "unknown":
+        return "unknown"
+    if row_state in {"critical", "warning"}:
+        return "neutral"
+    return temp_status
 
 
 def _drive_status_icon(row_state: str) -> str:
@@ -1080,14 +1129,15 @@ def _format_tb(size_bytes: int) -> str:
 
 
 def _worst_severity(current: str, candidate: str) -> str:
-    severity_rank = {
-        "unknown": 0,
-        "neutral": 0,
-        "optimal": 1,
-        "warning": 2,
-        "critical": 3,
-    }
-    return candidate if severity_rank[candidate] > severity_rank[current] else current
+    return _higher_severity(current, candidate)
+
+
+def _higher_severity(a: str, b: str) -> str:
+    return a if _SEVERITY_RANK.index(a) <= _SEVERITY_RANK.index(b) else b
+
+
+def _pluralize(count: int, singular: str, plural: str) -> str:
+    return singular if count == 1 else plural
 
 
 def _require_aware_utc(value: datetime) -> datetime:

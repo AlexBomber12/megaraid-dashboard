@@ -145,7 +145,7 @@ def test_overview_view_model_warning_temperature(
     assert temp_card.value == "55 C"
     assert temp_card.severity == "warning"
     assert [(badge.label, badge.severity) for badge in temp_card.badges] == [
-        ("1 drives elevated", "warning")
+        ("1 drive elevated", "warning")
     ]
 
 
@@ -164,8 +164,7 @@ def test_overview_view_model_critical_temperature(
     assert temp_card.value == "60 C"
     assert temp_card.severity == "critical"
     assert [(badge.label, badge.severity) for badge in temp_card.badges] == [
-        ("1 drives critical", "critical"),
-        ("1 drives elevated", "warning"),
+        ("1 drive critical", "critical"),
     ]
 
 
