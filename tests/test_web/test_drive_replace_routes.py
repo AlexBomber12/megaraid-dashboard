@@ -171,6 +171,31 @@ def test_drive_replace_offline_dry_run_query_param_invalid_returns_400(
     assert response.json()["error"] == "dry_run query parameter must be a boolean"
 
 
+@pytest.mark.parametrize("query_suffix", ["?dry_run=", "?dry_run"])
+def test_drive_replace_offline_dry_run_query_param_empty_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    query_suffix: str,
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called for empty dry_run query")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            f"/drives/2:0/replace/offline{query_suffix}",
+            headers=headers,
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "dry_run query parameter must be a boolean"
+
+
 def test_drive_replace_missing_dry_run_query_param_skips_runner(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],

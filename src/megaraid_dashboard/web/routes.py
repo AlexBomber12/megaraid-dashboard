@@ -574,13 +574,16 @@ async def _run_replace_step(
 
 
 _DRY_RUN_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
-_DRY_RUN_FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
+_DRY_RUN_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 def _parse_query_dry_run(request: Request) -> bool | JSONResponse:
     raw = request.query_params.get("dry_run")
     if raw is None:
         return False
+    # Empty values (e.g. "?dry_run=" or "?dry_run") are ambiguous for a
+    # destructive safety flag; fail closed by rejecting them rather than
+    # silently treating them as False.
     normalized = raw.strip().lower()
     if normalized in _DRY_RUN_TRUE_VALUES:
         return True
