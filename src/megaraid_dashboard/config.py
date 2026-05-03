@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     alert_severity_threshold: str = "critical"
     alert_suppress_window_minutes: int = 60
     alert_throttle_per_hour: int = 20
+    auth_rate_limit_per_minute: int = 5
+    auth_rate_limit_burst: int = 2
     admin_username: str = Field(...)
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
@@ -95,6 +97,15 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.alert_throttle_per_hour <= 0:
             msg = "alert_throttle_per_hour must be positive"
+            raise ValueError(msg)
+        if self.auth_rate_limit_per_minute <= 0:
+            msg = "auth_rate_limit_per_minute must be positive"
+            raise ValueError(msg)
+        if self.auth_rate_limit_burst < 0:
+            msg = "auth_rate_limit_burst must be non-negative"
+            raise ValueError(msg)
+        if self.auth_rate_limit_burst > self.auth_rate_limit_per_minute:
+            msg = "auth_rate_limit_burst must not exceed auth_rate_limit_per_minute"
             raise ValueError(msg)
         return self
 

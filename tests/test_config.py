@@ -86,6 +86,8 @@ def test_temperature_threshold_defaults_validate(monkeypatch: pytest.MonkeyPatch
     assert settings.cv_capacitance_warning_percent == 70
     assert settings.collector_enabled is True
     assert settings.collector_lock_path == "/tmp/megaraid-dashboard-collector.lock"
+    assert settings.auth_rate_limit_per_minute == 5
+    assert settings.auth_rate_limit_burst == 2
 
 
 def test_temperature_critical_must_exceed_warning(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -215,6 +217,31 @@ def test_collector_lock_path_must_not_be_empty(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", " ")
 
     with pytest.raises(ValidationError, match="collector_lock_path"):
+        Settings()
+
+
+def test_auth_rate_limit_per_minute_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("AUTH_RATE_LIMIT_PER_MINUTE", "0")
+
+    with pytest.raises(ValidationError, match="auth_rate_limit_per_minute"):
+        Settings()
+
+
+def test_auth_rate_limit_burst_must_be_non_negative(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("AUTH_RATE_LIMIT_BURST", "-1")
+
+    with pytest.raises(ValidationError, match="auth_rate_limit_burst"):
+        Settings()
+
+
+def test_auth_rate_limit_burst_must_not_exceed_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("AUTH_RATE_LIMIT_PER_MINUTE", "5")
+    monkeypatch.setenv("AUTH_RATE_LIMIT_BURST", "6")
+
+    with pytest.raises(ValidationError, match="auth_rate_limit_burst"):
         Settings()
 
 

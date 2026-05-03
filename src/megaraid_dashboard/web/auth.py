@@ -12,12 +12,11 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from megaraid_dashboard.config import Settings
+from megaraid_dashboard.web._whitelist import is_whitelisted
 
 LOGGER = structlog.get_logger(__name__)
 
 _REALM = "megaraid-dashboard"
-_WHITELIST_EXACT = frozenset({"/healthz", "/favicon.ico"})
-_WHITELIST_PREFIX = ("/static/",)
 _BASIC_TOKEN_RE = re.compile(r"^[A-Za-z0-9+/=]+$")
 _AUTHENTICATE_HEADER = f'Basic realm="{_REALM}"'
 
@@ -47,7 +46,7 @@ class BasicAuthMiddleware:
 
 
 def _is_whitelisted(path: str) -> bool:
-    return path in _WHITELIST_EXACT or path.startswith(_WHITELIST_PREFIX)
+    return is_whitelisted(path)
 
 
 def _get_authorization_header(scope: Scope) -> bytes | None:
