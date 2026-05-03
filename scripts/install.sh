@@ -39,6 +39,12 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+source_repo_root() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  dirname "${script_dir}"
+}
+
 parse_args() {
   for arg in "$@"; do
     case "${arg}" in
@@ -209,10 +215,8 @@ phase_pip() {
   require_pypi_reachable
 
   local src_dir="${INSTALL_PREFIX}/src"
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local repo_root
-  repo_root="$(dirname "${script_dir}")"
+  repo_root="$(source_repo_root)"
 
   command_exists git || log_fail "git not found"
   command_exists tar || log_fail "tar not found"
@@ -470,16 +474,17 @@ EOF
 phase_systemd() {
   log_info "Phase 9: systemd unit"
 
-  local unit_template unit_tmp
-  unit_template="${INSTALL_PREFIX}/src/deploy/megaraid-dashboard.service"
+  local repo_root unit_template unit_tmp
+  repo_root="$(source_repo_root)"
+  unit_template="${repo_root}/deploy/megaraid-dashboard.service"
   unit_tmp="$(mktemp /tmp/megaraid-dashboard.service.XXXXXXXX)"
 
   install -d -m 0750 -o root -g "${INSTALL_USER}" "${INSTALL_PREFIX}/scripts"
   install -m 0750 -o root -g "${INSTALL_USER}" \
-    "${INSTALL_PREFIX}/src/scripts/preflight.sh" \
+    "${repo_root}/scripts/preflight.sh" \
     "${INSTALL_PREFIX}/scripts/preflight.sh"
   install -m 0750 -o root -g "${INSTALL_USER}" \
-    "${INSTALL_PREFIX}/src/scripts/uninstall.sh" \
+    "${repo_root}/scripts/uninstall.sh" \
     "${INSTALL_PREFIX}/scripts/uninstall.sh"
 
   if ! sed \
@@ -507,9 +512,12 @@ phase_systemd() {
 phase_journald() {
   log_info "Phase 10: journald drop-in"
 
+  local repo_root
+  repo_root="$(source_repo_root)"
+
   install -d -m 0755 /etc/systemd/journald@megaraid-dashboard.conf.d
   install -m 0644 -o root -g root \
-    "${INSTALL_PREFIX}/src/deploy/journald-megaraid.conf" \
+    "${repo_root}/deploy/journald-megaraid.conf" \
     /etc/systemd/journald@megaraid-dashboard.conf.d/00-retention.conf
   systemctl restart "systemd-journald@megaraid-dashboard.service" 2>/dev/null || true
 }

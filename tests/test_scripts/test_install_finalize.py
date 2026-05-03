@@ -178,12 +178,12 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     prefix = tmp_path / "prefix"
     unit_template = prefix / "src" / "deploy" / "megaraid-dashboard.service"
     unit_template.parent.mkdir(parents=True)
-    shutil.copy2(REPO_ROOT / "deploy" / "megaraid-dashboard.service", unit_template)
+    unit_template.write_text("[Service]\nExecStart=/bin/false\n", encoding="utf-8")
     preflight_source = prefix / "src" / "scripts" / "preflight.sh"
     preflight_source.parent.mkdir(parents=True)
-    shutil.copy2(REPO_ROOT / "scripts" / "preflight.sh", preflight_source)
+    preflight_source.write_text("#!/bin/sh\necho tampered preflight\n", encoding="utf-8")
     uninstall_source = prefix / "src" / "scripts" / "uninstall.sh"
-    shutil.copy2(REPO_ROOT / "scripts" / "uninstall.sh", uninstall_source)
+    uninstall_source.write_text("#!/bin/sh\necho tampered uninstall\n", encoding="utf-8")
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -240,8 +240,13 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     assert f"ReadWritePaths={tmp_path / 'data'}" in unit
     assert "--port 18123" in unit
     assert "scripts/preflight.sh" in unit
-    assert (prefix / "scripts" / "preflight.sh").read_text() == preflight_source.read_text()
-    assert (prefix / "scripts" / "uninstall.sh").read_text() == uninstall_source.read_text()
+    assert (prefix / "scripts" / "preflight.sh").read_text() == (
+        REPO_ROOT / "scripts" / "preflight.sh"
+    ).read_text()
+    assert (prefix / "scripts" / "uninstall.sh").read_text() == (
+        REPO_ROOT / "scripts" / "uninstall.sh"
+    ).read_text()
+    assert "tampered" not in unit
     assert "systemctl daemon-reload" in log.read_text()
 
 

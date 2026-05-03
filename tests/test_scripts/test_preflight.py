@@ -28,10 +28,33 @@ def test_preflight_succeeds_with_stubbed_alembic(tmp_path: Path) -> None:
     result = _run_preflight(project, database_url="sqlite:///./tmp_preflight.db")
 
     assert result.returncode == 0
-    assert "stub alembic upgrade head" in result.stdout
+    assert f"stub alembic -c {project / 'alembic.ini'} upgrade head" in result.stdout
     assert "DB writable" in result.stdout
     assert "preflight OK" in result.stdout
     assert _table_names(project / "tmp_preflight.db") == []
+
+
+def test_preflight_uses_staged_source_alembic_config_when_installed(tmp_path: Path) -> None:
+    install_root = tmp_path / "install"
+    scripts_dir = install_root / "scripts"
+    scripts_dir.mkdir(parents=True)
+    shutil.copy2(SCRIPT_SOURCE, scripts_dir / "preflight.sh")
+    app_root = install_root / "src"
+    app_root.mkdir()
+    (app_root / "alembic.ini").write_text("[alembic]\nscript_location = migrations\n")
+    _install_stub_venv(install_root)
+
+    result = subprocess.run(
+        ["bash", str(scripts_dir / "preflight.sh")],
+        cwd=tmp_path,
+        env={**os.environ, "DATABASE_URL": "sqlite:///./tmp_preflight.db"},
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0
+    assert f"stub alembic -c {app_root / 'alembic.ini'} upgrade head" in result.stdout
+    assert _table_names(app_root / "tmp_preflight.db") == []
 
 
 def test_preflight_preserves_existing_preflight_table(tmp_path: Path) -> None:
@@ -186,6 +209,7 @@ def _copy_preflight_project(tmp_path: Path) -> Path:
     scripts_dir = project / "scripts"
     scripts_dir.mkdir(parents=True)
     shutil.copy2(SCRIPT_SOURCE, scripts_dir / "preflight.sh")
+    (project / "alembic.ini").write_text("[alembic]\nscript_location = migrations\n")
     return project
 
 
