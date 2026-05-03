@@ -107,10 +107,20 @@ server {
         proxy_read_timeout 30s;
     }
 
-    location /raid/ {
+    location = /raid/ {
         limit_req zone=raid_login burst=2 nodelay;
         limit_req_status 429;
 
+        proxy_pass http://127.0.0.1:8090/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Prefix /raid;
+        proxy_read_timeout 30s;
+    }
+
+    location /raid/ {
         proxy_pass http://127.0.0.1:8090/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -146,13 +156,28 @@ location = /raid {
 }
 ```
 
-The main dashboard location is:
+The initial dashboard entry point is the only path that gets nginx edge rate limiting:
 
 ```nginx
-location /raid/ {
+location = /raid/ {
     limit_req zone=raid_login burst=2 nodelay;
     limit_req_status 429;
 
+    proxy_pass http://127.0.0.1:8090/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Prefix /raid;
+    proxy_read_timeout 30s;
+}
+```
+
+The broader dashboard location is intentionally not rate-limited, because normal pages use
+polling endpoints under `/raid/partials/` and can be opened in multiple tabs:
+
+```nginx
+location /raid/ {
     proxy_pass http://127.0.0.1:8090/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -212,8 +237,9 @@ set of scripts, styles, and HTMX behavior is stable enough to avoid accidental b
 
 ## Rate Limit Zone
 
-The edge rate limit is intentionally scoped to dashboard paths that can trigger HTTP Basic
-auth challenges. It does not rate-limit health checks or static assets.
+The edge rate limit is intentionally scoped to the initial dashboard entry point that can
+trigger the browser's HTTP Basic auth challenge. It does not rate-limit health checks,
+static assets, normal dashboard navigation, or polling partials.
 
 Define the shared zone once:
 
@@ -221,14 +247,14 @@ Define the shared zone once:
 limit_req_zone $binary_remote_addr zone=raid_login:10m rate=5r/m;
 ```
 
-Apply it to the auth-required dashboard paths:
+Apply it only to the exact `/raid/` entry point:
 
 ```nginx
 location = /raid {
     return 301 /raid/;
 }
 
-location /raid/ {
+location = /raid/ {
     limit_req zone=raid_login burst=2 nodelay;
     limit_req_status 429;
 
@@ -242,9 +268,9 @@ location /raid/ {
 }
 ```
 
-This location matches the same public dashboard URLs that the app protects with HTTP Basic
-auth. The exact `/raid/healthz` location and `^~ /raid/static/` location stay outside this
-limit so health checks and static assets are not throttled.
+The catch-all `location /raid/` deliberately omits `limit_req`; otherwise routine HTMX
+polling from overview and events pages could exhaust the shared five-request window during
+normal use. The app still enforces HTTP Basic auth on protected dashboard routes.
 
 `limit_req_status 429` makes rejected bursts explicit instead of returning nginx's default
 503. `5r/m` matches the planned in-app auth throttle. Keeping the same number at both layers
