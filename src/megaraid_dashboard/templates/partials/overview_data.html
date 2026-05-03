@@ -41,14 +41,9 @@
     {% include "partials/alert_status.html" %}
     {% include "partials/activity_timeline.html" %}
 
-    <section class="drives">
-      <div class="section-heading">
-        <h2>Physical Drives</h2>
-      </div>
-      {% with drives=view_model.physical_drives %}
-        {% include "partials/physical_drive_table.html" %}
-      {% endwith %}
-    </section>
+    <p class="overview__detail-hint">
+      <a href="{{ request.url_for('drives').path }}">{{ view_model.drive_count }} drives, see Drives page for detail</a>
+    </p>
   {% else %}
     <section class="status-strip" aria-label="System status overview">
       {% with label=view_model.strip.controller.label, value=view_model.strip.controller.value, status=view_model.strip.controller.status, icon=view_model.strip.controller.icon, href=view_model.strip.controller.href %}

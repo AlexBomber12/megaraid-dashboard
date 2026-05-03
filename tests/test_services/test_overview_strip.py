@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot, insert_snapshot
 from megaraid_dashboard.services.overview import (
+    _DriveSummary,
     _load_bbu_tile,
     _load_controller_tile,
     _load_max_temp_tile,
@@ -201,9 +202,19 @@ def test_max_temp_tile_uses_hottest_drive_and_thresholds(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    snapshot = _latest(session, _snapshot(sample_snapshot, temperatures=(42, 51, 58)))
+    _latest(session, _snapshot(sample_snapshot, temperatures=(42, 51, 58)))
 
-    tile = _load_max_temp_tile(snapshot, settings=get_settings())
+    tile = _load_max_temp_tile(
+        _DriveSummary(
+            drive_count=8,
+            max_temperature_celsius=58,
+            elevated_drive_count=1,
+            critical_drive_count=0,
+            worst_state_severity="optimal",
+            hottest_drive_url="/drives/252/2",
+        ),
+        settings=get_settings(),
+    )
 
     assert tile.value == "58 C"
     assert tile.status == "warning"
@@ -214,9 +225,20 @@ def test_max_temp_tile_links_to_stable_hottest_drive_when_temperatures_tie(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    snapshot = _latest(session, _snapshot(sample_snapshot, temperatures=(58, 42, 58)))
+    _latest(session, _snapshot(sample_snapshot, temperatures=(58, 42, 58)))
 
-    tile = _load_max_temp_tile(snapshot, settings=get_settings(), drives_url="/raid/drives")
+    tile = _load_max_temp_tile(
+        _DriveSummary(
+            drive_count=8,
+            max_temperature_celsius=58,
+            elevated_drive_count=2,
+            critical_drive_count=0,
+            worst_state_severity="optimal",
+            hottest_drive_url="/raid/drives/252/0",
+        ),
+        settings=get_settings(),
+        drives_url="/raid/drives",
+    )
 
     assert tile.value == "58 C"
     assert tile.href == "/raid/drives/252/0"
@@ -226,9 +248,19 @@ def test_max_temp_tile_is_neutral_without_physical_drives(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    snapshot = _latest(session, _snapshot(sample_snapshot, temperatures=()))
+    _latest(session, _snapshot(sample_snapshot, temperatures=()))
 
-    tile = _load_max_temp_tile(snapshot, settings=get_settings())
+    tile = _load_max_temp_tile(
+        _DriveSummary(
+            drive_count=0,
+            max_temperature_celsius=None,
+            elevated_drive_count=0,
+            critical_drive_count=0,
+            worst_state_severity="optimal",
+            hottest_drive_url=None,
+        ),
+        settings=get_settings(),
+    )
 
     assert tile.value == "Unknown"
     assert tile.status == "neutral"
