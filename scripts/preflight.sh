@@ -24,6 +24,7 @@ import os
 import sqlite3
 import stat
 import sys
+import uuid
 from urllib.parse import unquote, urlparse
 
 
@@ -51,12 +52,22 @@ if path and path != ":memory:" and os.path.exists(path):
         sys.exit(1)
 
 conn = sqlite3.connect(path, timeout=2)
+table_name = f"_megaraid_preflight_{os.getpid()}_{uuid.uuid4().hex}"
+created = False
 try:
-    conn.execute("CREATE TABLE IF NOT EXISTS _preflight (n INT)")
-    conn.execute("INSERT INTO _preflight VALUES (1)")
-    conn.execute("DROP TABLE _preflight")
+    conn.execute(f'CREATE TABLE "{table_name}" (n INT)')
+    created = True
+    conn.execute(f'INSERT INTO "{table_name}" VALUES (1)')
+    conn.execute(f'DROP TABLE "{table_name}"')
+    created = False
     conn.commit()
 finally:
+    if created:
+        try:
+            conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+            conn.commit()
+        except sqlite3.Error:
+            pass
     conn.close()
 
 print("DB writable")

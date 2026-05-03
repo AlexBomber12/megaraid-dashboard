@@ -34,6 +34,25 @@ def test_preflight_succeeds_with_stubbed_alembic(tmp_path: Path) -> None:
     assert _table_names(project / "tmp_preflight.db") == []
 
 
+def test_preflight_preserves_existing_preflight_table(tmp_path: Path) -> None:
+    project = _copy_preflight_project(tmp_path)
+    _install_stub_venv(project)
+    db_path = project / "tmp_preflight.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE _preflight (n INT)")
+        conn.execute("INSERT INTO _preflight VALUES (42)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = _run_preflight(project, database_url="sqlite:///./tmp_preflight.db")
+
+    assert result.returncode == 0
+    assert _table_names(db_path) == ["_preflight"]
+    assert _table_rows(db_path, "_preflight") == [(42,)]
+
+
 def test_preflight_fails_for_read_only_sqlite_db(tmp_path: Path) -> None:
     project = _copy_preflight_project(tmp_path)
     _install_stub_venv(project)
@@ -91,3 +110,12 @@ def _table_names(db_path: Path) -> list[str]:
     finally:
         conn.close()
     return [str(row[0]) for row in rows]
+
+
+def _table_rows(db_path: Path, table_name: str) -> list[tuple[int]]:
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(f'SELECT n FROM "{table_name}"').fetchall()
+    finally:
+        conn.close()
+    return [(int(row[0]),) for row in rows]
