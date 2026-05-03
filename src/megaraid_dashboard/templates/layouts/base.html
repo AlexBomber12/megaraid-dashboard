@@ -12,6 +12,10 @@
       src="{{ request.url_for('static', path='vendor/htmx.min.js').path }}?v={{ static_asset_version }}"
       defer
     ></script>
+    <script
+      src="{{ request.url_for('static', path='js/local-time.js').path }}?v={{ static_asset_version }}"
+      defer
+    ></script>
     {% block extra_scripts %}{% endblock %}
   </head>
   <body>
@@ -35,7 +39,8 @@
           </nav>
         </div>
         <div class="site-header__right">
-          <time class="utc-clock">{{ current_utc_label }}</time>
+          <noscript><time class="utc-clock">{{ current_utc_label }}</time></noscript>
+          <time class="utc-clock" data-local-time-clock aria-live="off" hidden>{{ current_utc_label }}</time>
           <button
             class="button button--primary"
             type="button"

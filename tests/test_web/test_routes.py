@@ -136,11 +136,14 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "Notifier OK" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
+    assert "/raid/static/js/local-time.js" in response.text
     assert "/raid/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     )
+    assert re.search(r"/raid/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
+    assert 'data-local-time-clock aria-live="off" hidden' in response.text
     assert "/raid/partials/overview" in response.text
     assert {"/raid/", "/raid/drives", "/raid/events"}.issubset(_anchor_hrefs(response.text))
 
@@ -157,9 +160,11 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert response.status_code == 200
     assert "/static/css/app.css" in response.text
     assert "/static/vendor/htmx.min.js" in response.text
+    assert "/static/js/local-time.js" in response.text
     assert "/static/vendor/chart.min.js" not in response.text
     assert re.search(r"/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
+    assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
     assert "/raid/" not in response.text
@@ -235,27 +240,53 @@ def test_data_block_has_auto_refresh_attributes() -> None:
 
 def test_vendored_htmx_exists_and_is_referenced() -> None:
     assert Path("src/megaraid_dashboard/static/vendor/htmx.min.js").exists()
+    assert Path("src/megaraid_dashboard/static/js/local-time.js").exists()
 
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
     assert "/static/vendor/htmx.min.js" in response.text
+    assert "/static/js/local-time.js" in response.text
 
 
 def test_static_assets_are_served_with_far_future_cache_header() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         css_response = client.get("/static/css/app.css")
+        local_time_response = client.get("/static/js/local-time.js")
         chart_response = client.get("/static/vendor/chart.min.js")
 
     assert css_response.status_code == 200
+    assert local_time_response.status_code == 200
     assert chart_response.status_code == 200
     assert "public" in css_response.headers["Cache-Control"]
     assert "max-age=31536000" in css_response.headers["Cache-Control"]
     assert "immutable" not in css_response.headers["Cache-Control"]
+    assert "public" in local_time_response.headers["Cache-Control"]
+    assert "max-age=31536000" in local_time_response.headers["Cache-Control"]
     assert "public" in chart_response.headers["Cache-Control"]
     assert "max-age=31536000" in chart_response.headers["Cache-Control"]
+
+
+@pytest.mark.parametrize("path", ["/", "/drives", "/events"])
+def test_operator_pages_render_local_time_markup(
+    path: str,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+
+        response = client.get(path)
+
+    assert response.status_code == 200
+    assert re.search(
+        r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
+        response.text,
+    )
+    assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
+    assert 'data-local-time-clock aria-live="off" hidden' in response.text
 
 
 def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
@@ -677,23 +708,34 @@ def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapsho
     ) in response.text
 
 
-def test_static_asset_version_includes_chartjs_bytes(
+@pytest.mark.parametrize(
+    "asset_relative_path",
+    [
+        Path("static/js/local-time.js"),
+        Path("static/vendor/chart.min.js"),
+    ],
+)
+def test_static_asset_version_includes_js_bytes(
+    asset_relative_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     from megaraid_dashboard.web import routes
 
     (tmp_path / "static" / "css").mkdir(parents=True)
+    (tmp_path / "static" / "js").mkdir()
     (tmp_path / "static" / "vendor").mkdir()
     (tmp_path / "static" / "css" / "app.css").write_text("css", encoding="utf-8")
+    (tmp_path / "static" / "js" / "local-time.js").write_text("local-time", encoding="utf-8")
     (tmp_path / "static" / "vendor" / "htmx.min.js").write_text("htmx", encoding="utf-8")
-    chart_path = tmp_path / "static" / "vendor" / "chart.min.js"
-    chart_path.write_text("chart-a", encoding="utf-8")
+    (tmp_path / "static" / "vendor" / "chart.min.js").write_text("chart", encoding="utf-8")
+    changed_path = tmp_path / asset_relative_path
+    changed_path.write_text("asset-a", encoding="utf-8")
     monkeypatch.setattr(routes, "_PACKAGE_ROOT", tmp_path)
     monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
     first_version = routes._static_asset_version()
 
-    chart_path.write_text("chart-b", encoding="utf-8")
+    changed_path.write_text("asset-b", encoding="utf-8")
     monkeypatch.setattr(routes, "STATIC_ASSET_VERSION", "")
     second_version = routes._static_asset_version()
 

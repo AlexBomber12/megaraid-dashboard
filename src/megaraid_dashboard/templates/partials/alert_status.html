@@ -10,9 +10,8 @@
           {% if view_model.alert_status.last_alert_sent_at is none %}
             Never
           {% else %}
-            {{ view_model.alert_status.last_alert_sent_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}
-            /
-            {{ view_model.alert_status.last_alert_sent_at | utc_to_cest }}
+            <noscript>{{ view_model.alert_status.last_alert_sent_at | iso_utc }} UTC</noscript>
+            <time datetime="{{ view_model.alert_status.last_alert_sent_at | iso_utc }}" data-local-time hidden>{{ view_model.alert_status.last_alert_sent_at | iso_utc }} UTC</time>
           {% endif %}
         </td>
       </tr>

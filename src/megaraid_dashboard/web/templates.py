@@ -16,9 +16,19 @@ def create_templates(directory: Path) -> Jinja2Templates:
         lstrip_blocks=True,
     )
     environment.filters["utc_to_cest"] = utc_to_cest
+    environment.filters["iso_utc"] = iso_utc
     return Jinja2Templates(env=environment)
 
 
+def iso_utc(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("iso_utc requires a timezone-aware datetime")
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# Deprecated: prefer iso_utc + JS local-time. Remove after all templates migrate.
 def utc_to_cest(value: datetime) -> str:
     utc_value = _to_aware_utc(value)
     try:

@@ -1,7 +1,10 @@
 {% macro event_rows(events) -%}
   {% for event in events %}
     <tr>
-      <td class="mono">{{ event.occurred_at | utc_to_cest }}</td>
+      <td class="mono">
+        <noscript>{{ event.occurred_at | iso_utc }} UTC</noscript>
+        <time datetime="{{ event.occurred_at | iso_utc }}" data-local-time hidden>{{ event.occurred_at | iso_utc }} UTC</time>
+      </td>
       <td>
         <span class="status-badge status-badge--{{ event.severity_status }}">
           {{ event.severity_label }}
