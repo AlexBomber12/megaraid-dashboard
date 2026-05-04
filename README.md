@@ -49,7 +49,11 @@ pytest
 - [Proxy setup](docs/PROXY-SETUP.md) - nginx reverse proxy, TLS, and `/raid/` path prefix.
 - [Threat model](docs/THREAT-MODEL.md) - assets, trust boundaries, actors, and STRIDE review.
 - [Security audit](docs/SECURITY-AUDIT-2026-Q2.md) - quarterly pass-1 audit checklist,
-  findings, and remediation plan. Run `scripts/security-scan.sh` during each quarterly review.
+  findings, and remediation plan.
+- [Security penetration pass](docs/SECURITY-AUDIT-2026-Q2-pen.md) - quarterly pass-2 curl
+  test cases for auth, CSRF, rate limiting, command injection, SQL injection, XSS, path
+  traversal, and audit-log forgery. Run `scripts/security-scan.sh` during each quarterly
+  review.
 
 ## Cross-References
 
