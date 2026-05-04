@@ -53,14 +53,23 @@ At the start of the audit branch, `pip-audit` and `bandit` were not installed in
 virtual environment. This PR adds them to the `dev` extra and adds `scripts/security-scan.sh`
 so the quarterly scan has one repeatable entry point.
 
-Observed `pip-audit --strict` output after installing the updated dev extra:
+Observed `pip-audit --skip-editable` output after installing the updated dev extra:
 
 ```text
-ERROR:pip_audit._cli:megaraid-dashboard: Dependency not found on PyPI and could not be audited: megaraid-dashboard (0.1.0)
+Found 4 known vulnerabilities in 2 packages
+Name   Version ID             Fix Versions
+------ ------- -------------- ------------
+pip    25.0.1  CVE-2025-8869  25.3
+pip    25.0.1  CVE-2026-1703  26.0
+pip    25.0.1  CVE-2026-3219
+pytest 8.4.2   CVE-2025-71176 9.0.3
+Name               Skip Reason
+------------------ -------------------------------
+megaraid-dashboard distribution marked as editable
 ```
 
-This is expected for the local editable project package. Future quarterly runs should review
-third-party vulnerability output separately from this local-package notice.
+The scan skips the local editable project package and audits the third-party dependency set in
+the virtual environment.
 
 ## Codebase Review
 
@@ -269,8 +278,8 @@ bash scripts/security-scan.sh
 Expected behavior:
 
 - Ruff security rules print S-series findings for `src/` and do not fail the script.
-- `pip-audit --strict` checks installed packages against known vulnerability databases and
-  does not fail the script.
+- `pip-audit --skip-editable` skips the local editable project package, checks installed
+  third-party packages against known vulnerability databases, and does not fail the script.
 - Bandit scans `src/` at medium-or-higher severity and does not fail the script.
 - The environment-file permission probe prints the production stat line when present, or a
   development-only missing-file message.
@@ -279,8 +288,8 @@ Because this repository currently uses version ranges rather than a lockfile, `p
 results are environment-dependent. Reproducible build work should include a lockfile or hash
 pinning strategy before treating dependency audit output as fully reproducible.
 
-The 2026-Q2 local scan produced only the expected local editable package notice for
-`megaraid-dashboard==0.1.0`; no third-party vulnerable package table was emitted.
+The 2026-Q2 local scan skipped the editable `megaraid-dashboard==0.1.0` package and reported
+the local environment and development-tooling dependency findings shown above.
 
 ## Findings
 

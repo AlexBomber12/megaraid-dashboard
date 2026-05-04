@@ -6,7 +6,7 @@ echo "==> ruff (security rules)"
 .venv/bin/ruff check --select S --output-format concise src/ || true
 
 echo "==> pip-audit"
-.venv/bin/pip-audit --strict || true
+.venv/bin/pip-audit --skip-editable || true
 
 echo "==> bandit (deeper SAST)"
 .venv/bin/bandit -r src/ -ll || true
