@@ -70,10 +70,7 @@ script into startup. The sample unit sets a production default of
 
 Reverse proxy: see `docs/PROXY-SETUP.md` and `deploy/nginx/megaraid.conf.sample`.
 
-Install: see `scripts/install.sh` for the current installer scaffold. The installer creates
-the application virtual environment at `/opt/megaraid-dashboard/.venv`, copies the source
-checkout into `/opt/megaraid-dashboard/src`, and installs that copied tree as an editable
-package. `INSTALL.md` is forthcoming.
+Install: see `INSTALL.md` for the production deployment guide.
 
 ### Log retention
 
