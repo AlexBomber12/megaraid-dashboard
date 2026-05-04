@@ -761,8 +761,20 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
         )
         status = parse_rebuild_status(payload)
     except StorcliParseError as exc:
+        if _is_htmx_request(request):
+            return _rebuild_status_error_partial(
+                request=request,
+                error="storcli parse failed",
+                detail=str(exc),
+            )
         return JSONResponse({"error": "storcli parse failed", "detail": str(exc)}, status_code=502)
     except StorcliError as exc:
+        if _is_htmx_request(request):
+            return _rebuild_status_error_partial(
+                request=request,
+                error="storcli command failed",
+                detail=str(exc),
+            )
         return JSONResponse(
             {"error": "storcli command failed", "detail": str(exc)},
             status_code=502,
@@ -809,6 +821,15 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
             "state": status.state,
             "time_remaining_minutes": status.time_remaining_minutes,
         }
+    )
+
+
+def _rebuild_status_error_partial(*, request: Request, error: str, detail: str) -> Response:
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="partials/rebuild_progress_error.html",
+        context={"error": error, "detail": detail},
+        status_code=200,
     )
 
 
