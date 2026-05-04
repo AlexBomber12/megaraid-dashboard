@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     metrics_interval_seconds: int = Field(...)
     metrics_raw_retention_days: int = 30
     metrics_hourly_retention_days: int = 365
+    metrics_port: int = 8091
+    metrics_listen_address: str = "127.0.0.1"
+    metrics_enabled: bool = True
     store_raw_snapshot_payload: bool = False
     collector_enabled: bool = True
     collector_lock_path: str = "/tmp/megaraid-dashboard-collector.lock"
@@ -62,6 +65,12 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.metrics_hourly_retention_days <= 0:
             msg = "metrics_hourly_retention_days must be positive"
+            raise ValueError(msg)
+        if not 1 <= self.metrics_port <= 65535:
+            msg = "metrics_port must be 1..65535"
+            raise ValueError(msg)
+        if not self.metrics_listen_address.strip():
+            msg = "metrics_listen_address must not be empty"
             raise ValueError(msg)
         if not 1 <= self.cv_capacitance_warning_percent <= 100:
             msg = "cv_capacitance_warning_percent must be between 1 and 100"

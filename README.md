@@ -61,6 +61,11 @@ script into startup. The sample unit sets a production default of
 
 Reverse proxy: see `docs/PROXY-SETUP.md` and `deploy/nginx/megaraid.conf.sample`.
 
+Prometheus metrics: `GET http://127.0.0.1:8091/metrics`. The listener is LAN-only by
+default and is not auth-protected, so firewall the port off the WAN before changing the
+listen address. Configure with `METRICS_PORT`, `METRICS_LISTEN_ADDRESS`, and
+`METRICS_ENABLED`.
+
 Install: see `scripts/install.sh` for the current installer scaffold. The installer creates
 the application virtual environment at `/opt/megaraid-dashboard/.venv`, copies the source
 checkout into `/opt/megaraid-dashboard/src`, and installs that copied tree as an editable
