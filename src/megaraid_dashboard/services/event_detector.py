@@ -6,7 +6,13 @@ from typing import Any
 import structlog
 
 from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
-from megaraid_dashboard.storcli import CacheVault, PhysicalDrive, StorcliSnapshot, VirtualDrive
+from megaraid_dashboard.storcli import (
+    CacheVault,
+    ForeignConfig,
+    PhysicalDrive,
+    StorcliSnapshot,
+    VirtualDrive,
+)
 
 _LOG = structlog.get_logger(__name__)
 
@@ -64,6 +70,14 @@ class EventDetector:
         self._temperature_states: dict[DriveKey, str] = {}
         self._temperature_updates: dict[DriveKey, str] = {}
         self._temperature_clears: set[SlotKey] = set()
+        # The DB schema does not track foreign-config presence, so this
+        # detector instance tracks the last observed value in memory across
+        # cycles. After a process restart the value resets to None, which
+        # treats the next cycle's presence as a fresh detection — that
+        # re-emit on restart is intentional, since operators want a renewed
+        # warning every time a process comes up while foreign config is
+        # present on the controller.
+        self._previous_foreign_config_present: bool | None = None
 
     def set_temperature_states(self, states: dict[DriveKey, str]) -> None:
         self._temperature_states = dict(states)
@@ -114,6 +128,55 @@ class EventDetector:
             events.extend(self._detect_baseline(current))
 
         events.extend(self._detect_temperatures(previous, current, replaced_slots))
+        events.extend(self._detect_foreign_config(current.foreign_config))
+        return events
+
+    def _detect_foreign_config(
+        self,
+        current: ForeignConfig | None,
+    ) -> list[DetectedEvent]:
+        """Emit on transitions of foreign-config presence.
+
+        Emits a warning when foreign config newly appears (None/False -> True)
+        and an info "cleared" event on the reverse transition. State is stored
+        on the detector instance, so a process restart re-emits on the next
+        cycle if foreign config is still present — that re-emit is intentional.
+        """
+        previous_present = self._previous_foreign_config_present
+        current_present = current.present if current is not None else False
+        events: list[DetectedEvent] = []
+        if current_present and not previous_present:
+            assert current is not None
+            events.append(
+                DetectedEvent(
+                    severity="warning",
+                    category="foreign_config_detected",
+                    subject="Controller foreign config",
+                    summary=(
+                        f"Foreign configuration detected: {current.dg_count} DG, "
+                        f"{current.drive_count} drives ({current.digest})"
+                    ),
+                    before=None,
+                    after={
+                        "present": True,
+                        "dg_count": current.dg_count,
+                        "drive_count": current.drive_count,
+                        "digest": current.digest,
+                    },
+                )
+            )
+        elif previous_present and not current_present:
+            events.append(
+                DetectedEvent(
+                    severity="info",
+                    category="foreign_config_detected",
+                    subject="Controller foreign config",
+                    summary="Foreign configuration cleared",
+                    before={"present": True},
+                    after={"present": False},
+                )
+            )
+        self._previous_foreign_config_present = current_present
         return events
 
     def _detect_baseline(self, current: StorcliSnapshot) -> list[DetectedEvent]:

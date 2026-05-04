@@ -38,6 +38,9 @@ from megaraid_dashboard.services.audit import record_operator_action
 from megaraid_dashboard.services.drive_actions import (
     LocateAction,
     ReplaceStep,
+    build_foreign_config_clear_command,
+    build_foreign_config_import_command,
+    build_foreign_config_show_command,
     build_insert_replacement_command,
     build_locate_command,
     build_rebuild_status_command,
@@ -75,9 +78,11 @@ from megaraid_dashboard.services.overview import (
 )
 from megaraid_dashboard.storcli import (
     DriveShow,
+    ForeignConfig,
     StorcliError,
     StorcliParseError,
     parse_drive_show,
+    parse_foreign_config,
     run_storcli,
 )
 from megaraid_dashboard.web.templates import create_templates
@@ -103,6 +108,7 @@ _EVENT_CATEGORY_FILTERS = (
     "disk_space",
     "system",
     "operator_action",
+    "foreign_config_detected",
 )
 
 HealthStatus = Literal["ok", "degraded"]
@@ -1490,6 +1496,407 @@ def _record_insert_operator_action_sync(
             action="replace_insert",
             enclosure_id=enclosure_id,
             slot_id=slot_id,
+            outcome=outcome,
+        )
+        raise
+
+
+_FOREIGN_CONFIG_CLEAR_CONFIRMATION = "CLEAR FOREIGN CONFIG"
+_REBUILD_DRIVE_STATES: frozenset[str] = frozenset({"Rbld"})
+
+
+class ForeignConfigImportRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=200)
+    dry_run: bool = False
+
+    @field_validator("confirmation")
+    @classmethod
+    def confirmation_must_not_be_blank(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            msg = "confirmation must not be blank"
+            raise ValueError(msg)
+        return text
+
+
+class ForeignConfigClearRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=200)
+    dry_run: bool = False
+
+
+@router.get("/controller/foreign-config", name="controller_foreign_config")
+async def controller_foreign_config(request: Request) -> Response:
+    """Read the current foreign-config state directly from storcli.
+
+    Returns HTML when ``Accept: text/html`` is preferred, JSON otherwise.
+    """
+    settings: Settings = request.app.state.settings
+    foreign_config: ForeignConfig | None = None
+    error: str | None = None
+    detail: str | None = None
+    status_code = 200
+    try:
+        foreign_config = await _query_live_foreign_config(settings=settings)
+    except StorcliParseError as exc:
+        error = "storcli parse failed"
+        detail = str(exc)
+        status_code = 502
+    except StorcliError as exc:
+        error = "storcli command failed"
+        detail = str(exc)
+        status_code = 502
+
+    if _accepts_html(request):
+        context: dict[str, Any] = {
+            "active_nav": "overview",
+            "current_utc_label": _current_utc_label(),
+            "static_asset_version": _static_asset_version(),
+            "foreign_config": (
+                _foreign_config_response_body(foreign_config)
+                if foreign_config is not None
+                else None
+            ),
+            "error": error,
+            "detail": detail,
+            "clear_confirmation_phrase": _FOREIGN_CONFIG_CLEAR_CONFIRMATION,
+        }
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="pages/foreign_config.html",
+            context=context,
+            status_code=status_code if error is not None else 200,
+        )
+
+    if error is not None:
+        body: dict[str, Any] = {"error": error}
+        if detail is not None:
+            body["detail"] = detail
+        return JSONResponse(body, status_code=status_code)
+    assert foreign_config is not None
+    return JSONResponse(_foreign_config_response_body(foreign_config))
+
+
+@router.post(
+    "/controller/foreign-config/import",
+    name="controller_foreign_config_import",
+)
+async def controller_foreign_config_import(request: Request) -> JSONResponse:
+    """Import the foreign configuration on the controller. HIGH RISK."""
+    body = await _parse_foreign_config_import_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    query_dry_run = _parse_query_dry_run(request)
+    if isinstance(query_dry_run, JSONResponse):
+        return query_dry_run
+    dry_run = body.dry_run or query_dry_run
+
+    settings: Settings = request.app.state.settings
+    try:
+        live_foreign_config = await _query_live_foreign_config(settings=settings)
+    except StorcliParseError as exc:
+        return JSONResponse(
+            {"error": "storcli parse failed", "detail": str(exc)},
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
+        )
+
+    if not live_foreign_config.present:
+        return JSONResponse(
+            {"error": "no foreign configuration present"},
+            status_code=409,
+        )
+
+    if body.confirmation != live_foreign_config.digest:
+        # Do not echo the canonical digest: returning it would let an
+        # operator probe with a placeholder, read back the digest, and
+        # replay the destructive call. The operator must obtain the
+        # digest from GET /controller/foreign-config.
+        return JSONResponse(
+            {"error": "confirmation mismatch"},
+            status_code=409,
+        )
+
+    rebuild_active = await run_in_threadpool(
+        _any_drive_rebuilding,
+        request=request,
+    )
+    if rebuild_active:
+        return JSONResponse(
+            {"error": "cannot import foreign config while a rebuild is in progress"},
+            status_code=409,
+        )
+
+    argv = build_foreign_config_import_command()
+
+    if dry_run:
+        return JSONResponse(
+            {
+                "dry_run": True,
+                "action": "import",
+                "argv": argv,
+                "foreign_config": _foreign_config_response_body(live_foreign_config),
+            }
+        )
+
+    if not settings.maintenance_mode or not settings.destructive_mode:
+        return JSONResponse(
+            {
+                "error": "destructive operations require maintenance_mode and destructive_mode",
+                "maintenance_mode": settings.maintenance_mode,
+                "destructive_mode": settings.destructive_mode,
+            },
+            status_code=403,
+        )
+
+    return await _run_foreign_config_destructive(
+        request=request,
+        action="import",
+        argv=argv,
+        digest=live_foreign_config.digest,
+        settings=settings,
+    )
+
+
+@router.post(
+    "/controller/foreign-config/clear",
+    name="controller_foreign_config_clear",
+)
+async def controller_foreign_config_clear(request: Request) -> JSONResponse:
+    """Delete the foreign configuration on the controller. HIGH RISK."""
+    body = await _parse_foreign_config_clear_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    query_dry_run = _parse_query_dry_run(request)
+    if isinstance(query_dry_run, JSONResponse):
+        return query_dry_run
+    dry_run = body.dry_run or query_dry_run
+
+    if body.confirmation != _FOREIGN_CONFIG_CLEAR_CONFIRMATION:
+        return JSONResponse(
+            {"error": (f"confirmation must be exactly '{_FOREIGN_CONFIG_CLEAR_CONFIRMATION}'")},
+            status_code=409,
+        )
+
+    settings: Settings = request.app.state.settings
+    try:
+        live_foreign_config = await _query_live_foreign_config(settings=settings)
+    except StorcliParseError as exc:
+        return JSONResponse(
+            {"error": "storcli parse failed", "detail": str(exc)},
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
+        )
+
+    if not live_foreign_config.present:
+        return JSONResponse(
+            {"error": "no foreign configuration present"},
+            status_code=409,
+        )
+
+    rebuild_active = await run_in_threadpool(
+        _any_drive_rebuilding,
+        request=request,
+    )
+    if rebuild_active:
+        return JSONResponse(
+            {"error": "cannot clear foreign config while a rebuild is in progress"},
+            status_code=409,
+        )
+
+    argv = build_foreign_config_clear_command()
+
+    if dry_run:
+        return JSONResponse(
+            {
+                "dry_run": True,
+                "action": "clear",
+                "argv": argv,
+                "foreign_config": _foreign_config_response_body(live_foreign_config),
+            }
+        )
+
+    if not settings.maintenance_mode or not settings.destructive_mode:
+        return JSONResponse(
+            {
+                "error": "destructive operations require maintenance_mode and destructive_mode",
+                "maintenance_mode": settings.maintenance_mode,
+                "destructive_mode": settings.destructive_mode,
+            },
+            status_code=403,
+        )
+
+    return await _run_foreign_config_destructive(
+        request=request,
+        action="clear",
+        argv=argv,
+        digest=live_foreign_config.digest,
+        settings=settings,
+    )
+
+
+async def _run_foreign_config_destructive(
+    *,
+    request: Request,
+    action: Literal["import", "clear"],
+    argv: list[str],
+    digest: str,
+    settings: Settings,
+) -> JSONResponse:
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_foreign_config_operator_action_sync,
+            request=request,
+            action=action,
+            digest=digest,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        audit_failure_body: dict[str, Any] = {
+            "error": "audit persistence failed",
+            "action": action,
+            "argv": argv,
+        }
+        if result is not None:
+            audit_failure_body["result"] = result
+        if storcli_error is not None:
+            audit_failure_body["storcli_error"] = str(storcli_error)
+        return JSONResponse(audit_failure_body, status_code=500)
+
+    if storcli_error is not None:
+        return JSONResponse(
+            {
+                "error": "storcli command failed",
+                "action": action,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(
+        {
+            "action": action,
+            "argv": argv,
+            "result": result,
+        }
+    )
+
+
+def _foreign_config_response_body(foreign_config: ForeignConfig) -> dict[str, Any]:
+    return {
+        "present": foreign_config.present,
+        "dg_count": foreign_config.dg_count,
+        "drive_count": foreign_config.drive_count,
+        "total_size_bytes": foreign_config.total_size_bytes,
+        "digest": foreign_config.digest,
+        "disk_groups": [
+            {
+                "dg_id": dg.dg_id,
+                "drive_count": dg.drive_count,
+                "size_bytes": dg.size_bytes,
+            }
+            for dg in foreign_config.disk_groups
+        ],
+    }
+
+
+async def _query_live_foreign_config(*, settings: Settings) -> ForeignConfig:
+    argv = build_foreign_config_show_command()
+    payload = await run_storcli(
+        argv,
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    return parse_foreign_config(payload)
+
+
+async def _parse_foreign_config_import_body(
+    request: Request,
+) -> ForeignConfigImportRequest | JSONResponse:
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "request body must be valid JSON"}, status_code=400)
+    try:
+        return ForeignConfigImportRequest.model_validate(payload)
+    except ValidationError as exc:
+        return JSONResponse(
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+async def _parse_foreign_config_clear_body(
+    request: Request,
+) -> ForeignConfigClearRequest | JSONResponse:
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "request body must be valid JSON"}, status_code=400)
+    try:
+        return ForeignConfigClearRequest.model_validate(payload)
+    except ValidationError as exc:
+        return JSONResponse(
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+def _any_drive_rebuilding(*, request: Request) -> bool:
+    with _session(request) as session:
+        latest_id = session.scalar(
+            select(ControllerSnapshot.id).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
+        )
+        if latest_id is None:
+            return False
+        rebuilding = session.scalar(
+            select(PhysicalDriveSnapshot.id)
+            .where(PhysicalDriveSnapshot.snapshot_id == latest_id)
+            .where(PhysicalDriveSnapshot.state.in_(_REBUILD_DRIVE_STATES))
+            .limit(1)
+        )
+        return rebuilding is not None
+
+
+def _record_foreign_config_operator_action_sync(
+    *,
+    request: Request,
+    action: Literal["import", "clear"],
+    digest: str,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=f"foreign config {action} digest={digest} {outcome}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action=f"foreign_config_{action}",
             outcome=outcome,
         )
         raise

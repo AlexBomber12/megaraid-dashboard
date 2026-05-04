@@ -27,8 +27,12 @@ _LOCK_PATH_DEFAULT = "/tmp/megaraid-dashboard-notifier.lock"
 _SUBJECT_MAX_LENGTH = 200
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 # RoC overheating is slow-moving; one reminder per day avoids noisy hourly repeats.
+# Foreign-config detection is also slow-moving — once a foreign config has
+# appeared, the operator is expected to act manually within hours/days, not
+# minutes, so daily reminders are sufficient.
 _PER_CATEGORY_SUPPRESS_MINUTES: dict[str, int] = {
     "controller_temperature": 1440,
+    "foreign_config_detected": 1440,
 }
 
 

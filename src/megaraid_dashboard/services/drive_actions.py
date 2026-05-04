@@ -75,6 +75,31 @@ def build_insert_replacement_command(
     ]
 
 
+def build_foreign_config_show_command() -> list[str]:
+    """Show the foreign configuration on the controller (read-only)."""
+    return ["/c0/fall", "show", "all", "J"]
+
+
+def build_foreign_config_import_command() -> list[str]:
+    """Import the foreign configuration the controller currently sees.
+
+    The storcli command syntax is firmware-specific; this builder emits the
+    most widely documented form (``/c0/fall import``). Hand-verification on
+    real hardware is mandatory before merge — see PR-064 task notes.
+    """
+    return ["/c0/fall", "import", "J"]
+
+
+def build_foreign_config_clear_command() -> list[str]:
+    """Clear/delete the foreign configuration the controller currently sees.
+
+    The storcli command syntax is firmware-specific; this builder emits the
+    most widely documented form (``/c0/fall delete``). Hand-verification on
+    real hardware is mandatory before merge — see PR-064 task notes.
+    """
+    return ["/c0/fall", "delete", "J"]
+
+
 def can_transition(current_state: str, requested_step: ReplaceStep) -> bool:
     if requested_step == "offline":
         return current_state in _OFFLINE_ALLOWED_STATES

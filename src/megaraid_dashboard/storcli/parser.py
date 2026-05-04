@@ -11,8 +11,11 @@ from megaraid_dashboard.storcli.models import (
     CacheVault,
     ControllerInfo,
     DriveShow,
+    ForeignConfig,
+    ForeignConfigDiskGroup,
     PhysicalDrive,
     VirtualDrive,
+    size_string_to_bytes,
 )
 
 
@@ -122,6 +125,187 @@ def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
         return CacheVault.model_validate(data)
     except (KeyError, TypeError, IndexError, ValidationError) as exc:
         raise StorcliParseError("cachevault payload does not match expected schema") from exc
+
+
+def parse_foreign_config(payload: dict[str, Any]) -> ForeignConfig:
+    """Parse a ``/c0/fall show all J`` payload into a ForeignConfig summary.
+
+    A failure status with the storcli "no foreign configuration" marker is the
+    NORMAL absent case — the controller emits Status=Failure with a marker
+    error message rather than an empty success payload. That case maps to
+    ``ForeignConfig(present=False)``.
+
+    A success status with no extractable DG/drive counts is also treated as
+    absent: defensively, because firmware revisions differ in how they report
+    "no foreign config", we never raise from this parser unless the payload is
+    fundamentally not a controller response. Operationally, the presence flag
+    is what gates events and routes; structural changes that drop counts are
+    safer to render as "absent" than to raise and stall the collector.
+    """
+    controller = _first_controller(payload)
+    if _command_failed(controller):
+        err_msg = _command_err_msg(controller)
+        if _is_no_foreign_config_error(err_msg):
+            return ForeignConfig(present=False, digest="")
+        raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
+
+    try:
+        response = _response_data(controller)
+    except StorcliParseError:
+        return ForeignConfig(present=False, digest="")
+
+    drives = _foreign_drives(response)
+    disk_groups = _foreign_disk_groups(response, drives)
+    drive_count = len(drives)
+    dg_count = len(disk_groups)
+    total_size_bytes = _foreign_total_size_bytes(response, disk_groups)
+
+    if dg_count == 0 and drive_count == 0:
+        return ForeignConfig(present=False, digest="")
+
+    digest = _foreign_config_digest(
+        dg_count=dg_count,
+        drive_count=drive_count,
+        total_size_bytes=total_size_bytes,
+        disk_groups=disk_groups,
+    )
+    return ForeignConfig(
+        present=True,
+        dg_count=dg_count,
+        drive_count=drive_count,
+        total_size_bytes=total_size_bytes,
+        disk_groups=disk_groups,
+        digest=digest,
+    )
+
+
+_NO_FOREIGN_CONFIG_MARKERS = (
+    "no foreign configuration",
+    "no foreign config",
+    "foreign configuration not found",
+)
+
+
+def _is_no_foreign_config_error(err_msg: str) -> bool:
+    normalized = err_msg.casefold()
+    return any(marker in normalized for marker in _NO_FOREIGN_CONFIG_MARKERS)
+
+
+def _foreign_drives(response: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    drives: list[Mapping[str, Any]] = []
+    for key, value in response.items():
+        normalized = key.casefold()
+        if "pd list" not in normalized and "drive" not in normalized:
+            continue
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if isinstance(item, Mapping) and ("EID:Slt" in item or "DID" in item):
+                drives.append(item)
+    return drives
+
+
+def _foreign_disk_groups(
+    response: Mapping[str, Any],
+    drives: list[Mapping[str, Any]],
+) -> list[ForeignConfigDiskGroup]:
+    by_id: dict[int, dict[str, Any]] = {}
+    for key, value in response.items():
+        normalized = key.casefold()
+        if "dg" not in normalized:
+            continue
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, Mapping):
+                continue
+            dg_value = item.get("DG") if "DG" in item else item.get("DG/VD")
+            dg_id = _coerce_dg_id(dg_value)
+            if dg_id is None:
+                continue
+            entry = by_id.setdefault(dg_id, {"dg_id": dg_id, "drive_count": 0, "size_bytes": None})
+            size_text = item.get("Size") if "Size" in item else None
+            if isinstance(size_text, str) and entry["size_bytes"] is None:
+                try:
+                    entry["size_bytes"] = size_string_to_bytes(size_text)
+                except ValueError:
+                    entry["size_bytes"] = None
+
+    for drive in drives:
+        dg_value = drive.get("DG")
+        dg_id = _coerce_dg_id(dg_value)
+        if dg_id is None:
+            continue
+        entry = by_id.setdefault(dg_id, {"dg_id": dg_id, "drive_count": 0, "size_bytes": None})
+        entry["drive_count"] = int(entry["drive_count"]) + 1
+
+    sorted_entries = sorted(by_id.values(), key=lambda entry: entry["dg_id"])
+    return [ForeignConfigDiskGroup.model_validate(entry) for entry in sorted_entries]
+
+
+def _coerce_dg_id(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text in {"-", "N/A"}:
+            return None
+        if "/" in text:
+            head, _, _ = text.partition("/")
+            text = head.strip()
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _foreign_total_size_bytes(
+    response: Mapping[str, Any],
+    disk_groups: list[ForeignConfigDiskGroup],
+) -> int | None:
+    for key, value in response.items():
+        if not isinstance(value, str):
+            continue
+        normalized_key = key.casefold()
+        if "total" in normalized_key and "size" in normalized_key:
+            try:
+                return size_string_to_bytes(value)
+            except ValueError:
+                continue
+    sizes = [dg.size_bytes for dg in disk_groups if dg.size_bytes is not None]
+    if sizes:
+        return sum(sizes)
+    return None
+
+
+def _foreign_config_digest(
+    *,
+    dg_count: int,
+    drive_count: int,
+    total_size_bytes: int | None,
+    disk_groups: list[ForeignConfigDiskGroup],
+) -> str:
+    """Stable summary the operator types back to confirm import.
+
+    Format: ``FC-DG{n}-PD{m}-{size}`` where size is total_size_bytes rounded to
+    the nearest GB or ``UNKNOWN`` when the firmware did not report it. The
+    digest is intentionally short, human-readable, and changes whenever the
+    foreign-config shape changes — making blind copy/paste recognizable while
+    preventing typo replay against a different foreign config.
+    """
+    if total_size_bytes is None:
+        size_token = "UNKNOWN"
+    else:
+        size_gb = max(0, round(total_size_bytes / 10**9))
+        size_token = f"{size_gb}GB"
+    base = f"FC-DG{dg_count}-PD{drive_count}-{size_token}"
+    dg_tokens = [f"dg{dg.dg_id}:{dg.drive_count}" for dg in disk_groups]
+    if not dg_tokens:
+        return base
+    return f"{base}-[{','.join(dg_tokens)}]"
 
 
 def parse_bbu(payload: dict[str, Any]) -> BbuInfo | None:
