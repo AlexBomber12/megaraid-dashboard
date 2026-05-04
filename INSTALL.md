@@ -9,8 +9,8 @@ Follow the steps in order. The installer is intentionally opinionated: it create
 account, application directories, virtual environment, sudoers allowlist, systemd unit, and
 journald retention drop-in for the standard single-host deployment.
 
-If a command fails, stop and keep the terminal output. The troubleshooting index is
-`TROUBLESHOOTING.md`; PR-058 will fill in the detailed failure playbooks.
+If a command fails, stop and keep the terminal output. Use
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md) to match the observed symptom to a recovery path.
 
 ## Pre-flight
 
@@ -193,7 +193,8 @@ database under `/var/lib/megaraid-dashboard/`, and installs the service code und
 `/opt/megaraid-dashboard/`.
 
 If a known failure appears, leave the partial install in place for inspection and use
-`TROUBLESHOOTING.md` once PR-058 lands.
+[Service does not start](TROUBLESHOOTING.md#service-does-not-start) or
+[Healthz returns 503](TROUBLESHOOTING.md#healthz-returns-503).
 
 ## Step 3: Edit .env If Config Wizard Skipped
 
@@ -296,8 +297,8 @@ Expected output:
 The `collector` value may be `idle` when collection is disabled or not yet running. The
 install is healthy when `status` is `ok` and `database` is `ok`.
 
-If the command returns HTTP 503, keep the JSON payload and use `TROUBLESHOOTING.md` once
-PR-058 lands.
+If the command returns HTTP 503, keep the JSON payload and use
+[Healthz returns 503](TROUBLESHOOTING.md#healthz-returns-503).
 
 ## Step 6: Configure nginx Reverse Proxy
 
@@ -403,8 +404,9 @@ The recipient should receive an email with subject:
 [megaraid-dashboard] SMTP test
 ```
 
-If authentication, TLS, or connection errors appear, check the SMTP host, port, username,
-token, and STARTTLS setting in `/etc/megaraid-dashboard/env`.
+If authentication, TLS, or connection errors appear, use
+[No alerts arriving](TROUBLESHOOTING.md#no-alerts-arriving) to check SMTP settings and
+notifier state.
 
 ## Smoke Test Checklist
 
@@ -533,8 +535,8 @@ Sent test alert to operator@example.com
 
 ## Common Pitfalls
 
-Use this section as a short index. The full diagnostic reference will live in
-`TROUBLESHOOTING.md` after PR-058.
+Use this section as a short index. The full diagnostic reference is
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 - `storcli64 not found at /usr/local/sbin/storcli64`: install Broadcom `storcli64` at the
   expected path or run the installer with `STORCLI_PATH=/absolute/path/to/storcli64`.
