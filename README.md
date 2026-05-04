@@ -49,6 +49,11 @@ pytest
 - [Proxy setup](docs/PROXY-SETUP.md) - nginx reverse proxy, TLS, and `/raid/` path prefix.
 - Security audit - audit checklist and findings; forthcoming.
 
+## Cross-References
+
+- [homelab-monitoring](https://github.com/AlexBomber12/homelab-monitoring) - shared
+  Prometheus and Grafana stack for MegaRAID Dashboard metrics and future homelab services.
+
 ## Database
 
 SQLite stores controller, virtual drive, physical drive, and cache vault snapshots. Physical
