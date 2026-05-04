@@ -13,10 +13,16 @@ INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install.sh"
 
 
 def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -> None:
+    repo_root = tmp_path / "source"
+    repo_root.mkdir()
+    git_sha = "1234567890abcdef1234567890abcdef12345678"
+
     result = _run_phase_config(
         tmp_path,
         args=["--non-interactive"],
         install_env=_install_env(tmp_path),
+        git_stub=_git_sha_stub(repo_root, git_sha),
+        repo_root=repo_root,
     )
 
     env_file = tmp_path / "etc" / "env"
@@ -39,7 +45,7 @@ def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -
         "LOG_LEVEL": "info",
         "METRICS_INTERVAL_SECONDS": "300",
         "DATABASE_URL": f"sqlite:///{tmp_path}/data/megaraid.db",
-        "GIT_SHA": _repo_git_sha(),
+        "GIT_SHA": git_sha,
     }
     assert values["ADMIN_PASSWORD_HASH"].startswith("$2b$")
     settings = Settings(_env_file=env_file)
@@ -266,14 +272,24 @@ def _read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def _repo_git_sha() -> str:
-    result = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-        check=True,
-        text=True,
-        capture_output=True,
+def _git_sha_stub(repo_root: Path, git_sha: str) -> str:
+    return (
+        "#!/bin/sh\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "--is-inside-work-tree" ]; then\n'
+        "  printf 'true\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "HEAD" ]; then\n'
+        f"  printf '{git_sha}\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'printf "unexpected git args: %s\\n" "$*" >&2\n'
+        "exit 2\n"
     )
-    return result.stdout.strip()
 
 
 def _stub_bin(tmp_path: Path, *, git_stub: str | None = None) -> Path:

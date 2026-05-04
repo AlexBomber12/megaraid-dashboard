@@ -48,6 +48,7 @@ def test_wheel_build_uses_project_version(tmp_path: Path) -> None:
             sys.executable,
             "-m",
             "build",
+            "--no-isolation",
             "--wheel",
             "--outdir",
             str(tmp_path),
