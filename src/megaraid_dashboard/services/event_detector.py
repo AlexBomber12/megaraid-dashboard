@@ -137,16 +137,20 @@ class EventDetector:
     ) -> list[DetectedEvent]:
         """Emit on transitions of foreign-config presence.
 
-        Emits a warning when foreign config newly appears (None/False -> True)
-        and an info "cleared" event on the reverse transition. State is stored
-        on the detector instance, so a process restart re-emits on the next
-        cycle if foreign config is still present — that re-emit is intentional.
+        Emits a warning when foreign config newly appears (False -> True) and
+        an info "cleared" event on the reverse transition. ``current is None``
+        means the probe failed and presence is unknown — preserve the last
+        known state and emit nothing, so a transient probe failure does not
+        produce a misleading clear/re-detect pair. State is stored on the
+        detector instance, so a process restart re-emits on the next cycle if
+        foreign config is still present — that re-emit is intentional.
         """
+        if current is None:
+            return []
         previous_present = self._previous_foreign_config_present
-        current_present = current.present if current is not None else False
+        current_present = current.present
         events: list[DetectedEvent] = []
         if current_present and not previous_present:
-            assert current is not None
             events.append(
                 DetectedEvent(
                     severity="warning",

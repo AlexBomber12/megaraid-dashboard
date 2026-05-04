@@ -48,7 +48,8 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
         # The "no foreign configuration" case is handled inside the parser as
         # ForeignConfig(present=False); this catch only swallows other storcli
         # failures (probe unsupported, transient errors) so a flaky probe does
-        # not stall snapshot collection. The detector treats None as absent.
+        # not stall snapshot collection. The detector treats None as unknown
+        # and preserves the last observed presence to avoid false transitions.
         foreign_config = None
 
     snapshot = StorcliSnapshot(

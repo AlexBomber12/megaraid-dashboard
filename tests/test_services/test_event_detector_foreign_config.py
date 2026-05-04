@@ -87,12 +87,25 @@ def test_foreign_config_clearing_emits_info_event() -> None:
     assert event.summary == "Foreign configuration cleared"
 
 
-def test_foreign_config_none_field_treated_as_absent() -> None:
+def test_foreign_config_none_field_treated_as_unknown() -> None:
     detector = _detector()
 
     events = detector.detect(None, _current(foreign_config=None))
 
     assert all(event.category != "foreign_config_detected" for event in events)
+
+
+def test_foreign_config_probe_failure_does_not_emit_clear_or_redetect() -> None:
+    detector = _detector()
+    foreign_config = _foreign_config_present()
+
+    detector.detect(None, _current(foreign_config=foreign_config))
+
+    failure_events = detector.detect(_previous(), _current(foreign_config=None))
+    assert all(event.category != "foreign_config_detected" for event in failure_events)
+
+    recovery_events = detector.detect(_previous(), _current(foreign_config=foreign_config))
+    assert all(event.category != "foreign_config_detected" for event in recovery_events)
 
 
 def _foreign_config_present() -> ForeignConfig:
