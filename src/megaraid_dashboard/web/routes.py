@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 from concurrent.futures import Executor
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from math import ceil
 from pathlib import Path
 from time import perf_counter
@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,7 +23,12 @@ from starlette.concurrency import run_in_threadpool
 
 from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
-from megaraid_dashboard.db.dao import get_latest_snapshot, record_event
+from megaraid_dashboard.db.dao import (
+    get_latest_snapshot,
+    get_maintenance_state,
+    record_event,
+    set_maintenance_state,
+)
 from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
@@ -190,6 +195,86 @@ class _TaskLike(Protocol):
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
+
+
+class MaintenanceStartRequest(BaseModel):
+    duration_minutes: int = Field(ge=1, le=1440)
+    reason: str = Field(min_length=1, max_length=200)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        reason = value.strip()
+        if not reason:
+            msg = "reason must not be blank"
+            raise ValueError(msg)
+        return reason
+
+
+@router.post("/maintenance/start")
+async def maintenance_start(body: MaintenanceStartRequest, request: Request) -> JSONResponse:
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=body.duration_minutes)
+    username = str(request.scope.get("user_username", "unknown"))
+    with _session(request) as session, session.begin():
+        set_maintenance_state(
+            session,
+            active=True,
+            expires_at=expires_at,
+            started_by=username,
+        )
+        record_operator_action(
+            session,
+            username=username,
+            message=(
+                f"maintenance start duration {body.duration_minutes} min reason: {body.reason}"
+            ),
+            occurred_at=now,
+        )
+    return JSONResponse(
+        {
+            "active": True,
+            "expires_at": expires_at.isoformat(),
+            "started_by": username,
+        }
+    )
+
+
+@router.post("/maintenance/stop")
+async def maintenance_stop(request: Request) -> JSONResponse:
+    now = datetime.now(UTC)
+    username = str(request.scope.get("user_username", "unknown"))
+    with _session(request) as session, session.begin():
+        prior = get_maintenance_state(session, now=now)
+        set_maintenance_state(session, active=False, expires_at=None, started_by=None)
+        if prior.active:
+            record_operator_action(
+                session,
+                username=username,
+                message="maintenance stop",
+                occurred_at=now,
+            )
+    return JSONResponse({"active": False})
+
+
+@router.get("/maintenance")
+async def maintenance_get(request: Request) -> JSONResponse:
+    now = datetime.now(UTC)
+    with _session(request) as session:
+        state = get_maintenance_state(session, now=now)
+    remaining_seconds = None
+    if state.active and state.expires_at is not None:
+        remaining = int((state.expires_at - now).total_seconds())
+        if remaining > 0:
+            remaining_seconds = remaining
+    return JSONResponse(
+        {
+            "active": state.active,
+            "expires_at": state.expires_at.isoformat() if state.expires_at else None,
+            "started_by": state.started_by,
+            "remaining_seconds": remaining_seconds,
+        }
+    )
 
 
 @router.get("/healthz", name="healthz")
