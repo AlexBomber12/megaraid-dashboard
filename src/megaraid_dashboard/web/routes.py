@@ -15,7 +15,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -24,16 +24,22 @@ from starlette.concurrency import run_in_threadpool
 from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import get_latest_snapshot
-from megaraid_dashboard.db.models import ControllerSnapshot, PhysicalDriveSnapshot
+from megaraid_dashboard.db.models import (
+    ControllerSnapshot,
+    Event,
+    PhysicalDriveSnapshot,
+)
 from megaraid_dashboard.services.audit import record_operator_action
 from megaraid_dashboard.services.drive_actions import (
     LocateAction,
     ReplaceStep,
+    build_insert_replacement_command,
     build_locate_command,
     build_set_missing_command,
     build_set_offline_command,
     build_show_drive_command,
     can_transition,
+    can_transition_step3,
     validate_enclosure_slot,
 )
 from megaraid_dashboard.services.drive_history import (
@@ -674,6 +680,446 @@ def _record_replace_operator_action_sync(
         LOGGER.exception(
             "operator_action_audit_failed",
             action=f"replace_{step}",
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            outcome=outcome,
+        )
+        raise
+
+
+class InsertRequest(BaseModel):
+    serial_number: str
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class _SlotTopology:
+    dg: int
+    array: int
+    row: int
+
+
+@router.get("/drives/{enclosure}:{slot}/replace/topology", name="drive_replace_topology")
+async def drive_replace_topology(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Server-derived DG / array / row for the replacement insert step.
+
+    The values come from the latest persisted snapshot so the operator never
+    types them. The hand-verification log on real hardware is the final check
+    that the derivation matches actual storcli topology output.
+    """
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+    except ValueError:
+        return JSONResponse({"error": "enclosure and slot must be integers"}, status_code=400)
+
+    try:
+        validate_enclosure_slot(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    topology = await run_in_threadpool(
+        _compute_slot_topology,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if topology is None:
+        return JSONResponse(
+            {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
+            status_code=404,
+        )
+    return JSONResponse(
+        {
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "dg": topology.dg,
+            "array": topology.array,
+            "row": topology.row,
+        }
+    )
+
+
+@router.post("/drives/{enclosure}:{slot}/replace/insert", name="drive_replace_insert")
+async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> JSONResponse:
+    """Step 3: insert the replacement drive into the missing slot, kicking off rebuild."""
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+    except ValueError:
+        return JSONResponse({"error": "enclosure and slot must be integers"}, status_code=400)
+
+    try:
+        validate_enclosure_slot(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    query_dry_run = _parse_query_dry_run(request)
+    if isinstance(query_dry_run, JSONResponse):
+        return query_dry_run
+
+    body = await _parse_insert_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    dry_run = body.dry_run or query_dry_run
+
+    drive = await run_in_threadpool(
+        _load_latest_drive_for_slot,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if drive is None:
+        return JSONResponse(
+            {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
+            status_code=404,
+        )
+
+    last_audit = await run_in_threadpool(
+        _load_last_operator_action_for_slot,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    last_audit_message = last_audit.summary if last_audit is not None else None
+    if not can_transition_step3(last_audit_message):
+        return JSONResponse(
+            {
+                "error": "must complete replace step missing before insert",
+                "last_audit": last_audit_message,
+            },
+            status_code=409,
+        )
+    outgoing_serial = _extract_serial_from_audit(last_audit_message or "")
+    if outgoing_serial is not None and outgoing_serial == body.serial_number:
+        return JSONResponse(
+            {
+                "error": (
+                    "supplied serial matches the OUTGOING drive; "
+                    "expected the new replacement drive's serial"
+                )
+            },
+            status_code=409,
+        )
+    # The snapshot is allowed to lag the physical swap: after the operator
+    # pulls the failed drive and seats the replacement, the next collector
+    # poll may not have happened yet, so the persisted serial can still be
+    # the outgoing drive's. Accept either the typed replacement serial
+    # (snapshot already refreshed) or the outgoing serial (snapshot still
+    # pre-swap); the live storcli precheck below is the authoritative
+    # identity check before any destructive command. Reject only when the
+    # snapshot serial matches neither — that signals an unrelated drive in
+    # the slot or a mistyped value.
+    if drive.serial_number != body.serial_number and (
+        outgoing_serial is None or drive.serial_number != outgoing_serial
+    ):
+        # Same reasoning as Step 1: do not echo the canonical serial back.
+        return JSONResponse(
+            {"error": "serial mismatch (replacement drive)"},
+            status_code=409,
+        )
+
+    topology = await run_in_threadpool(
+        _compute_slot_topology,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if topology is None:
+        return JSONResponse(
+            {
+                "error": "unable to derive insert topology for slot",
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+            },
+            status_code=409,
+        )
+
+    try:
+        argv = build_insert_replacement_command(
+            enclosure_id, slot_id, topology.dg, topology.array, topology.row
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if dry_run:
+        return JSONResponse(
+            {
+                "dry_run": True,
+                "step": "insert",
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "dg": topology.dg,
+                "array": topology.array,
+                "row": topology.row,
+                "argv": argv,
+            }
+        )
+
+    settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode or not settings.destructive_mode:
+        return JSONResponse(
+            {
+                "error": "destructive operations require maintenance_mode and destructive_mode",
+                "maintenance_mode": settings.maintenance_mode,
+                "destructive_mode": settings.destructive_mode,
+            },
+            status_code=403,
+        )
+
+    # Re-confirm live drive identity before the destructive insert: the
+    # persisted snapshot can lag, so the typed replacement-serial confirmation
+    # must be validated against the disk currently in the slot, not the
+    # snapshot. Without this, a slot that swapped again after the last poll
+    # could pass snapshot/topology checks and have ``insert`` execute against
+    # a different live device.
+    try:
+        live = await _query_live_drive_show(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {
+                "error": "storcli precheck failed",
+                "step": "insert",
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+    if live.serial_number != body.serial_number:
+        # Same reasoning as the snapshot mismatch above: do not return the
+        # live drive's serial in the response.
+        return JSONResponse(
+            {"error": "live serial mismatch (replacement drive)"},
+            status_code=409,
+        )
+
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_insert_operator_action_sync,
+            request=request,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=body.serial_number,
+            dg=topology.dg,
+            array=topology.array,
+            row=topology.row,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        audit_failure_body: dict[str, Any] = {
+            "error": "audit persistence failed",
+            "step": "insert",
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "serial_number": body.serial_number,
+            "argv": argv,
+        }
+        if result is not None:
+            audit_failure_body["result"] = result
+        if storcli_error is not None:
+            audit_failure_body["storcli_error"] = str(storcli_error)
+        return JSONResponse(audit_failure_body, status_code=500)
+
+    if storcli_error is not None:
+        return JSONResponse(
+            {
+                "error": "storcli command failed",
+                "step": "insert",
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "serial_number": body.serial_number,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(
+        {
+            "step": "insert",
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "serial_number": body.serial_number,
+            "dg": topology.dg,
+            "array": topology.array,
+            "row": topology.row,
+            "argv": argv,
+            "result": result,
+        }
+    )
+
+
+async def _parse_insert_request_body(request: Request) -> InsertRequest | JSONResponse:
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "request body must be valid JSON"}, status_code=400)
+    try:
+        return InsertRequest.model_validate(payload)
+    except ValidationError as exc:
+        return JSONResponse(
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+def _load_last_operator_action_for_slot(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+) -> Event | None:
+    # Use word-boundary matching so e.g. ``drive 2:1`` does not match
+    # ``drive 2:10``. Operator-action summaries always render the slot as
+    # ``drive {enc}:{slot}`` followed by either whitespace (further fields)
+    # or end-of-string (e.g. ``locate start drive 2:0``).
+    slot_token = f"drive {enclosure_id}:{slot_id}"
+    with _session(request) as session:
+        return session.scalars(
+            select(Event)
+            .where(Event.category == "operator_action")
+            .where(
+                or_(
+                    Event.summary.like(f"%{slot_token} %"),
+                    Event.summary.like(f"%{slot_token}"),
+                )
+            )
+            .order_by(Event.occurred_at.desc(), Event.id.desc())
+            .limit(1)
+        ).one_or_none()
+
+
+def _extract_serial_from_audit(message: str) -> str | None:
+    tokens = message.split()
+    for index, token in enumerate(tokens):
+        if token == "serial" and index + 1 < len(tokens):
+            return tokens[index + 1]
+    return None
+
+
+_ARRAY_MEMBER_STATES: frozenset[str] = frozenset(
+    {"Onln", "Offln", "Failed", "Rbld", "Cpybck", "Msng", "Missing"}
+)
+
+
+def _compute_slot_topology(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+) -> _SlotTopology | None:
+    """Derive ``dg`` / ``array`` / ``row`` for a slot from snapshot DG membership.
+
+    ``dg`` is the target slot's last-known disk group, looked up in the most
+    recent snapshot where this slot had a non-null ``disk_group_id`` (after a
+    physical swap the current snapshot may show a fresh ``UGood`` drive with
+    no DG, so we walk back to find the configured DG the slot belonged to).
+
+    ``row`` is the target slot's position among peer slots in the SAME DG
+    whose state marks them as actual array members (``Onln`` / ``Offln`` /
+    ``Failed`` / ``Rbld`` / ``Cpybck`` / ``Msng``), sorted by ``(enclosure,
+    slot)``. Hot spares (``DHS`` / ``GHS``) are associated to a DG but do not
+    occupy an array row, so they must not shift the index. The target slot is
+    always included so a UGood replacement drive still occupies the failed
+    member's row.
+
+    ``array`` defaults to ``0`` (single-span arrays) — the production
+    deployment uses single-span RAID, and hand-verification on real hardware
+    against ``storcli /c0/eX/sY show all J`` is the final check.
+    """
+    with _session(request) as session:
+        latest_snapshot_id = session.scalar(
+            select(ControllerSnapshot.id).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
+        )
+        if latest_snapshot_id is None:
+            return None
+        physical_slots = session.scalars(
+            select(PhysicalDriveSnapshot).where(
+                PhysicalDriveSnapshot.snapshot_id == latest_snapshot_id
+            )
+        ).all()
+        if not physical_slots:
+            return None
+        target = (enclosure_id, slot_id)
+        if target not in {(pd.enclosure_id, pd.slot_id) for pd in physical_slots}:
+            return None
+        target_dg = session.scalar(
+            select(PhysicalDriveSnapshot.disk_group_id)
+            .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
+            .where(PhysicalDriveSnapshot.enclosure_id == enclosure_id)
+            .where(PhysicalDriveSnapshot.slot_id == slot_id)
+            .where(PhysicalDriveSnapshot.disk_group_id.is_not(None))
+            .order_by(ControllerSnapshot.captured_at.desc(), PhysicalDriveSnapshot.id.desc())
+            .limit(1)
+        )
+        if target_dg is None:
+            # No history of DG membership for this slot. Fall back to the
+            # current snapshot's DGs only when there is EXACTLY ONE — the
+            # single-DG production case. With multiple DGs present we have
+            # no safe way to pick, so refuse to derive rather than guess a
+            # destructive ``dg=`` argument.
+            distinct_dgs = {
+                pd.disk_group_id for pd in physical_slots if pd.disk_group_id is not None
+            }
+            if len(distinct_dgs) != 1:
+                return None
+            target_dg = next(iter(distinct_dgs))
+        member_keys = {
+            (pd.enclosure_id, pd.slot_id)
+            for pd in physical_slots
+            if pd.disk_group_id == target_dg and pd.state in _ARRAY_MEMBER_STATES
+        }
+        member_keys.add(target)
+        ordered = sorted(member_keys)
+        row = ordered.index(target)
+        return _SlotTopology(dg=int(target_dg), array=0, row=row)
+
+
+def _record_insert_operator_action_sync(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+    serial_number: str,
+    dg: int,
+    array: int,
+    row: int,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=(
+                    f"replace step insert drive {enclosure_id}:{slot_id} "
+                    f"serial {serial_number} dg={dg} array={array} row={row} {outcome}"
+                ),
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action="replace_insert",
             enclosure_id=enclosure_id,
             slot_id=slot_id,
             outcome=outcome,

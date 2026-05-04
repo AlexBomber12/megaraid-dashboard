@@ -102,6 +102,7 @@ class PhysicalDriveSnapshot(TimestampedMixin, Base):
     interface: Mapped[str] = mapped_column(String, nullable=False)
     media_type: Mapped[str] = mapped_column(String, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False)
+    disk_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     temperature_celsius: Mapped[int | None] = mapped_column(Integer, nullable=True)
     media_errors: Mapped[int] = mapped_column(Integer, nullable=False)
     other_errors: Mapped[int] = mapped_column(Integer, nullable=False)

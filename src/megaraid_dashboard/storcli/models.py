@@ -207,6 +207,7 @@ class PhysicalDrive(StorcliModel):
     interface: str = Field(alias="Intf")
     media_type: str = Field(alias="Med")
     state: str = Field(alias="State")
+    disk_group_id: int | None = Field(default=None, alias="DG")
     temperature_celsius: int | None = Field(alias="Drive Temperature")
     media_errors: int = Field(alias="Media Error Count")
     other_errors: int = Field(alias="Other Error Count")
@@ -247,6 +248,26 @@ class PhysicalDrive(StorcliModel):
             msg = f"expected size string, got {type(value).__name__}"
             raise TypeError(msg)
         return size_string_to_bytes(value)
+
+    @field_validator("disk_group_id", mode="before")
+    @classmethod
+    def parse_disk_group_id(cls, value: Any) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            msg = f"expected DG int, got bool: {value!r}"
+            raise TypeError(msg)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped in ("", "-", "N/A"):
+                return None
+            try:
+                return int(stripped)
+            except ValueError:
+                return None
+        return None
 
     @field_validator("temperature_celsius", mode="before")
     @classmethod

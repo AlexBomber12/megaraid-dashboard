@@ -75,6 +75,8 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
             "data-serial": "WD-WM00000005",
             "data-replace-offline-url": "/drives/252:4/replace/offline",
             "data-replace-missing-url": "/drives/252:4/replace/missing",
+            "data-replace-topology-url": "/drives/252:4/replace/topology",
+            "data-replace-insert-url": "/drives/252:4/replace/insert",
         }
     ]
     assert "Replace drive" in response.text
@@ -109,6 +111,12 @@ def test_drive_detail_replace_urls_include_forwarded_prefix(
     assert parsed.wizard_roots[0]["data-replace-missing-url"] == (
         "/raid/drives/252:4/replace/missing"
     )
+    assert parsed.wizard_roots[0]["data-replace-topology-url"] == (
+        "/raid/drives/252:4/replace/topology"
+    )
+    assert parsed.wizard_roots[0]["data-replace-insert-url"] == (
+        "/raid/drives/252:4/replace/insert"
+    )
 
 
 def test_drive_detail_replace_cancel_buttons_are_default_focus(
@@ -119,7 +127,7 @@ def test_drive_detail_replace_cancel_buttons_are_default_focus(
         button for button in parsed.buttons if button["data-replace-action"] == "cancel"
     ]
 
-    assert len(cancel_buttons) == 2
+    assert len(cancel_buttons) == 4
     assert all("autofocus" in button for button in cancel_buttons)
 
 
@@ -129,6 +137,23 @@ def test_drive_detail_references_replace_wizard_script(
     parsed = _parse_replace_wizard(_drive_detail_response(sample_snapshot).text)
 
     assert any(src.startswith("/static/js/replace-wizard.js?v=") for src in parsed.scripts)
+
+
+def test_drive_detail_renders_step3_insert_controls(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    parsed = _parse_replace_wizard(_drive_detail_response(sample_snapshot).text)
+
+    new_serial = _input_by_name(parsed, "new-serial")
+    assert new_serial["type"] == "text"
+    dry_run_step3 = _input_by_name(parsed, "dry-run-step3")
+    assert dry_run_step3["type"] == "checkbox"
+    assert "checked" in dry_run_step3
+    run_step3 = _button_by_action(parsed, "run-step3")
+    assert run_step3["class"] == "button button--warning"
+    assert "disabled" in run_step3
+    continue_to_insert = _button_by_action(parsed, "continue-to-insert")
+    assert continue_to_insert["class"] == "button button--warning"
 
 
 def test_replace_wizard_js_validates_serial_and_posts_steps_in_order() -> None:
@@ -149,6 +174,25 @@ def test_replace_wizard_js_validates_serial_and_posts_steps_in_order() -> None:
     assert "} finally {" in source
     assert 'appendRequestError("replace request failed", error);' in source
     assert '"X-CSRF-Token": getCookie("__Host-csrf") || ""' in source
+
+
+def test_replace_wizard_js_step3_posts_insert_without_client_topology() -> None:
+    source = Path("src/megaraid_dashboard/static/js/replace-wizard.js").read_text(encoding="utf-8")
+
+    assert "const topologyUrl = root.dataset.replaceTopologyUrl;" in source
+    assert "const insertUrl = root.dataset.replaceInsertUrl;" in source
+    assert "newSerialInput.value.trim() !== expectedSerial.trim()" in source
+    assert 'show("physical-swap");' in source
+    assert "await loadTopology();" in source
+    assert "if (topology === null) return;" in source
+    assert "dry_run: dryRunStep3Input.checked," in source
+    # Topology is server-derived; the client must NOT send dg/array/row in
+    # the insert request body (otherwise a crafted request could overwrite
+    # the server's view of the topology).
+    assert "dg: topology.dg," not in source
+    assert "array: topology.array," not in source
+    assert "row: topology.row," not in source
+    assert "postJson(insertUrl, body)" in source
 
 
 def _drive_detail_response(

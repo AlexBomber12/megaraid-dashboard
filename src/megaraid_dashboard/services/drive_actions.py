@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 LocateAction = Literal["start", "stop"]
@@ -12,6 +13,15 @@ _LOCATE_VERB: dict[LocateAction, str] = {
 
 _OFFLINE_ALLOWED_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Failed", "UBad", "UGood"})
 _MISSING_ALLOWED_STATES: frozenset[str] = frozenset({"Offln"})
+
+# Matches the exact success-audit format written by the route layer for the
+# missing step: ``replace step missing drive {e}:{s} serial {sn} succeeded``.
+# The end-of-string anchor is critical: failed audits append free-form storcli
+# error text after ``failed:`` that can contain substrings like
+# ``not succeeded`` or ``succeeded operation aborted``.
+_REPLACE_STEP_MISSING_SUCCESS_RE = re.compile(
+    r"^replace step missing drive \d+:\d+ serial \S+ succeeded\Z"
+)
 
 
 def build_locate_command(enclosure: int, slot: int, action: LocateAction) -> list[str]:
@@ -37,12 +47,46 @@ def build_show_drive_command(enclosure: int, slot: int) -> list[str]:
     return [f"/c0/e{enclosure}/s{slot}", "show", "all", "J"]
 
 
+def build_insert_replacement_command(
+    enclosure: int, slot: int, dg: int, array: int, row: int
+) -> list[str]:
+    validate_enclosure_slot(enclosure, slot)
+    if not isinstance(dg, int) or isinstance(dg, bool) or dg < 0 or dg > 63:
+        raise ValueError("dg must be int in [0, 63]")
+    if not isinstance(array, int) or isinstance(array, bool) or array < 0 or array > 63:
+        raise ValueError("array must be int in [0, 63]")
+    if not isinstance(row, int) or isinstance(row, bool) or row < 0 or row > 255:
+        raise ValueError("row must be int in [0, 255]")
+    return [
+        f"/c0/e{enclosure}/s{slot}",
+        "insert",
+        f"dg={dg}",
+        f"array={array}",
+        f"row={row}",
+        "J",
+    ]
+
+
 def can_transition(current_state: str, requested_step: ReplaceStep) -> bool:
     if requested_step == "offline":
         return current_state in _OFFLINE_ALLOWED_STATES
     if requested_step == "missing":
         return current_state in _MISSING_ALLOWED_STATES
     return False
+
+
+def can_transition_step3(latest_audit_message: str | None) -> bool:
+    """Insert is allowed only if the latest operator-action audit for this slot
+    records that ``replace step missing`` succeeded. Failed missing attempts and
+    intervening operator actions (e.g. locate) reset the gate.
+
+    The match is anchored on the full audit-message format produced by the
+    route layer so free-form storcli error text appended after ``failed:``
+    cannot bypass the gate by including ``succeeded`` as a substring.
+    """
+    if latest_audit_message is None:
+        return False
+    return _REPLACE_STEP_MISSING_SUCCESS_RE.match(latest_audit_message) is not None
 
 
 def validate_enclosure_slot(enclosure: int, slot: int) -> None:

@@ -86,6 +86,8 @@
     data-serial="{{ view_model.serial_number }}"
     data-replace-offline-url="{{ request.url_for('drive_replace_offline', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
     data-replace-missing-url="{{ request.url_for('drive_replace_missing', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+    data-replace-topology-url="{{ request.url_for('drive_replace_topology', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+    data-replace-insert-url="{{ request.url_for('drive_replace_insert', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
   >
     <h2 class="replace-wizard__title">Replace drive</h2>
     <button type="button" class="button button--warning" data-replace-action="open">Begin replace</button>
@@ -143,6 +145,62 @@
           data-replace-action="run-step1"
           disabled
         >Run Step 1</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="physical-swap" hidden>
+      <h3>Step 2: physical swap</h3>
+      <ol class="replace-wizard__steps">
+        <li>Pull the drive at slot <strong>{{ view_model.enclosure_id }}:{{ view_model.slot_id }}</strong> (serial <span class="mono">{{ view_model.serial_number }}</span>).</li>
+        <li>Insert the replacement drive into the same slot.</li>
+        <li>Wait for the controller to detect the new drive (around 5 seconds).</li>
+      </ol>
+      <p>
+        When physical swap is complete, click Continue. The dashboard will fetch
+        the latest topology for the slot; verify the displayed serial matches
+        the replacement drive before running Step 3.
+      </p>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button
+          type="button"
+          class="button button--warning"
+          data-replace-action="continue-to-insert"
+        >Continue</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="insert" hidden>
+      <h3>Step 3: insert into array</h3>
+      <p>The controller will insert the new drive into the missing slot and start a rebuild.</p>
+      <p>Drive group / array / row (read from the latest topology snapshot):</p>
+      <dl class="replace-wizard__metadata">
+        <dt>DG</dt><dd class="mono" data-replace-meta="dg">...</dd>
+        <dt>Array</dt><dd class="mono" data-replace-meta="array">...</dd>
+        <dt>Row</dt><dd class="mono" data-replace-meta="row">...</dd>
+      </dl>
+      <label class="replace-wizard__field">
+        <span>Type the serial of the NEW (replacement) drive:</span>
+        <input
+          type="text"
+          class="input mono"
+          data-replace-input="new-serial"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </label>
+      <label class="replace-wizard__toggle">
+        <input type="checkbox" data-replace-input="dry-run-step3" checked>
+        Dry run (do not invoke storcli)
+      </label>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button
+          type="button"
+          class="button button--warning"
+          data-replace-action="run-step3"
+          disabled
+        >Run Step 3</button>
       </div>
     </div>
 
