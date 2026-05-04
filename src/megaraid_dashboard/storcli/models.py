@@ -352,10 +352,56 @@ class DriveShow(StorcliModel):
         return stripped
 
 
+class ForeignConfigDiskGroup(StorcliModel):
+    """Summary of a single disk group reported in a foreign configuration."""
+
+    dg_id: int
+    drive_count: int
+    size_bytes: int | None = None
+
+
+class ForeignConfig(StorcliModel):
+    """Foreign-config presence and a summary of the metadata reported by storcli.
+
+    The summary fields are intentionally coarse: the storcli ``/c0/fall show all``
+    payload shape varies across firmware revisions and the detection layer must
+    not assume specific keys are present. The fields below are populated from
+    the most stable signals (DG count, drive count, an optional total size and
+    per-DG breakdown). The ``digest`` is a stable, redacted summary the operator
+    must echo back to confirm an import.
+    """
+
+    present: bool
+    dg_count: int = 0
+    drive_count: int = 0
+    total_size_bytes: int | None = None
+    disk_groups: list[ForeignConfigDiskGroup] = Field(default_factory=list)
+    digest: str = ""
+
+    @field_validator("dg_count", "drive_count", mode="before")
+    @classmethod
+    def parse_int_count(cls, value: Any) -> int:
+        if value is None:
+            return 0
+        if isinstance(value, bool):
+            msg = f"expected int count, got bool: {value!r}"
+            raise TypeError(msg)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return 0
+            return int(float(stripped))
+        msg = f"expected int count, got {type(value).__name__}"
+        raise TypeError(msg)
+
+
 class StorcliSnapshot(StorcliModel):
     controller: ControllerInfo
     virtual_drives: list[VirtualDrive]
     physical_drives: list[PhysicalDrive]
     cachevault: CacheVault | None
     bbu: Any | None
+    foreign_config: ForeignConfig | None = None
     captured_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

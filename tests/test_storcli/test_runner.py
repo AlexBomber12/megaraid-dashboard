@@ -332,3 +332,57 @@ async def test_set_template_rejects_unknown_verbs(
 
     with pytest.raises(StorcliCommandFailed, match="not allowed"):
         await run_storcli(argv, use_sudo=False, binary_path="storcli64")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["/c0/fall", "show", "all", "J"],
+        ["/c0/fall", "import", "J"],
+        ["/c0/fall", "delete", "J"],
+    ],
+)
+async def test_foreign_config_templates_are_allowed(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    async def fake_create_subprocess_exec(
+        *args: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        captured["argv"] = args
+        return FakeProcess(b'{"Controllers":[]}', b"", 0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_storcli(argv, use_sudo=False, binary_path="storcli64")
+
+    assert captured["argv"] == ("storcli64", *argv)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["/c0/fall", "show", "J"],
+        ["/c0/fall", "import", "preview", "J"],
+        ["/c0/fall", "delete", "all", "J"],
+        ["/c0/fall", "import", "securitykey=foo", "J"],
+        ["/c0/vall", "import", "J"],
+    ],
+)
+async def test_foreign_config_templates_reject_unknown_variants(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    async def fake_create_subprocess_exec(
+        *_args: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        raise AssertionError("subprocess should not be called for disallowed commands")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    with pytest.raises(StorcliCommandFailed, match="not allowed"):
+        await run_storcli(argv, use_sudo=False, binary_path="storcli64")

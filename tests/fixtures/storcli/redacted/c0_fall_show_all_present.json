@@ -1,0 +1,58 @@
+{
+  "Controllers": [
+    {
+      "Command Status": {
+        "CLI Version": "007.3703.0000.0000 Jan 16, 2026",
+        "Operating system": "Linux 6.8.0-110-generic",
+        "Controller": 0,
+        "Status": "Success",
+        "Description": "Show Foreign Config Succeeded."
+      },
+      "Response Data": {
+        "Total foreign DG Count": 1,
+        "Total foreign drive Count": 4,
+        "FOREIGN DG LIST": [
+          {
+            "DG": 0,
+            "Type": "RAID5",
+            "Size": "9.000 TB"
+          }
+        ],
+        "FOREIGN PD LIST": [
+          {
+            "EID:Slt": "2:0",
+            "DID": 14,
+            "DG": 0,
+            "State": "Foreign",
+            "Size": "3.000 TB",
+            "Model": "WDC WD30EFRX-68EUZN0"
+          },
+          {
+            "EID:Slt": "2:1",
+            "DID": 15,
+            "DG": 0,
+            "State": "Foreign",
+            "Size": "3.000 TB",
+            "Model": "WDC WD30EFRX-68EUZN0"
+          },
+          {
+            "EID:Slt": "2:2",
+            "DID": 16,
+            "DG": 0,
+            "State": "Foreign",
+            "Size": "3.000 TB",
+            "Model": "WDC WD30EFRX-68EUZN0"
+          },
+          {
+            "EID:Slt": "2:3",
+            "DID": 17,
+            "DG": 0,
+            "State": "Foreign",
+            "Size": "3.000 TB",
+            "Model": "WDC WD30EFRX-68EUZN0"
+          }
+        ]
+      }
+    }
+  ]
+}

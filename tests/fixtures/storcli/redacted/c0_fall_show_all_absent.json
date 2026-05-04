@@ -1,0 +1,21 @@
+{
+  "Controllers": [
+    {
+      "Command Status": {
+        "CLI Version": "007.3703.0000.0000 Jan 16, 2026",
+        "Operating system": "Linux 6.8.0-110-generic",
+        "Controller": 0,
+        "Status": "Failure",
+        "Description": "No foreign configuration found.",
+        "Detailed Status": [
+          {
+            "Controller": 0,
+            "Status": "Failure",
+            "ErrCd": 50,
+            "ErrMsg": "No foreign configuration"
+          }
+        ]
+      }
+    }
+  ]
+}
