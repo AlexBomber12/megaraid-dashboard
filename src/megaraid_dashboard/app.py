@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
+import uvicorn
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
@@ -27,6 +28,7 @@ from megaraid_dashboard.db import get_engine, get_sessionmaker
 from megaraid_dashboard.services import CollectorService, EventDetector
 from megaraid_dashboard.web.auth import BasicAuthMiddleware
 from megaraid_dashboard.web.csrf import CsrfMiddleware
+from megaraid_dashboard.web.metrics import create_metrics_app
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
 from megaraid_dashboard.web.routes import router
@@ -45,6 +47,12 @@ class _CollectorRuntime:
     scheduler: AsyncIOScheduler | None = None
     lock_fd: int | None = None
     retry_task: asyncio.Task[None] | None = None
+
+
+@dataclass
+class _MetricsRuntime:
+    server: uvicorn.Server | None = None
+    task: asyncio.Task[None] | None = None
 
 
 def create_app() -> FastAPI:
@@ -76,6 +84,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         _upgrade_database(settings.database_url, connection=connection)
     session_factory = get_sessionmaker(engine)
     collector_runtime = _CollectorRuntime()
+    metrics_runtime = _MetricsRuntime()
     app.state.engine = engine
     app.state.health_engine = health_engine
     app.state.health_executor = health_executor
@@ -85,8 +94,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.collector_lock_fd = None
     app.state.collector_retry_task = None
     app.state.scheduler = None
+    app.state.metrics_server = None
+    app.state.metrics_task = None
 
     try:
+        if settings.metrics_enabled:
+            _start_metrics_server(app=app, settings=settings, runtime=metrics_runtime)
+
         if settings.collector_enabled:
             collector_started = await _start_collector_scheduler(
                 app=app,
@@ -112,6 +126,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         yield
     finally:
+        await _stop_metrics_server(metrics_runtime)
         if collector_runtime.retry_task is not None:
             collector_runtime.retry_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -125,6 +140,34 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             health_executor.shutdown(wait=False, cancel_futures=True)
             health_engine.dispose()
             engine.dispose()
+
+
+def _start_metrics_server(
+    *,
+    app: FastAPI,
+    settings: Settings,
+    runtime: _MetricsRuntime,
+) -> None:
+    config = uvicorn.Config(
+        create_metrics_app(),
+        host=settings.metrics_listen_address,
+        port=settings.metrics_port,
+        log_level="warning",
+        loop="asyncio",
+    )
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    runtime.server = server
+    runtime.task = task
+    app.state.metrics_server = server
+    app.state.metrics_task = task
+
+
+async def _stop_metrics_server(runtime: _MetricsRuntime) -> None:
+    if runtime.server is None or runtime.task is None:
+        return
+    runtime.server.should_exit = True
+    await runtime.task
 
 
 async def _start_collector_scheduler(

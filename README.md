@@ -72,6 +72,11 @@ Reverse proxy: see `docs/PROXY-SETUP.md` and `deploy/nginx/megaraid.conf.sample`
 
 Install: see `INSTALL.md` for the production deployment guide.
 
+Prometheus metrics: `GET http://127.0.0.1:8091/metrics`. The listener is unauthenticated
+for Prometheus scrapes and bound to loopback by default; if exposed beyond the host, firewall
+the port off the WAN and allow only the monitoring host. Configure with `METRICS_PORT`,
+`METRICS_LISTEN_ADDRESS`, and `METRICS_ENABLED`.
+
 ### Log retention
 
 Logs go to systemd journald. To cap this unit's journal at 200 MB on disk, copy
