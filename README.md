@@ -1,5 +1,9 @@
 # MegaRAID Dashboard
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/AlexBomber12/megaraid-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexBomber12/megaraid-dashboard/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/AlexBomber12/megaraid-dashboard?sort=semver)](https://github.com/AlexBomber12/megaraid-dashboard/releases/latest)
+
 MegaRAID Dashboard is a web dashboard and email alerter for LSI MegaRAID controllers, JSON-driven via `storcli`, intended as a sustainable replacement for the unmaintained MegaRAID Storage Manager (MSM).
 
 ## Why
@@ -59,6 +63,11 @@ pytest
 
 - [homelab-monitoring](https://github.com/AlexBomber12/homelab-monitoring) - shared
   Prometheus and Grafana stack for MegaRAID Dashboard metrics and future homelab services.
+
+## Community
+
+- [Contributing](CONTRIBUTING.md) - development setup, style, testing, and PR workflow.
+- [Code of Conduct](CODE_OF_CONDUCT.md) - community standards and enforcement process.
 
 ## Database
 
