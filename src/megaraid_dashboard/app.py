@@ -53,6 +53,7 @@ class _CollectorRuntime:
 class _MetricsRuntime:
     server: uvicorn.Server | None = None
     task: asyncio.Task[None] | None = None
+    lock_fd: int | None = None
 
 
 def create_app() -> FastAPI:
@@ -96,10 +97,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.scheduler = None
     app.state.metrics_server = None
     app.state.metrics_task = None
+    app.state.metrics_lock_fd = None
 
     try:
-        if settings.metrics_enabled:
-            _start_metrics_server(app=app, settings=settings, runtime=metrics_runtime)
+        if settings.metrics_enabled and not _start_metrics_server(
+            app=app,
+            settings=settings,
+            runtime=metrics_runtime,
+        ):
+            LOGGER.info(
+                "metrics_server_not_started",
+                reason="metrics_lock_held",
+                lock_path=settings.metrics_lock_path,
+            )
 
         if settings.collector_enabled:
             collector_started = await _start_collector_scheduler(
@@ -147,27 +157,45 @@ def _start_metrics_server(
     app: FastAPI,
     settings: Settings,
     runtime: _MetricsRuntime,
-) -> None:
-    config = uvicorn.Config(
-        create_metrics_app(),
-        host=settings.metrics_listen_address,
-        port=settings.metrics_port,
-        log_level="warning",
-        loop="asyncio",
-    )
-    server = uvicorn.Server(config)
-    task = asyncio.create_task(server.serve())
+) -> bool:
+    metrics_lock_fd = _try_acquire_metrics_lock(settings.metrics_lock_path)
+    app.state.metrics_lock_fd = metrics_lock_fd
+    if metrics_lock_fd is None:
+        return False
+
+    try:
+        config = uvicorn.Config(
+            create_metrics_app(),
+            host=settings.metrics_listen_address,
+            port=settings.metrics_port,
+            log_level="warning",
+            loop="asyncio",
+        )
+        server = uvicorn.Server(config)
+        task = asyncio.create_task(server.serve())
+    except Exception:
+        _release_metrics_lock(metrics_lock_fd)
+        app.state.metrics_lock_fd = None
+        raise
+
     runtime.server = server
     runtime.task = task
+    runtime.lock_fd = metrics_lock_fd
     app.state.metrics_server = server
     app.state.metrics_task = task
+    return True
 
 
 async def _stop_metrics_server(runtime: _MetricsRuntime) -> None:
-    if runtime.server is None or runtime.task is None:
-        return
-    runtime.server.should_exit = True
-    await runtime.task
+    try:
+        if runtime.server is None or runtime.task is None:
+            return
+        runtime.server.should_exit = True
+        await runtime.task
+    finally:
+        if runtime.lock_fd is not None:
+            _release_metrics_lock(runtime.lock_fd)
+            runtime.lock_fd = None
 
 
 async def _start_collector_scheduler(
@@ -281,17 +309,17 @@ def _current_database_heads(connection: Connection | None) -> set[str] | None:
     return set(context.get_current_heads())
 
 
-def _try_acquire_collector_lock(lock_path: str) -> int | None:
+def _try_acquire_process_lock(lock_path: str, *, lock_name: str) -> int | None:
     flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
     try:
         lock_fd = os.open(lock_path, flags, 0o600)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
-            msg = f"collector lock path must not be a symlink: {lock_path}"
+            msg = f"{lock_name} lock path must not be a symlink: {lock_path}"
             raise RuntimeError(msg) from exc
         raise
     try:
-        _validate_collector_lock_file(lock_fd, lock_path)
+        _validate_process_lock_file(lock_fd, lock_path, lock_name=lock_name)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         os.close(lock_fd)
@@ -305,20 +333,36 @@ def _try_acquire_collector_lock(lock_path: str) -> int | None:
     return lock_fd
 
 
-def _validate_collector_lock_file(lock_fd: int, lock_path: str) -> None:
+def _validate_process_lock_file(lock_fd: int, lock_path: str, *, lock_name: str) -> None:
     lock_stat = os.fstat(lock_fd)
     if not stat.S_ISREG(lock_stat.st_mode):
-        msg = f"collector lock path must be a regular file: {lock_path}"
+        msg = f"{lock_name} lock path must be a regular file: {lock_path}"
         raise RuntimeError(msg)
     if lock_stat.st_uid != os.getuid():
-        msg = f"collector lock path must be owned by the current user: {lock_path}"
+        msg = f"{lock_name} lock path must be owned by the current user: {lock_path}"
         raise RuntimeError(msg)
     if lock_stat.st_nlink != 1:
-        msg = f"collector lock path must not have hard links: {lock_path}"
+        msg = f"{lock_name} lock path must not have hard links: {lock_path}"
         raise RuntimeError(msg)
+
+
+def _try_acquire_collector_lock(lock_path: str) -> int | None:
+    return _try_acquire_process_lock(lock_path, lock_name="collector")
+
+
+def _try_acquire_metrics_lock(lock_path: str) -> int | None:
+    return _try_acquire_process_lock(lock_path, lock_name="metrics")
 
 
 def _release_collector_lock(lock_fd: int) -> None:
+    _release_process_lock(lock_fd)
+
+
+def _release_metrics_lock(lock_fd: int) -> None:
+    _release_process_lock(lock_fd)
+
+
+def _release_process_lock(lock_fd: int) -> None:
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
     finally:

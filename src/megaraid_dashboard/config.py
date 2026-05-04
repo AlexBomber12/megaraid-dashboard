@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     metrics_listen_address: str = "127.0.0.1"
     metrics_port: int = 8091
+    metrics_lock_path: str = "/tmp/megaraid-dashboard-metrics.lock"
     temp_warning_celsius: int = 55
     temp_critical_celsius: int = 60
     temp_hysteresis_celsius: int = 5
@@ -86,6 +87,9 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if not self.metrics_listen_address.strip():
             msg = "metrics_listen_address must not be empty"
+            raise ValueError(msg)
+        if not self.metrics_lock_path.strip():
+            msg = "metrics_lock_path must not be empty"
             raise ValueError(msg)
         if not 1 <= self.metrics_port <= 65535:
             msg = "metrics_port must be 1..65535"

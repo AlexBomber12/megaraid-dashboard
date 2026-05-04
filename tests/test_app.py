@@ -29,6 +29,7 @@ def _set_required_app_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "true")
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
+    monkeypatch.setenv("METRICS_LOCK_PATH", str(tmp_path / "metrics.lock"))
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("LOG_LEVEL", "INFO")
 
@@ -197,6 +198,36 @@ def test_lifespan_retries_collector_lock_after_holder_releases(
         get_settings.cache_clear()
 
     assert stopped.wait(timeout=2)
+
+
+def test_lifespan_skips_metrics_server_when_lock_is_already_held(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("COLLECTOR_ENABLED", "false")
+    get_settings.cache_clear()
+    settings = get_settings()
+    held_lock = app._try_acquire_metrics_lock(settings.metrics_lock_path)
+    assert held_lock is not None
+
+    def fail_server(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("metrics server should not start when lock is held")
+
+    monkeypatch.setattr(app.uvicorn, "Server", fail_server)
+    test_app = app.create_app()
+
+    try:
+        with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+            response = client.get("/health")
+
+        assert response.status_code == 200
+        assert test_app.state.metrics_server is None
+        assert test_app.state.metrics_task is None
+        assert test_app.state.metrics_lock_fd is None
+    finally:
+        app._release_metrics_lock(held_lock)
+        get_settings.cache_clear()
 
 
 async def test_start_collector_scheduler_releases_lock_on_start_cancellation(
