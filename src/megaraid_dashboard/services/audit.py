@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from megaraid_dashboard.db.event_metrics import stage_event_metric
 from megaraid_dashboard.db.models import Event
 
 
@@ -29,4 +30,5 @@ def record_operator_action(
     )
     session.add(event)
     session.flush()
+    stage_event_metric(session, severity=event.severity, category=event.category)
     return event

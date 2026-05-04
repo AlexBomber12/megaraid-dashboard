@@ -11,6 +11,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.util import identity_key
 
+from megaraid_dashboard.db.event_metrics import stage_event_metric
 from megaraid_dashboard.db.models import (
     AlertSent,
     AuditLog,
@@ -138,6 +139,7 @@ def record_event(
     )
     session.add(event)
     session.flush()
+    stage_event_metric(session, severity=severity, category=category)
     return event
 
 

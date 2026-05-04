@@ -7,6 +7,7 @@ import os
 import stat
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from time import monotonic, time
 from typing import Any
 
 import structlog
@@ -24,6 +25,7 @@ from megaraid_dashboard.db.dao import (
     record_event,
     upsert_temp_state,
 )
+from megaraid_dashboard.db.event_metrics import stage_event_metric
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.db.retention import (
     downsample_to_daily,
@@ -36,6 +38,10 @@ from megaraid_dashboard.services.disk_monitor import check_data_partition_free_s
 from megaraid_dashboard.services.event_detector import DetectedEvent, EventDetector
 from megaraid_dashboard.services.notifier import _LOCK_PATH_DEFAULT, run_notifier_cycle
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
+from megaraid_dashboard.web.metrics import (
+    COLLECTOR_CYCLE_DURATION,
+    COLLECTOR_LAST_RUN_TIMESTAMP,
+)
 
 LOGGER = structlog.get_logger(__name__)
 
@@ -62,12 +68,12 @@ class CollectorService:
         self._active_jobs_idle.set()
         self._write_lock = asyncio.Lock()
 
-    async def run_once(self) -> None:
+    async def run_once(self) -> bool:
         try:
             snapshot, raw_payload = await collect_storcli_snapshot(settings=self.settings)
         except (StorcliError, OSError, TimeoutError) as exc:
             await self._record_collection_failure(exc)
-            return
+            return False
 
         try:
             async with self._write_lock:
@@ -128,6 +134,8 @@ class CollectorService:
                     )
         except Exception as exc:
             await self._record_collection_failure(exc)
+            return False
+        return True
 
     async def run_retention_once(self) -> None:
         try:
@@ -232,7 +240,23 @@ class CollectorService:
         await asyncio.sleep(0)
 
     async def _run_once_job(self) -> None:
-        await self._run_tracked_job(self.run_once)
+        await self._run_tracked_job(self._run_collector_cycle)
+
+    async def _run_collector_cycle(self) -> None:
+        start = monotonic()
+        successful = False
+        try:
+            successful = await self.run_once()
+        finally:
+            elapsed = monotonic() - start
+            COLLECTOR_CYCLE_DURATION.set(elapsed)
+            if successful:
+                COLLECTOR_LAST_RUN_TIMESTAMP.set(time())
+            LOGGER.info(
+                "collector_cycle_metrics_recorded",
+                duration_seconds=elapsed,
+                successful=successful,
+            )
 
     async def _run_retention_job(self) -> None:
         await self._run_tracked_job(self.run_retention_once)
@@ -256,6 +280,7 @@ class CollectorService:
             )
             for event in events:
                 session.add(event)
+                stage_event_metric(session, severity=event.severity, category=event.category)
             if events:
                 session.commit()
 

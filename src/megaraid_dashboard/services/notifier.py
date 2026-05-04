@@ -19,6 +19,7 @@ from megaraid_dashboard.db.dao import (
     mark_event_notified,
 )
 from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.web.metrics import ALERTS_SENT_TOTAL
 
 _LOG = structlog.get_logger(__name__)
 
@@ -125,6 +126,7 @@ def run_notifier_cycle(
             continue
         mark_event_notified(session, event.id, now_utc)
         sent += 1
+        ALERTS_SENT_TOTAL.inc()
         _LOG.info(
             "notifier_event_sent",
             event_id=event.id,

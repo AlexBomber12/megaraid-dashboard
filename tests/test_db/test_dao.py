@@ -27,6 +27,7 @@ from megaraid_dashboard.db import (
     upsert_temp_state,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
+from megaraid_dashboard.web import metrics
 
 
 def test_insert_snapshot_creates_expected_child_rows(
@@ -84,6 +85,39 @@ def test_record_event_writes_severity_and_category(session: Session) -> None:
     event = session.scalars(select(Event)).one()
     assert event.severity == "warning"
     assert event.category == "temperature"
+
+
+def test_record_event_metric_increments_after_commit(session: Session) -> None:
+    metrics._reset_runtime_metrics_for_tests()
+
+    record_event(
+        session,
+        severity="critical",
+        category="pd_state",
+        subject="PD e252:s4",
+        summary="Drive entered failed state.",
+    )
+
+    assert metrics.EVENTS_TOTAL.labels(severity="critical", category="pd_state")._value.get() == 0
+
+    session.commit()
+
+    assert metrics.EVENTS_TOTAL.labels(severity="critical", category="pd_state")._value.get() == 1
+
+
+def test_record_event_metric_does_not_increment_after_rollback(session: Session) -> None:
+    metrics._reset_runtime_metrics_for_tests()
+
+    record_event(
+        session,
+        severity="warning",
+        category="temperature",
+        subject="PD e252:s4",
+        summary="Drive temperature is elevated.",
+    )
+    session.rollback()
+
+    assert metrics.EVENTS_TOTAL.labels(severity="warning", category="temperature")._value.get() == 0
 
 
 def test_temperature_state_upsert_and_clear(session: Session) -> None:
