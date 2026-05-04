@@ -312,20 +312,22 @@ sudo systemctl restart megaraid-dashboard.service
 ### Symptom
 
 A Grafana dashboard loads, but one or more MegaRAID panels show `No data`, flat gaps, or an
-empty label selector even though the dashboard UI is healthy.
+empty label selector. The MegaRAID Dashboard web UI and `/healthz` endpoint may still be
+healthy.
 
 ### Probable Causes
 
-1. The exporter port is not reachable from Prometheus because of firewall or bind address.
-2. Prometheus is failing to scrape the MegaRAID target.
-3. Grafana queries use labels that do not match the exported metrics.
+1. The standard MegaRAID Dashboard install does not currently ship a Prometheus exporter
+   or `/metrics` endpoint; exporter support is planned work.
+2. Grafana is pointed at an external Prometheus datasource that has no MegaRAID series.
+3. Grafana queries use labels that do not match the series in the external monitoring
+   stack.
 
 ### Diagnostics
 
 ```bash
-sudo ss -lntp | grep ':8091'
-curl -fsS http://127.0.0.1:8091/metrics | head -n 20
-sudo ufw status numbered
+APP_PORT="$(systemctl show -p ExecStart --value megaraid-dashboard.service | sed -n 's/.*--port \([0-9][0-9]*\).*/\1/p')"
+curl -i "http://127.0.0.1:${APP_PORT:-8090}/healthz"
 curl -fsS http://prometheus.local:9090/api/v1/targets | python3 -m json.tool | grep -A20 -B5 megaraid
 curl -G http://prometheus.local:9090/api/v1/query --data-urlencode 'query=up' | python3 -m json.tool
 curl -G http://prometheus.local:9090/api/v1/labels --data-urlencode 'match[]=up{job="megaraid-dashboard"}' | python3 -m json.tool
@@ -333,12 +335,15 @@ curl -G http://prometheus.local:9090/api/v1/labels --data-urlencode 'match[]=up{
 
 ### Fixes
 
-- Exporter unreachable: start or restart the exporter service, bind it to the intended LAN
-  interface, and open only the Prometheus source address to the exporter port.
-- Scrape failure: correct the Prometheus target host, port, scheme, and path, then reload
-  Prometheus and confirm the target is `up`.
-- Label mismatch: update the Grafana panel query to use labels present in Prometheus.
-  Prefer checking `/api/v1/labels` and `/api/v1/series` before editing dashboards.
+- No built-in exporter: do not treat a missing Prometheus metrics endpoint as a dashboard
+  incident. Use the built-in UI and `/healthz` for this application until the planned
+  exporter work lands.
+- Empty external datasource: correct the external Prometheus scrape configuration or
+  dashboard datasource, then reload Prometheus and confirm the expected MegaRAID series
+  exist.
+- Label mismatch: update Grafana panel queries to use labels present in the external
+  datasource. Prefer checking `/api/v1/labels` and `/api/v1/series` before editing
+  dashboards.
 
 ## High RoC temperature without alerts
 
