@@ -35,6 +35,8 @@ dev = [
   "pytest-cov>=5.0,<8.0",
   "ruff>=0.4,<1.0",
   "mypy>=1.9,<2.0",
+  "pip-audit>=2.7",
+  "bandit>=1.7",
 ]
 
 [tool.hatch.build.targets.wheel]
