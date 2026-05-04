@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.util import identity_key
 
 from megaraid_dashboard.db.models import (
     AlertSent,
@@ -349,12 +350,18 @@ def get_state(session: Session, key: str) -> str | None:
 
 def set_state(session: Session, key: str, value: str) -> None:
     now = datetime.now(UTC)
-    row = session.get(SystemState, key)
-    if row is None:
-        session.add(SystemState(key=key, value=value, created_at=now, updated_at=now))
-    else:
-        row.value = value
-        row.updated_at = now
+    insert_statement = sqlite_insert(SystemState).values(key=key, value=value, updated_at=now)
+    upsert_statement = insert_statement.on_conflict_do_update(
+        index_elements=[SystemState.key],
+        set_={
+            "value": insert_statement.excluded.value,
+            "updated_at": insert_statement.excluded.updated_at,
+        },
+    )
+    session.execute(upsert_statement)
+    existing = session.identity_map.get(identity_key(SystemState, key))
+    if existing is not None:
+        session.expire(existing)
     session.flush()
 
 

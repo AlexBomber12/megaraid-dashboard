@@ -32,6 +32,19 @@ def test_system_state_migration_round_trip() -> None:
             assert columns["value"]["nullable"] is False
             assert columns["updated_at"]["nullable"] is False
 
+            connection.execute(
+                sa.text(
+                    "insert into system_state (key, value, updated_at) "
+                    "values (:key, :value, CURRENT_TIMESTAMP)"
+                ),
+                {"key": "migration-default", "value": "ok"},
+            )
+            created_at = connection.execute(
+                sa.text("select created_at from system_state where key = :key"),
+                {"key": "migration-default"},
+            ).scalar_one()
+            assert created_at is not None
+
             command.downgrade(config, "0006_pd_disk_group")
             assert "system_state" not in inspect(connection).get_table_names()
 
