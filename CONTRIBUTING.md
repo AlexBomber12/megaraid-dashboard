@@ -55,6 +55,18 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+### Pre-commit setup
+
+Pre-commit is optional for local development:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+The hooks run on `git commit` and mirror fast local checks. CI remains the canonical
+validation gate for pull requests.
+
 Run the app locally with:
 
 ```bash
