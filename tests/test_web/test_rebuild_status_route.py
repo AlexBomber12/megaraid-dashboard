@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from threading import Event as ThreadEvent
+from threading import Thread
+from time import sleep
 from typing import Any
 
 import pytest
@@ -14,6 +17,7 @@ from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services.audit import record_operator_action
+from megaraid_dashboard.web.routes import _record_rebuild_complete_once_sync
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -126,6 +130,86 @@ def test_drive_rebuild_status_does_not_duplicate_completion_audit_after_later_ac
     ]
 
 
+def test_drive_rebuild_status_records_completion_for_later_replacement_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=100, state="Complete")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        first = client.get("/drives/2:0/replace/rebuild-status")
+        _record_operator_action(
+            test_app,
+            summary=(
+                "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded"
+            ),
+        )
+        second = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert [event.summary for event in events] == [
+        "rebuild complete drive 2:0",
+        "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded",
+        "rebuild complete drive 2:0",
+    ]
+
+
+def test_rebuild_completion_dedupe_is_atomic_for_concurrent_writers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'rebuild.db'}")
+    get_settings.cache_clear()
+
+    original_record_operator_action = record_operator_action
+    first_insert_started = ThreadEvent()
+
+    def slow_record_operator_action(*args: Any, **kwargs: Any) -> Event:
+        event = original_record_operator_action(*args, **kwargs)
+        first_insert_started.set()
+        sleep(0.2)
+        return event
+
+    monkeypatch.setattr(
+        "megaraid_dashboard.web.routes.record_operator_action",
+        slow_record_operator_action,
+    )
+
+    test_app = create_app()
+    errors: list[BaseException] = []
+
+    def record_completion() -> None:
+        try:
+            request = _request_for_app(test_app)
+            _record_rebuild_complete_once_sync(request=request, enclosure_id=2, slot_id=0)
+        except BaseException as exc:
+            errors.append(exc)
+
+    with TestClient(test_app, headers=TEST_AUTH_HEADER):
+        first = Thread(target=record_completion)
+        first.start()
+        assert first_insert_started.wait(timeout=2)
+        second = Thread(target=record_completion)
+        second.start()
+        first.join(timeout=2)
+        second.join(timeout=2)
+        events = _all_events(test_app)
+
+    assert errors == []
+    assert [event.summary for event in events] == ["rebuild complete drive 2:0"]
+
+
 def _rebuild_payload(
     *,
     percent: int,
@@ -161,3 +245,11 @@ def _record_operator_action(test_app: FastAPI, *, summary: str) -> None:
     assert isinstance(session_factory, sessionmaker)
     with session_factory() as session, session.begin():
         record_operator_action(session, username="admin", message=summary)
+
+
+def _request_for_app(test_app: FastAPI) -> Any:
+    return type(
+        "RequestStub",
+        (),
+        {"app": test_app, "scope": {"user_username": "admin"}},
+    )()
