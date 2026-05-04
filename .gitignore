@@ -39,3 +39,4 @@ tests/fixtures/storcli/raw/
 # pipeline-orchestrator artifacts (regenerated, do not commit)
 artifacts/
 tasks/QUEUE.md
+tasks/QUEUE.md
