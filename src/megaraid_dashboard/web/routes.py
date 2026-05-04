@@ -1637,11 +1637,25 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    rebuild_active = await run_in_threadpool(
+    rebuild_state = await run_in_threadpool(
         _any_drive_rebuilding,
         request=request,
     )
-    if rebuild_active:
+    if rebuild_state is None:
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest=live_foreign_config.digest,
+            reason="rebuild state unknown",
+            rejection_body={
+                "error": (
+                    "cannot import foreign config while rebuild state is unknown "
+                    "(no controller snapshot available)"
+                ),
+            },
+            status_code=409,
+        )
+    if rebuild_state:
         return await _reject_foreign_config_destructive(
             request=request,
             action="import",
@@ -1747,11 +1761,25 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    rebuild_active = await run_in_threadpool(
+    rebuild_state = await run_in_threadpool(
         _any_drive_rebuilding,
         request=request,
     )
-    if rebuild_active:
+    if rebuild_state is None:
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest=live_foreign_config.digest,
+            reason="rebuild state unknown",
+            rejection_body={
+                "error": (
+                    "cannot clear foreign config while rebuild state is unknown "
+                    "(no controller snapshot available)"
+                ),
+            },
+            status_code=409,
+        )
+    if rebuild_state:
         return await _reject_foreign_config_destructive(
             request=request,
             action="clear",
@@ -1958,13 +1986,21 @@ async def _parse_foreign_config_clear_body(
         )
 
 
-def _any_drive_rebuilding(*, request: Request) -> bool:
+def _any_drive_rebuilding(*, request: Request) -> bool | None:
+    """Return True if any drive is rebuilding, False if none, None if unknown.
+
+    ``None`` means the rebuild state cannot be determined: the snapshot table
+    is empty (fresh install, post-cleanup, or collector outage). The
+    foreign-config destructive routes treat ``None`` as fail-closed because
+    "no snapshot" must not be confused with "no rebuild active" — that would
+    let the gate fail open while a rebuild is actually in progress on hardware.
+    """
     with _session(request) as session:
         latest_id = session.scalar(
             select(ControllerSnapshot.id).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
         )
         if latest_id is None:
-            return False
+            return None
         rebuilding = session.scalar(
             select(PhysicalDriveSnapshot.id)
             .where(PhysicalDriveSnapshot.snapshot_id == latest_id)

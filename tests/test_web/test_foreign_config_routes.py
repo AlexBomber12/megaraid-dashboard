@@ -138,6 +138,7 @@ def test_import_dry_run_returns_argv_and_skips_runner(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/import",
@@ -174,6 +175,7 @@ def test_import_succeeds_and_audits(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/import",
@@ -219,6 +221,7 @@ def test_import_returns_502_when_command_status_failed(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/import",
@@ -381,6 +384,37 @@ def test_import_rejects_during_active_rebuild(
         assert event.summary.endswith("rejected: rebuild in progress")
 
 
+def test_import_rejects_when_rebuild_state_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    fall_present_payload: dict[str, Any],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        if list(args) == ["/c0/fall", "show", "all", "J"]:
+            return fall_present_payload
+        raise AssertionError("import command should not be invoked when rebuild state is unknown")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        digest = _digest_from_payload(client)
+        # Deliberately do not seed any controller snapshot; the rebuild gate
+        # must fail closed rather than treating "no snapshot" as "no rebuild".
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/import",
+            headers=headers,
+            json={"confirmation": digest},
+        )
+
+        assert response.status_code == 409
+        assert "rebuild state is unknown" in response.json()["error"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config import digest={digest}")
+        assert event.summary.endswith("rejected: rebuild state unknown")
+
+
 def test_import_blocked_without_modes(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -400,6 +434,7 @@ def test_import_blocked_without_modes(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/import",
@@ -433,6 +468,7 @@ def test_clear_dry_run_returns_argv_and_skips_runner(
 
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/clear",
@@ -464,6 +500,7 @@ def test_clear_succeeds_and_audits(
 
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/clear",
@@ -507,6 +544,7 @@ def test_clear_returns_502_when_command_status_failed(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/clear",
@@ -672,6 +710,37 @@ def test_clear_rejects_during_active_rebuild(
         assert event.summary.endswith("rejected: rebuild in progress")
 
 
+def test_clear_rejects_when_rebuild_state_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    fall_present_payload: dict[str, Any],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        if list(args) == ["/c0/fall", "show", "all", "J"]:
+            return fall_present_payload
+        raise AssertionError("clear command should not be invoked when rebuild state is unknown")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        digest = _digest_from_payload(client)
+        # Deliberately do not seed any controller snapshot; the rebuild gate
+        # must fail closed rather than treating "no snapshot" as "no rebuild".
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/clear",
+            headers=headers,
+            json={"confirmation": "CLEAR FOREIGN CONFIG"},
+        )
+
+        assert response.status_code == 409
+        assert "rebuild state is unknown" in response.json()["error"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config clear digest={digest}")
+        assert event.summary.endswith("rejected: rebuild state unknown")
+
+
 def test_clear_blocked_without_modes(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -691,6 +760,7 @@ def test_clear_blocked_without_modes(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/clear",
