@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.engine import Engine
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db import Base, get_sessionmaker
+from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services import scheduler
 from megaraid_dashboard.services.event_detector import EventDetector
 from megaraid_dashboard.services.scheduler import CollectorService
@@ -67,6 +69,40 @@ async def test_collector_cycle_records_duration_but_not_timestamp_on_exception(
 
     assert metrics.COLLECTOR_CYCLE_DURATION._value.get() == 1.25
     assert metrics.COLLECTOR_LAST_RUN_TIMESTAMP._value.get() == 123.0
+
+
+def test_disk_space_monitor_counts_emitted_events(
+    monkeypatch: pytest.MonkeyPatch,
+    service_session_factory: sessionmaker[Session],
+) -> None:
+    service = _service(service_session_factory)
+
+    def fake_check_data_partition_free_space(
+        session: Session,
+        *,
+        settings: Settings,
+        now: datetime,
+    ) -> list[Event]:
+        del session, settings, now
+        return [
+            Event(
+                occurred_at=datetime(2026, 5, 4, 12, 0, tzinfo=UTC),
+                severity="critical",
+                category="disk_space",
+                subject="Data partition",
+                summary="Free space on data partition: 50 MB",
+            )
+        ]
+
+    monkeypatch.setattr(
+        scheduler,
+        "check_data_partition_free_space",
+        fake_check_data_partition_free_space,
+    )
+
+    service._run_disk_space_monitor_transaction()
+
+    assert metrics.EVENTS_TOTAL.labels(severity="critical", category="disk_space")._value.get() == 1
 
 
 def _service(session_factory: sessionmaker[Session]) -> CollectorService:

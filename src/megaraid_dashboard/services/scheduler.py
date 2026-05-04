@@ -40,6 +40,7 @@ from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 from megaraid_dashboard.web.metrics import (
     COLLECTOR_CYCLE_DURATION,
     COLLECTOR_LAST_RUN_TIMESTAMP,
+    EVENTS_TOTAL,
 )
 
 LOGGER = structlog.get_logger(__name__)
@@ -279,6 +280,7 @@ class CollectorService:
             )
             for event in events:
                 session.add(event)
+                EVENTS_TOTAL.labels(severity=event.severity, category=event.category).inc()
             if events:
                 session.commit()
 
