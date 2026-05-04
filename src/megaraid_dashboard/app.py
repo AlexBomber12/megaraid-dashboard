@@ -173,7 +173,7 @@ async def _start_metrics_server(
             loop="asyncio",
         )
         server = uvicorn.Server(config)
-        task = asyncio.create_task(server.serve())
+        task = asyncio.create_task(_serve_metrics_server_without_signals(server))
         await _wait_for_metrics_server_startup(server=server, task=task)
     except BaseException:
         if "task" in locals() and not task.done():
@@ -190,6 +190,10 @@ async def _start_metrics_server(
     app.state.metrics_server = server
     app.state.metrics_task = task
     return True
+
+
+async def _serve_metrics_server_without_signals(server: uvicorn.Server) -> None:
+    await server._serve()
 
 
 async def _wait_for_metrics_server_startup(

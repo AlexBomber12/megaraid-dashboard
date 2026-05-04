@@ -248,6 +248,9 @@ async def test_start_metrics_server_releases_lock_on_startup_failure(
             self.config = config
 
         async def serve(self) -> None:
+            raise AssertionError("metrics server should not install signal handlers")
+
+        async def _serve(self) -> None:
             await asyncio.sleep(0)
             raise OSError("address already in use")
 
