@@ -1079,15 +1079,18 @@ def _load_replacement_cycle_marker_for_slot(
     slot_id: int,
 ) -> Event | None:
     slot_token = f"drive {enclosure_id}:{slot_id}"
+    successful_replace_step = (
+        or_(
+            Event.summary.like(f"replace step missing {slot_token} %"),
+            Event.summary.like(f"replace step insert {slot_token} %"),
+        )
+        & Event.summary.like("% succeeded")
+        & ~Event.summary.like("% failed%")
+    )
     return session.scalars(
         select(Event)
         .where(Event.category == "operator_action")
-        .where(
-            or_(
-                Event.summary.like(f"replace step missing {slot_token} %"),
-                Event.summary.like(f"replace step insert {slot_token} %"),
-            )
-        )
+        .where(successful_replace_step)
         .order_by(Event.occurred_at.desc(), Event.id.desc())
         .limit(1)
     ).one_or_none()

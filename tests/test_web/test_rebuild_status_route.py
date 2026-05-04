@@ -182,6 +182,44 @@ def test_drive_rebuild_status_does_not_record_idle_completion_without_replacemen
     assert events == []
 
 
+@pytest.mark.parametrize(
+    "failed_summary",
+    [
+        "replace step missing drive 2:0 serial outgoing-2 failed: storcli reported not succeeded",
+        (
+            "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 "
+            "failed: storcli reported not succeeded"
+        ),
+    ],
+)
+def test_drive_rebuild_status_does_not_record_idle_completion_after_failed_replacement_step(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_summary: str,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=0, state="Not in progress")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _record_operator_action(
+            test_app,
+            summary=failed_summary,
+        )
+        response = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert response.status_code == 200
+    assert [event.summary for event in events] == [failed_summary]
+
+
 def test_drive_rebuild_status_does_not_duplicate_completion_audit_after_later_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
