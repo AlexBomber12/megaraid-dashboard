@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,6 +18,7 @@ from megaraid_dashboard.db.models import (
     Event,
     PhysicalDriveSnapshot,
     PhysicalDriveTempState,
+    SystemState,
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
@@ -336,11 +339,102 @@ def get_alert_by_fingerprint(session: Session, fingerprint: str) -> AlertSent | 
     ).one_or_none()
 
 
+_MAINTENANCE_MODE_KEY = "maintenance_mode"
+
+
+def get_state(session: Session, key: str) -> str | None:
+    row = session.get(SystemState, key)
+    return row.value if row is not None else None
+
+
+def set_state(session: Session, key: str, value: str) -> None:
+    now = datetime.now(UTC)
+    row = session.get(SystemState, key)
+    if row is None:
+        session.add(SystemState(key=key, value=value, created_at=now, updated_at=now))
+    else:
+        row.value = value
+        row.updated_at = now
+    session.flush()
+
+
+def delete_state(session: Session, key: str) -> None:
+    row = session.get(SystemState, key)
+    if row is not None:
+        session.delete(row)
+        session.flush()
+
+
+@dataclass(frozen=True)
+class MaintenanceState:
+    active: bool
+    expires_at: datetime | None
+    started_by: str | None
+
+
+def get_maintenance_state(session: Session, *, now: datetime) -> MaintenanceState:
+    _require_aware_utc(now)
+    raw = get_state(session, _MAINTENANCE_MODE_KEY)
+    if raw is None:
+        return MaintenanceState(active=False, expires_at=None, started_by=None)
+
+    payload = json.loads(raw)
+    expires_at = _parse_optional_datetime(payload.get("expires_at"))
+    started_by = _optional_string(payload.get("started_by"))
+    if expires_at is not None and expires_at <= now:
+        return MaintenanceState(active=False, expires_at=expires_at, started_by=started_by)
+
+    return MaintenanceState(
+        active=bool(payload.get("active")),
+        expires_at=expires_at,
+        started_by=started_by,
+    )
+
+
+def set_maintenance_state(
+    session: Session,
+    *,
+    active: bool,
+    expires_at: datetime | None,
+    started_by: str | None,
+) -> None:
+    if expires_at is not None:
+        _require_aware_utc(expires_at)
+    if not active:
+        delete_state(session, _MAINTENANCE_MODE_KEY)
+        return
+
+    payload = {
+        "active": True,
+        "expires_at": expires_at.isoformat() if expires_at is not None else None,
+        "started_by": started_by,
+    }
+    set_state(session, _MAINTENANCE_MODE_KEY, json.dumps(payload))
+
+
 def _require_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         msg = "naive datetimes are not allowed; use timezone-aware UTC datetimes"
         raise ValueError(msg)
     return value.astimezone(UTC)
+
+
+def _parse_optional_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        msg = "expires_at must be an ISO datetime string or null"
+        raise ValueError(msg)
+    return _require_aware_utc(datetime.fromisoformat(value))
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        msg = "started_by must be a string or null"
+        raise ValueError(msg)
+    return value
 
 
 def _storcli_datetime_to_utc(value: datetime | None) -> datetime | None:

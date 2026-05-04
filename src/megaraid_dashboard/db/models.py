@@ -247,3 +247,11 @@ class AlertSent(TimestampedMixin, Base):
         index=True,
         nullable=True,
     )
+
+
+class SystemState(TimestampedMixin, Base):
+    __tablename__ = "system_state"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
