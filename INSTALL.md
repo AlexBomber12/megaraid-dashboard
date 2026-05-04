@@ -283,7 +283,8 @@ or `storcli` error to fix.
 This confirms the local application can answer the unauthenticated liveness route.
 
 ```bash
-curl -fsS http://127.0.0.1:8090/healthz
+APP_PORT="$(systemctl show -p ExecStart --value megaraid-dashboard.service | sed -n 's/.*--port \([0-9][0-9]*\).*/\1/p')"
+curl -fsS "http://127.0.0.1:${APP_PORT:-8090}/healthz"
 ```
 
 Expected output:
@@ -384,7 +385,9 @@ $2b$12$...
 Send one SMTP test message using the installed package and service environment:
 
 ```bash
-sudo -u raid-monitor env $(sudo xargs -a /etc/megaraid-dashboard/env) \
+sudo systemd-run --wait --pipe --collect \
+  --uid=raid-monitor \
+  --property=EnvironmentFile=/etc/megaraid-dashboard/env \
   /opt/megaraid-dashboard/.venv/bin/python -m megaraid_dashboard.alerts test
 ```
 
@@ -435,7 +438,7 @@ active
 ### 3. Health status ok
 
 ```bash
-curl -fsS http://127.0.0.1:8090/healthz | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])'
+APP_PORT="$(systemctl show -p ExecStart --value megaraid-dashboard.service | sed -n 's/.*--port \([0-9][0-9]*\).*/\1/p')"; curl -fsS "http://127.0.0.1:${APP_PORT:-8090}/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])'
 ```
 
 Expected output:
@@ -447,7 +450,7 @@ ok
 ### 4. Database check ok
 
 ```bash
-curl -fsS http://127.0.0.1:8090/healthz | python3 -c 'import json,sys; print(json.load(sys.stdin)["database"])'
+APP_PORT="$(systemctl show -p ExecStart --value megaraid-dashboard.service | sed -n 's/.*--port \([0-9][0-9]*\).*/\1/p')"; curl -fsS "http://127.0.0.1:${APP_PORT:-8090}/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin)["database"])'
 ```
 
 Expected output:
@@ -495,7 +498,7 @@ root:raid-monitor 600
 ### 8. Local overview requires auth
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/
+APP_PORT="$(systemctl show -p ExecStart --value megaraid-dashboard.service | sed -n 's/.*--port \([0-9][0-9]*\).*/\1/p')"; curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:${APP_PORT:-8090}/"
 ```
 
 Expected output:
@@ -519,7 +522,7 @@ ok
 ### 10. SMTP test sends
 
 ```bash
-sudo -u raid-monitor env $(sudo xargs -a /etc/megaraid-dashboard/env) /opt/megaraid-dashboard/.venv/bin/python -m megaraid_dashboard.alerts test
+sudo systemd-run --wait --pipe --collect --uid=raid-monitor --property=EnvironmentFile=/etc/megaraid-dashboard/env /opt/megaraid-dashboard/.venv/bin/python -m megaraid_dashboard.alerts test
 ```
 
 Expected output:
