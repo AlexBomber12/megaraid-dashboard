@@ -1063,6 +1063,22 @@ def _load_last_operator_action_for_slot(
         ).one_or_none()
 
 
+def _load_rebuild_complete_operator_action_for_slot(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+) -> Event | None:
+    with _session(request) as session:
+        return session.scalars(
+            select(Event)
+            .where(Event.category == "operator_action")
+            .where(Event.summary == f"rebuild complete drive {enclosure_id}:{slot_id}")
+            .order_by(Event.occurred_at.desc(), Event.id.desc())
+            .limit(1)
+        ).one_or_none()
+
+
 def _extract_serial_from_audit(message: str) -> str | None:
     tokens = message.split()
     for index, token in enumerate(tokens):
@@ -1077,12 +1093,12 @@ def _record_rebuild_complete_once_sync(
     enclosure_id: int,
     slot_id: int,
 ) -> None:
-    latest = _load_last_operator_action_for_slot(
+    completed = _load_rebuild_complete_operator_action_for_slot(
         request=request,
         enclosure_id=enclosure_id,
         slot_id=slot_id,
     )
-    if latest is not None and latest.summary == f"rebuild complete drive {enclosure_id}:{slot_id}":
+    if completed is not None:
         return
     try:
         with _session(request) as session, session.begin():

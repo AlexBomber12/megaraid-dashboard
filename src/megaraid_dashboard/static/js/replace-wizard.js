@@ -63,7 +63,7 @@
     const arrayCell = root.querySelector('[data-replace-meta="array"]');
     const rowCell = root.querySelector('[data-replace-meta="row"]');
     const output = root.querySelector("[data-replace-output]");
-    const rebuildProgress = root.querySelector("[data-rebuild-progress]");
+    let rebuildProgress = root.querySelector("[data-rebuild-progress]");
     const openButton = root.querySelector('[data-replace-action="open"]');
     let inFlight = false;
     let topology = null;
@@ -109,6 +109,16 @@
       updateCloseControls();
     }
 
+    function stopRebuildPolling() {
+      if (!rebuildProgress) return;
+      if (window.htmx) window.htmx.trigger(rebuildProgress, "htmx:abort");
+
+      const nextRebuildProgress = rebuildProgress.cloneNode(false);
+      nextRebuildProgress.textContent = "Loading rebuild status...";
+      rebuildProgress.replaceWith(nextRebuildProgress);
+      rebuildProgress = nextRebuildProgress;
+    }
+
     function close() {
       show(null);
       openButton.hidden = false;
@@ -120,13 +130,7 @@
       if (dgCell) dgCell.textContent = "...";
       if (arrayCell) arrayCell.textContent = "...";
       if (rowCell) rowCell.textContent = "...";
-      if (rebuildProgress) {
-        rebuildProgress.removeAttribute("hx-get");
-        rebuildProgress.removeAttribute("hx-trigger");
-        rebuildProgress.removeAttribute("hx-target");
-        rebuildProgress.removeAttribute("hx-swap");
-        rebuildProgress.textContent = "Loading rebuild status...";
-      }
+      stopRebuildPolling();
       topology = null;
       updateRunButton();
       updateRunStep3Button();

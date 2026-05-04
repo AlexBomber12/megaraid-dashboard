@@ -206,6 +206,8 @@ def test_replace_wizard_js_starts_rebuild_polling_after_insert_success() -> None
     assert 'show("rebuild");' in source
     assert "startRebuildPolling();" in source
     assert 'rebuildProgress.setAttribute("hx-trigger", "load, every 30s");' in source
+    assert 'window.htmx.trigger(rebuildProgress, "htmx:abort");' in source
+    assert "rebuildProgress.replaceWith(nextRebuildProgress);" in source
 
 
 def _drive_detail_response(

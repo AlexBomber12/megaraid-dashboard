@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.services.audit import record_operator_action
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -96,6 +97,35 @@ def test_drive_rebuild_status_records_completion_audit_once(
     assert events[0].operator_username == "admin"
 
 
+def test_drive_rebuild_status_does_not_duplicate_completion_audit_after_later_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=100, state="Complete")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        first = client.get("/drives/2:0/replace/rebuild-status")
+        _record_operator_action(test_app, summary="locate start drive 2:0")
+        second = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert [event.summary for event in events] == [
+        "rebuild complete drive 2:0",
+        "locate start drive 2:0",
+    ]
+
+
 def _rebuild_payload(
     *,
     percent: int,
@@ -124,3 +154,10 @@ def _all_events(test_app: FastAPI) -> list[Event]:
     with session_factory() as session:
         assert isinstance(session, Session)
         return list(session.scalars(select(Event)).all())
+
+
+def _record_operator_action(test_app: FastAPI, *, summary: str) -> None:
+    session_factory = test_app.state.session_factory
+    assert isinstance(session_factory, sessionmaker)
+    with session_factory() as session, session.begin():
+        record_operator_action(session, username="admin", message=summary)
