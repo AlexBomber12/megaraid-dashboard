@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import stat
 import subprocess
 from pathlib import Path
@@ -12,10 +13,16 @@ INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install.sh"
 
 
 def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -> None:
+    repo_root = tmp_path / "source"
+    repo_root.mkdir()
+    git_sha = "1234567890abcdef1234567890abcdef12345678"
+
     result = _run_phase_config(
         tmp_path,
         args=["--non-interactive"],
         install_env=_install_env(tmp_path),
+        git_stub=_git_sha_stub(repo_root, git_sha),
+        repo_root=repo_root,
     )
 
     env_file = tmp_path / "etc" / "env"
@@ -38,9 +45,63 @@ def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -
         "LOG_LEVEL": "info",
         "METRICS_INTERVAL_SECONDS": "300",
         "DATABASE_URL": f"sqlite:///{tmp_path}/data/megaraid.db",
+        "GIT_SHA": git_sha,
     }
     assert values["ADMIN_PASSWORD_HASH"].startswith("$2b$")
-    Settings(_env_file=env_file)
+    settings = Settings(_env_file=env_file)
+    assert settings.git_sha == values["GIT_SHA"]
+
+
+def test_phase_config_falls_back_when_git_sha_lookup_fails(tmp_path: Path) -> None:
+    result = _run_phase_config(
+        tmp_path,
+        args=["--non-interactive"],
+        install_env=_install_env(tmp_path),
+        git_stub="#!/bin/sh\nprintf 'fatal: detected dubious ownership\\n' >&2\nexit 128\n",
+    )
+
+    values = _read_env_file(tmp_path / "etc" / "env")
+
+    assert result.returncode == 0, result.stderr
+    assert values["GIT_SHA"] == "unknown"
+    assert "dubious ownership" not in result.stderr
+
+
+def test_phase_config_reads_git_sha_when_git_metadata_is_file(tmp_path: Path) -> None:
+    repo_root = tmp_path / "linked-worktree"
+    repo_root.mkdir()
+    (repo_root / ".git").write_text("gitdir: /tmp/worktrees/linked-worktree\n", encoding="utf-8")
+    git_sha = "abcdef0123456789abcdef0123456789abcdef01"
+    git_stub = (
+        "#!/bin/sh\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "--is-inside-work-tree" ]; then\n'
+        "  printf 'true\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "HEAD" ]; then\n'
+        f"  printf '{git_sha}\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'printf "unexpected git args: %s\\n" "$*" >&2\n'
+        "exit 2\n"
+    )
+
+    result = _run_phase_config(
+        tmp_path,
+        args=["--non-interactive"],
+        install_env=_install_env(tmp_path),
+        git_stub=git_stub,
+        repo_root=repo_root,
+    )
+
+    values = _read_env_file(tmp_path / "etc" / "env")
+
+    assert result.returncode == 0, result.stderr
+    assert values["GIT_SHA"] == git_sha
 
 
 def test_phase_config_non_interactive_lists_missing_required_values(tmp_path: Path) -> None:
@@ -142,11 +203,13 @@ def _run_phase_config(
     *,
     args: list[str],
     install_env: dict[str, str],
+    git_stub: str | None = None,
+    repo_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env_file = tmp_path / "etc" / "env"
     env_file.parent.mkdir(exist_ok=True)
     env_file.touch(mode=0o600, exist_ok=True)
-    bin_dir = _stub_bin(tmp_path)
+    bin_dir = _stub_bin(tmp_path, git_stub=git_stub)
     prefix = tmp_path / "prefix"
     data_dir = tmp_path / "data"
     prefix.mkdir(exist_ok=True)
@@ -156,7 +219,12 @@ def _run_phase_config(
     python.write_text("#!/bin/sh\nprintf '$2b$%s\\n' \"$3\"\n")
     python.chmod(0o755)
 
-    command_parts = ["source", str(INSTALL_SCRIPT) + ";", "parse_args", *args, ";", "phase_config"]
+    command_parts = ["source", str(INSTALL_SCRIPT) + ";"]
+    if repo_root is not None:
+        command_parts.extend(
+            ["source_repo_root()", "{", "printf", "%s", shlex.quote(str(repo_root)) + ";", "}", ";"]
+        )
+    command_parts.extend(["parse_args", *args, ";", "phase_config"])
     command = " ".join(command_parts)
     return subprocess.run(
         ["bash", "-c", command],
@@ -204,7 +272,27 @@ def _read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def _stub_bin(tmp_path: Path) -> Path:
+def _git_sha_stub(repo_root: Path, git_sha: str) -> str:
+    return (
+        "#!/bin/sh\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "--is-inside-work-tree" ]; then\n'
+        "  printf 'true\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "HEAD" ]; then\n'
+        f"  printf '{git_sha}\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'printf "unexpected git args: %s\\n" "$*" >&2\n'
+        "exit 2\n"
+    )
+
+
+def _stub_bin(tmp_path: Path, *, git_stub: str | None = None) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     _write_executable(
@@ -223,6 +311,8 @@ def _stub_bin(tmp_path: Path) -> Path:
         '[ -z "$mode" ] || chmod "$mode" "$target"\n',
     )
     _write_executable(bin_dir / "chown", "#!/bin/sh\nexit 0\n")
+    if git_stub is not None:
+        _write_executable(bin_dir / "git", git_stub)
     return bin_dir
 
 
