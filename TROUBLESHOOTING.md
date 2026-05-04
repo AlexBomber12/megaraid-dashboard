@@ -61,9 +61,11 @@ with a JSON body such as `{"status":"degraded","database":"error","collector":"o
 
 ### Probable Causes
 
-1. Database connection or SQLite writability failed.
-2. Another process holds the collector lock, so this process cannot start the scheduler.
-3. The scheduler was not started because the collector is disabled or startup failed.
+1. Database connection failed.
+2. SQLite file ownership, permissions, or writability failed.
+
+The `collector` field in the response is informational. Values such as `idle` or
+`lock_held` do not cause `/healthz` to return 503.
 
 ### Diagnostics
 
@@ -73,18 +75,13 @@ curl -i "http://127.0.0.1:${APP_PORT:-8090}/healthz"
 journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 100 --no-pager
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db 'select 1;'
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db 'pragma integrity_check;'
-sudo lsof /tmp/megaraid-dashboard-collector.lock
-sudo grep -E '^(COLLECTOR_ENABLED|COLLECTOR_LOCK_PATH|DATABASE_URL)=' /etc/megaraid-dashboard/env
+sudo grep -E '^DATABASE_URL=' /etc/megaraid-dashboard/env
 ```
 
 ### Fixes
 
 - Database `error`: fix the database path from `DATABASE_URL`, restore ownership to
   `raid-monitor:raid-monitor`, and run `scripts/preflight.sh` before restarting.
-- Collector `lock_held`: stop the duplicate local app process or stale development
-  server that owns `COLLECTOR_LOCK_PATH`, then restart the service.
-- Collector `idle` with collection expected: set `COLLECTOR_ENABLED=true`, restart the
-  unit, and confirm the `metrics_collector` job appears in logs after startup.
 
 ## No alerts arriving
 
@@ -99,7 +96,9 @@ email. The SMTP test may fail, or real events may stay visible without expected 
 2. A matching event was already notified inside `ALERT_SUPPRESS_WINDOW_MINUTES`.
 3. Event severity is below `ALERT_SEVERITY_THRESHOLD`.
 4. Maintenance mode is active, so notifier delivery is intentionally paused.
-5. Alert throttling reached `ALERT_THROTTLE_PER_HOUR`.
+
+`notifier_throttle_warning` means recent alert volume is high; it does not suppress
+delivery by itself.
 
 ### Diagnostics
 
@@ -108,8 +107,8 @@ sudo systemd-run --wait --pipe --collect \
   --uid=raid-monitor \
   --property=EnvironmentFile=/etc/megaraid-dashboard/env \
   /opt/megaraid-dashboard/.venv/bin/python -m megaraid_dashboard.alerts test
-sudo grep -E '^(ALERT_SMTP_HOST|ALERT_SMTP_PORT|ALERT_SMTP_USER|ALERT_SMTP_USE_STARTTLS|ALERT_FROM|ALERT_TO|ALERT_SEVERITY_THRESHOLD|ALERT_SUPPRESS_WINDOW_MINUTES|ALERT_THROTTLE_PER_HOUR)=' /etc/megaraid-dashboard/env
-journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'alert\|smtp\|notifier\|maintenance\|throttle'
+sudo grep -E '^(ALERT_SMTP_HOST|ALERT_SMTP_PORT|ALERT_SMTP_USER|ALERT_SMTP_USE_STARTTLS|ALERT_FROM|ALERT_TO|ALERT_SEVERITY_THRESHOLD|ALERT_SUPPRESS_WINDOW_MINUTES)=' /etc/megaraid-dashboard/env
+journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'alert\|smtp\|notifier\|maintenance'
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select id,severity,category,summary,notified_at,created_at from events order by id desc limit 20;"
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from system_state where key='maintenance_mode';"
 ```
@@ -123,8 +122,6 @@ sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key
 - Severity threshold: set `ALERT_SEVERITY_THRESHOLD=warning` if warning emails are
   required, then restart.
 - Maintenance mode: stop the maintenance window from the UI after the work is complete.
-- Throttle saturation: resolve the event flood first; for a bounded incident, raise
-  `ALERT_THROTTLE_PER_HOUR` and restart after documenting the reason.
 
 ## Drive shows wrong state
 
