@@ -768,7 +768,7 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
             status_code=502,
         )
 
-    if 0 < status.percent_complete < 100 and status.state == "In progress":
+    if 0 <= status.percent_complete < 100 and status.state == "In progress":
         await run_in_threadpool(
             _record_rebuild_progress_observed_once_sync,
             request=request,
