@@ -186,8 +186,10 @@ Replace `e252/s0` with the enclosure and slot shown on the drive detail page.
 
 ### Fixes
 
-- Missing sudoers entry: rerun `sudo bash scripts/install.sh` or restore the sudoers
-  fragment so `raid-monitor` can run the exact locate start and stop JSON commands.
+- Missing sudoers entry: restore the sudoers fragment so `raid-monitor` can run the
+  exact locate start and stop JSON commands for the affected slot, then validate it
+  with `visudo -c -f /etc/sudoers.d/megaraid-dashboard`. Do not add broad shell
+  access or wildcard storcli access.
 - Wrapper rejection: use the UI route for `/c0/eN/sN start locate J` or
   `/c0/eN/sN stop locate J`; do not add broad shell access.
 - Firmware or enclosure limitation: confirm with the controller vendor tools and chassis
