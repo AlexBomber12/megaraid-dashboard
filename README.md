@@ -40,6 +40,15 @@ mypy src
 pytest
 ```
 
+## Documentation
+
+- Install - production installer notes; forthcoming.
+- [Runbook](docs/RUNBOOK.md) - routine operations, incidents, recovery, backups, and upgrades.
+- [Architecture](docs/ARCHITECTURE.md) - high-level data flow, components, schema, and state.
+- Troubleshooting - diagnostic reference; forthcoming.
+- [Proxy setup](docs/PROXY-SETUP.md) - nginx reverse proxy, TLS, and `/raid/` path prefix.
+- Security audit - audit checklist and findings; forthcoming.
+
 ## Database
 
 SQLite stores controller, virtual drive, physical drive, and cache vault snapshots. Physical
