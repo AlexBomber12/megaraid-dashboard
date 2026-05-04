@@ -128,6 +128,11 @@ def test_drive_rebuild_status_records_completion_audit_once(
 def test_drive_rebuild_status_records_completion_on_terminal_idle_after_replacement_cycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    statuses = [
+        _rebuild_payload(percent=42, state="In progress"),
+        _rebuild_payload(percent=0, state="Not in progress"),
+    ]
+
     async def fake_run_storcli(
         args: list[str],
         *,
@@ -135,7 +140,7 @@ def test_drive_rebuild_status_records_completion_on_terminal_idle_after_replacem
         binary_path: str,
     ) -> dict[str, Any]:
         del args, use_sudo, binary_path
-        return _rebuild_payload(percent=0, state="Not in progress")
+        return statuses.pop(0)
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
 
@@ -155,8 +160,36 @@ def test_drive_rebuild_status_records_completion_on_terminal_idle_after_replacem
     assert second.status_code == 200
     assert [event.summary for event in events] == [
         "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded",
+        "rebuild progress observed drive 2:0",
         "rebuild complete drive 2:0",
     ]
+
+
+def test_drive_rebuild_status_does_not_record_idle_completion_after_insert_without_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=0, state="Not in progress")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    insert_summary = (
+        "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded"
+    )
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _record_operator_action(test_app, summary=insert_summary)
+        response = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert response.status_code == 200
+    assert [event.summary for event in events] == [insert_summary]
 
 
 def test_drive_rebuild_status_does_not_record_idle_completion_without_replacement_cycle(
