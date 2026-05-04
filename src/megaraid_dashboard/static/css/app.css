@@ -1299,7 +1299,7 @@ a:hover {
 
   .status-strip {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--tile-min-width), 100%), 1fr));
   }
 
   .alert-status {
