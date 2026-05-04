@@ -431,7 +431,8 @@ phase_config() {
 
   GIT_SHA="unknown"
   if [[ -d "${repo_root}/.git" ]]; then
-    GIT_SHA="$(cd "${repo_root}" && git rev-parse HEAD)"
+    GIT_SHA="$(cd "${repo_root}" && git rev-parse HEAD 2>/dev/null || true)"
+    [[ -n "${GIT_SHA}" ]] || GIT_SHA="unknown"
   fi
 
   if [[ "${#MISSING_CONFIG_VARS[@]}" -gt 0 ]]; then

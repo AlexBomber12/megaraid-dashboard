@@ -41,7 +41,23 @@ def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -
         "GIT_SHA": _repo_git_sha(),
     }
     assert values["ADMIN_PASSWORD_HASH"].startswith("$2b$")
-    Settings(_env_file=_settings_env_file_without_build_metadata(env_file, tmp_path))
+    settings = Settings(_env_file=env_file)
+    assert settings.git_sha == values["GIT_SHA"]
+
+
+def test_phase_config_falls_back_when_git_sha_lookup_fails(tmp_path: Path) -> None:
+    result = _run_phase_config(
+        tmp_path,
+        args=["--non-interactive"],
+        install_env=_install_env(tmp_path),
+        git_stub="#!/bin/sh\nprintf 'fatal: detected dubious ownership\\n' >&2\nexit 128\n",
+    )
+
+    values = _read_env_file(tmp_path / "etc" / "env")
+
+    assert result.returncode == 0, result.stderr
+    assert values["GIT_SHA"] == "unknown"
+    assert "dubious ownership" not in result.stderr
 
 
 def test_phase_config_non_interactive_lists_missing_required_values(tmp_path: Path) -> None:
@@ -143,11 +159,12 @@ def _run_phase_config(
     *,
     args: list[str],
     install_env: dict[str, str],
+    git_stub: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env_file = tmp_path / "etc" / "env"
     env_file.parent.mkdir(exist_ok=True)
     env_file.touch(mode=0o600, exist_ok=True)
-    bin_dir = _stub_bin(tmp_path)
+    bin_dir = _stub_bin(tmp_path, git_stub=git_stub)
     prefix = tmp_path / "prefix"
     data_dir = tmp_path / "data"
     prefix.mkdir(exist_ok=True)
@@ -215,18 +232,7 @@ def _repo_git_sha() -> str:
     return result.stdout.strip()
 
 
-def _settings_env_file_without_build_metadata(env_file: Path, tmp_path: Path) -> Path:
-    settings_env_file = tmp_path / "settings.env"
-    settings_env_file.write_text(
-        "\n".join(
-            line for line in env_file.read_text().splitlines() if not line.startswith("GIT_SHA=")
-        )
-        + "\n"
-    )
-    return settings_env_file
-
-
-def _stub_bin(tmp_path: Path) -> Path:
+def _stub_bin(tmp_path: Path, *, git_stub: str | None = None) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     _write_executable(
@@ -245,6 +251,8 @@ def _stub_bin(tmp_path: Path) -> Path:
         '[ -z "$mode" ] || chmod "$mode" "$target"\n',
     )
     _write_executable(bin_dir / "chown", "#!/bin/sh\nexit 0\n")
+    if git_stub is not None:
+        _write_executable(bin_dir / "git", git_stub)
     return bin_dir
 
 

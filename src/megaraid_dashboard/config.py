@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     metrics_interval_seconds: int = Field(...)
     metrics_raw_retention_days: int = 30
     metrics_hourly_retention_days: int = 365
+    git_sha: str = "unknown"
     store_raw_snapshot_payload: bool = False
     collector_enabled: bool = True
     collector_lock_path: str = "/tmp/megaraid-dashboard-collector.lock"
