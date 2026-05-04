@@ -216,7 +216,9 @@ def test_import_rejects_confirmation_mismatch(
 
         assert response.status_code == 409
         assert response.json()["error"] == "confirmation mismatch"
-        _assert_no_audit_event(test_app)
+        event = _read_single_event(test_app)
+        assert event.summary.startswith("foreign config import digest=FC-DG1-PD4-")
+        assert event.summary.endswith("rejected: confirmation mismatch")
 
 
 def test_import_rejects_when_no_foreign_config(
@@ -241,7 +243,11 @@ def test_import_rejects_when_no_foreign_config(
 
         assert response.status_code == 409
         assert response.json()["error"] == "no foreign configuration present"
-        _assert_no_audit_event(test_app)
+        event = _read_single_event(test_app)
+        assert (
+            event.summary
+            == "foreign config import digest=unknown rejected: no foreign configuration present"
+        )
 
 
 def test_import_rejects_during_active_rebuild(
@@ -269,6 +275,9 @@ def test_import_rejects_during_active_rebuild(
 
         assert response.status_code == 409
         assert "rebuild" in response.json()["error"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config import digest={digest}")
+        assert event.summary.endswith("rejected: rebuild in progress")
 
 
 def test_import_blocked_without_modes(
@@ -301,6 +310,9 @@ def test_import_blocked_without_modes(
         body = response.json()
         assert body["maintenance_mode"] is False
         assert body["destructive_mode"] is False
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config import digest={digest}")
+        assert event.summary.endswith("rejected: maintenance_mode and destructive_mode required")
 
 
 def test_clear_dry_run_returns_argv_and_skips_runner(
@@ -391,7 +403,13 @@ def test_clear_rejects_wrong_confirmation_phrase(
 
         assert response.status_code == 409
         assert "CLEAR FOREIGN CONFIG" in response.json()["error"]
-        _assert_no_audit_event(test_app)
+        event = _read_single_event(test_app)
+        # Phrase mismatch is checked before the foreign-config probe runs,
+        # so the audit row records ``digest=unknown``.
+        assert (
+            event.summary
+            == "foreign config clear digest=unknown rejected: confirmation phrase mismatch"
+        )
 
 
 def test_clear_rejects_when_no_foreign_config(
@@ -416,6 +434,41 @@ def test_clear_rejects_when_no_foreign_config(
 
         assert response.status_code == 409
         assert response.json()["error"] == "no foreign configuration present"
+        event = _read_single_event(test_app)
+        assert (
+            event.summary
+            == "foreign config clear digest=unknown rejected: no foreign configuration present"
+        )
+
+
+def test_clear_rejects_during_active_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    fall_present_payload: dict[str, Any],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        if list(args) == ["/c0/fall", "show", "all", "J"]:
+            return fall_present_payload
+        raise AssertionError("clear command should not be invoked while rebuilding")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        digest = _digest_from_payload(client)
+        _seed_drive(test_app, state="Rbld")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/clear",
+            headers=headers,
+            json={"confirmation": "CLEAR FOREIGN CONFIG"},
+        )
+
+        assert response.status_code == 409
+        assert "rebuild" in response.json()["error"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config clear digest={digest}")
+        assert event.summary.endswith("rejected: rebuild in progress")
 
 
 def test_clear_blocked_without_modes(
@@ -436,6 +489,7 @@ def test_clear_blocked_without_modes(
 
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        digest = _digest_from_payload(client)
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             "/controller/foreign-config/clear",
@@ -444,6 +498,9 @@ def test_clear_blocked_without_modes(
         )
 
         assert response.status_code == 403
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config clear digest={digest}")
+        assert event.summary.endswith("rejected: maintenance_mode and destructive_mode required")
 
 
 def _digest_from_payload(client: TestClient) -> str:

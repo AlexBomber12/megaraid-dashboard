@@ -1605,8 +1605,12 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
         )
 
     if not live_foreign_config.present:
-        return JSONResponse(
-            {"error": "no foreign configuration present"},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest=live_foreign_config.digest,
+            reason="no foreign configuration present",
+            rejection_body={"error": "no foreign configuration present"},
             status_code=409,
         )
 
@@ -1615,8 +1619,12 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
         # operator probe with a placeholder, read back the digest, and
         # replay the destructive call. The operator must obtain the
         # digest from GET /controller/foreign-config.
-        return JSONResponse(
-            {"error": "confirmation mismatch"},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest=live_foreign_config.digest,
+            reason="confirmation mismatch",
+            rejection_body={"error": "confirmation mismatch"},
             status_code=409,
         )
 
@@ -1625,8 +1633,14 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
         request=request,
     )
     if rebuild_active:
-        return JSONResponse(
-            {"error": "cannot import foreign config while a rebuild is in progress"},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest=live_foreign_config.digest,
+            reason="rebuild in progress",
+            rejection_body={
+                "error": "cannot import foreign config while a rebuild is in progress",
+            },
             status_code=409,
         )
 
@@ -1643,8 +1657,12 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
         )
 
     if not settings.maintenance_mode or not settings.destructive_mode:
-        return JSONResponse(
-            {
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest=live_foreign_config.digest,
+            reason="maintenance_mode and destructive_mode required",
+            rejection_body={
                 "error": "destructive operations require maintenance_mode and destructive_mode",
                 "maintenance_mode": settings.maintenance_mode,
                 "destructive_mode": settings.destructive_mode,
@@ -1676,8 +1694,15 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
     dry_run = body.dry_run or query_dry_run
 
     if body.confirmation != _FOREIGN_CONFIG_CLEAR_CONFIRMATION:
-        return JSONResponse(
-            {"error": (f"confirmation must be exactly '{_FOREIGN_CONFIG_CLEAR_CONFIRMATION}'")},
+        # No probe yet, so there is no digest to record.
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest="",
+            reason="confirmation phrase mismatch",
+            rejection_body={
+                "error": f"confirmation must be exactly '{_FOREIGN_CONFIG_CLEAR_CONFIRMATION}'",
+            },
             status_code=409,
         )
 
@@ -1696,8 +1721,12 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
         )
 
     if not live_foreign_config.present:
-        return JSONResponse(
-            {"error": "no foreign configuration present"},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest=live_foreign_config.digest,
+            reason="no foreign configuration present",
+            rejection_body={"error": "no foreign configuration present"},
             status_code=409,
         )
 
@@ -1706,8 +1735,14 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
         request=request,
     )
     if rebuild_active:
-        return JSONResponse(
-            {"error": "cannot clear foreign config while a rebuild is in progress"},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest=live_foreign_config.digest,
+            reason="rebuild in progress",
+            rejection_body={
+                "error": "cannot clear foreign config while a rebuild is in progress",
+            },
             status_code=409,
         )
 
@@ -1724,8 +1759,12 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
         )
 
     if not settings.maintenance_mode or not settings.destructive_mode:
-        return JSONResponse(
-            {
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest=live_foreign_config.digest,
+            reason="maintenance_mode and destructive_mode required",
+            rejection_body={
                 "error": "destructive operations require maintenance_mode and destructive_mode",
                 "maintenance_mode": settings.maintenance_mode,
                 "destructive_mode": settings.destructive_mode,
@@ -1740,6 +1779,44 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
         digest=live_foreign_config.digest,
         settings=settings,
     )
+
+
+async def _reject_foreign_config_destructive(
+    *,
+    request: Request,
+    action: Literal["import", "clear"],
+    digest: str,
+    reason: str,
+    rejection_body: dict[str, Any],
+    status_code: int,
+) -> JSONResponse:
+    """Audit a rejected destructive request and return the rejection response.
+
+    The security model in AGENTS.md requires every destructive attempt to
+    leave an audit trail, including ones rejected before storcli runs. If
+    the audit write fails we surface a 500 instead of the original
+    rejection so the missing forensic record is observable rather than
+    silently dropped.
+    """
+    outcome = f"rejected: {reason}"
+    try:
+        await run_in_threadpool(
+            _record_foreign_config_operator_action_sync,
+            request=request,
+            action=action,
+            digest=digest,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "rejection_reason": reason,
+            },
+            status_code=500,
+        )
+    return JSONResponse(rejection_body, status_code=status_code)
 
 
 async def _run_foreign_config_destructive(
@@ -1886,12 +1963,16 @@ def _record_foreign_config_operator_action_sync(
     digest: str,
     outcome: str,
 ) -> None:
+    # Some rejection paths (e.g. clear's confirmation phrase mismatch) fail
+    # before the foreign-config probe runs, so no digest is available; render
+    # those as ``unknown`` to keep the audit message shape stable.
+    rendered_digest = digest or "unknown"
     try:
         with _session(request) as session, session.begin():
             record_operator_action(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
-                message=f"foreign config {action} digest={digest} {outcome}",
+                message=f"foreign config {action} digest={rendered_digest} {outcome}",
             )
     except SQLAlchemyError:
         LOGGER.exception(
