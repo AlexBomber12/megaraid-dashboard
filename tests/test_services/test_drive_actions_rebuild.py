@@ -8,7 +8,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_rebuild_status_command,
     parse_rebuild_status,
 )
-from megaraid_dashboard.storcli import StorcliParseError
+from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliParseError
 
 
 def test_build_rebuild_status_command() -> None:
@@ -122,6 +122,33 @@ def test_parse_rebuild_status_rbld_at_zero_percent_is_in_progress() -> None:
 def test_parse_rebuild_status_raises_on_malformed_input() -> None:
     with pytest.raises(StorcliParseError):
         parse_rebuild_status({"Controllers": [{"Response Data": {"Drive": [{"State": "Onln"}]}}]})
+
+
+def test_parse_rebuild_status_raises_when_command_status_failed() -> None:
+    with pytest.raises(StorcliCommandFailed, match="drive missing") as exc_info:
+        parse_rebuild_status(
+            {
+                "Controllers": [
+                    {
+                        "Command Status": {
+                            "Status": "Failure",
+                            "Description": "None",
+                            "Detailed Status": [{"ErrMsg": "drive missing"}],
+                        },
+                        "Response Data": {
+                            "Drive /c0/e2/s0 - Rebuild Progress": [
+                                {
+                                    "Progress%": "100%",
+                                    "State": "Complete",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        )
+
+    assert exc_info.value.err_msg == "drive missing"
 
 
 def _payload(response_data: dict[str, Any]) -> dict[str, Any]:

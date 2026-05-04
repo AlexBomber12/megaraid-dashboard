@@ -72,6 +72,38 @@ def test_drive_rebuild_status_returns_json(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls == [["/c0/e2/s0", "show", "rebuild", "J"]]
 
 
+def test_drive_rebuild_status_returns_502_when_command_status_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        payload = _rebuild_payload(percent=100, state="Complete")
+        payload["Controllers"][0]["Command Status"] = {
+            "Status": "Failure",
+            "Description": "None",
+            "Detailed Status": [{"ErrMsg": "drive missing"}],
+        }
+        return payload
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error"] == "storcli command failed"
+    assert "drive missing" in body["detail"]
+    assert events == []
+
+
 def test_drive_rebuild_status_accepts_html_case_insensitively(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from megaraid_dashboard.storcli import StorcliParseError
+from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliParseError
 
 LocateAction = Literal["start", "stop"]
 ReplaceStep = Literal["offline", "missing"]
@@ -135,10 +135,26 @@ def _single_controller_response_data(payload: dict[str, Any]) -> dict[str, Any]:
     controller = controllers[0]
     if not isinstance(controller, dict):
         raise StorcliParseError("storcli rebuild status controller is not an object")
+    command_status = controller.get("Command Status")
+    if (
+        isinstance(command_status, dict)
+        and str(command_status.get("Status", "")).lower() == "failure"
+    ):
+        err_msg = _command_error_message(command_status)
+        raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
     response_data = controller.get("Response Data")
     if not isinstance(response_data, dict):
         raise StorcliParseError("storcli rebuild status missing Response Data")
     return response_data
+
+
+def _command_error_message(command_status: dict[str, Any]) -> str:
+    detailed_status = command_status.get("Detailed Status", [])
+    if isinstance(detailed_status, list):
+        for item in detailed_status:
+            if isinstance(item, dict) and item.get("ErrMsg"):
+                return str(item["ErrMsg"])
+    return str(command_status.get("Description") or command_status.get("Status") or "unknown error")
 
 
 def _find_percent_complete(value: Any) -> int | None:
