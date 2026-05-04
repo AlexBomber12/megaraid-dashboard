@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 LocateAction = Literal["start", "stop"]
@@ -13,7 +14,14 @@ _LOCATE_VERB: dict[LocateAction, str] = {
 _OFFLINE_ALLOWED_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Failed", "UBad", "UGood"})
 _MISSING_ALLOWED_STATES: frozenset[str] = frozenset({"Offln"})
 
-_REPLACE_STEP_MISSING_TOKEN = "replace step missing"
+# Matches the exact success-audit format written by the route layer for the
+# missing step: ``replace step missing drive {e}:{s} serial {sn} succeeded``.
+# The end-of-string anchor is critical: failed audits append free-form storcli
+# error text after ``failed:`` that can contain substrings like
+# ``not succeeded`` or ``succeeded operation aborted``.
+_REPLACE_STEP_MISSING_SUCCESS_RE = re.compile(
+    r"^replace step missing drive \d+:\d+ serial \S+ succeeded\Z"
+)
 
 
 def build_locate_command(enclosure: int, slot: int, action: LocateAction) -> list[str]:
@@ -70,12 +78,15 @@ def can_transition(current_state: str, requested_step: ReplaceStep) -> bool:
 def can_transition_step3(latest_audit_message: str | None) -> bool:
     """Insert is allowed only if the latest operator-action audit for this slot
     records that ``replace step missing`` succeeded. Failed missing attempts and
-    intervening operator actions (e.g. locate) reset the gate."""
+    intervening operator actions (e.g. locate) reset the gate.
+
+    The match is anchored on the full audit-message format produced by the
+    route layer so free-form storcli error text appended after ``failed:``
+    cannot bypass the gate by including ``succeeded`` as a substring.
+    """
     if latest_audit_message is None:
         return False
-    if _REPLACE_STEP_MISSING_TOKEN not in latest_audit_message:
-        return False
-    return "succeeded" in latest_audit_message
+    return _REPLACE_STEP_MISSING_SUCCESS_RE.match(latest_audit_message) is not None
 
 
 def validate_enclosure_slot(enclosure: int, slot: int) -> None:

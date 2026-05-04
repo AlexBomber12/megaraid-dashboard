@@ -68,7 +68,18 @@ def test_build_insert_replacement_command_rejects_invalid_row(row: Any) -> None:
         ("replace step missing drive 2:0 serial WD-OLD succeeded", True),
         ("replace step offline drive 2:0 serial WD-OLD succeeded", False),
         ("replace step missing drive 2:0 serial WD-OLD failed: StorcliCommandFailed", False),
-        ("locate start drive 2:0", False),
+        (
+            "replace step missing drive 2:0 serial WD-OLD failed: "
+            "StorcliCommandFailed: command not succeeded",
+            False,
+        ),
+        (
+            "replace step missing drive 2:0 serial WD-OLD failed: "
+            "StorcliCommandFailed: succeeded operation aborted",
+            False,
+        ),
+        ("locate start drive 2:0 succeeded", False),
+        ("replace step missing drive 2:0 serial WD-OLD succeeded extra", False),
         ("", False),
         (None, False),
     ],
