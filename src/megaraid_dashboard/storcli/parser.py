@@ -443,6 +443,17 @@ def _ensure_success(payload: dict[str, Any]) -> Mapping[str, Any]:
     return controller
 
 
+def ensure_command_succeeded(payload: dict[str, Any]) -> None:
+    """Raise StorcliCommandFailed if the controller's Command Status is Failure.
+
+    `run_storcli` only validates process exit and JSON shape; storcli itself can
+    return a parsed payload with `Command Status.Status = "Failure"`. Call this
+    on responses from destructive commands (e.g. foreign-config import/clear)
+    where a HTTP 200 audited as `succeeded` would mislead operators.
+    """
+    _ensure_success(payload)
+
+
 def _optional_command_succeeded(controller: Mapping[str, Any]) -> bool:
     if not _command_failed(controller):
         return True

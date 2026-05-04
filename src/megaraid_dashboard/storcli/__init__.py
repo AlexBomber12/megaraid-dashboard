@@ -17,6 +17,7 @@ from megaraid_dashboard.storcli.models import (
     size_string_to_bytes,
 )
 from megaraid_dashboard.storcli.parser import (
+    ensure_command_succeeded,
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
@@ -41,6 +42,7 @@ __all__ = [
     "StorcliParseError",
     "StorcliSnapshot",
     "VirtualDrive",
+    "ensure_command_succeeded",
     "parse_bbu",
     "parse_cachevault",
     "parse_controller_show_all",

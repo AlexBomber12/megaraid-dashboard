@@ -81,6 +81,7 @@ from megaraid_dashboard.storcli import (
     ForeignConfig,
     StorcliError,
     StorcliParseError,
+    ensure_command_succeeded,
     parse_drive_show,
     parse_foreign_config,
     run_storcli,
@@ -1835,6 +1836,7 @@ async def _run_foreign_config_destructive(
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
         )
+        ensure_command_succeeded(result)
         outcome = "succeeded"
     except StorcliError as exc:
         storcli_error = exc

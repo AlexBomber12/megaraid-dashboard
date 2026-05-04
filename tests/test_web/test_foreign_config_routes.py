@@ -193,6 +193,48 @@ def test_import_succeeds_and_audits(
         assert event.summary.endswith("succeeded")
 
 
+def test_import_returns_502_when_command_status_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    fall_present_payload: dict[str, Any],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        if list(args) == ["/c0/fall", "show", "all", "J"]:
+            return fall_present_payload
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {
+                        "Status": "Failure",
+                        "Description": "None",
+                        "Detailed Status": [{"ErrMsg": "import not allowed"}],
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        digest = _digest_from_payload(client)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/import",
+            headers=headers,
+            json={"confirmation": digest},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli command failed"
+        assert "import not allowed" in body["detail"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config import digest={digest}")
+        assert "failed: StorcliCommandFailed" in event.summary
+        assert "import not allowed" in event.summary
+
+
 def test_import_rejects_confirmation_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -379,6 +421,48 @@ def test_clear_succeeds_and_audits(
         event = _read_single_event(test_app)
         assert event.summary.startswith("foreign config clear digest=")
         assert event.summary.endswith("succeeded")
+
+
+def test_clear_returns_502_when_command_status_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    fall_present_payload: dict[str, Any],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        if list(args) == ["/c0/fall", "show", "all", "J"]:
+            return fall_present_payload
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {
+                        "Status": "Failure",
+                        "Description": "None",
+                        "Detailed Status": [{"ErrMsg": "delete failed"}],
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        digest = _digest_from_payload(client)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/clear",
+            headers=headers,
+            json={"confirmation": "CLEAR FOREIGN CONFIG"},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli command failed"
+        assert "delete failed" in body["detail"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith(f"foreign config clear digest={digest}")
+        assert "failed: StorcliCommandFailed" in event.summary
+        assert "delete failed" in event.summary
 
 
 def test_clear_rejects_wrong_confirmation_phrase(
