@@ -17,16 +17,16 @@
     <tbody>
       {% for drive in drives %}
         <tr data-row-state="{{ drive.row_state }}">
-          <td class="mono" data-sort-value="{{ drive.slot }}">
+          <td class="mono" data-label="Slot" data-sort-value="{{ drive.slot }}">
             {% if drive.slot_url %}
               <a href="{{ drive.slot_url }}">{{ drive.slot }}</a>
             {% else %}
               {{ drive.slot }}
             {% endif %}
           </td>
-          <td data-sort-value="{{ drive.model }}">{{ drive.model }}</td>
-          <td class="mono">{{ drive.serial_number }}</td>
-          <td data-sort-value="{{ drive.state }}">
+          <td data-label="Model" data-sort-value="{{ drive.model }}">{{ drive.model }}</td>
+          <td class="mono" data-label="Serial">{{ drive.serial_number }}</td>
+          <td data-label="State" data-sort-value="{{ drive.state }}">
             <span class="status-badge status-badge--{{ drive.row_state }}">
               <svg class="status-badge__icon" aria-hidden="true">
                 <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ drive.status_icon }}"/>
@@ -36,6 +36,7 @@
           </td>
           <td
             class="numeric status-text status-text--{{ drive.temperature_severity }}"
+            data-label="Temp"
             data-sort-value="{{ drive.temperature_sort }}"
             {% if drive.temperature_tooltip %}title="{{ drive.temperature_tooltip }}"{% endif %}
           >
@@ -44,11 +45,11 @@
               {{ drive.temperature }}
             </span>
           </td>
-          <td class="numeric" data-sort-value="{{ drive.size_bytes }}">{{ drive.size }}</td>
-          <td class="numeric">{{ drive.media_errors }}</td>
-          <td class="numeric">{{ drive.other_errors }}</td>
-          <td class="numeric">{{ drive.predictive_failures }}</td>
-          <td class="smart smart--{{ drive.smart_severity }}">{{ drive.smart_label }}</td>
+          <td class="numeric" data-label="Size" data-sort-value="{{ drive.size_bytes }}">{{ drive.size }}</td>
+          <td class="numeric" data-label="Media Err">{{ drive.media_errors }}</td>
+          <td class="numeric" data-label="Other Err">{{ drive.other_errors }}</td>
+          <td class="numeric" data-label="Predictive">{{ drive.predictive_failures }}</td>
+          <td class="smart smart--{{ drive.smart_severity }}" data-label="SMART">{{ drive.smart_label }}</td>
         </tr>
       {% endfor %}
     </tbody>
