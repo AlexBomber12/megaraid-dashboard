@@ -62,7 +62,12 @@
         <form
           class="foreign-config__form"
           data-foreign-config-form="import"
-          data-endpoint="{{ request.url_for('controller_foreign_config_import').path }}"
+          method="post"
+          action="{{ request.url_for('controller_foreign_config_import').path }}"
+          hx-post="{{ request.url_for('controller_foreign_config_import').path }}"
+          hx-ext="json-enc"
+          hx-target="#foreign-config-import-result"
+          hx-swap="innerHTML"
         >
           <label class="foreign-config__field">
             <span>Confirmation digest</span>
@@ -83,6 +88,11 @@
             Import foreign configuration
           </button>
         </form>
+        <pre
+          id="foreign-config-import-result"
+          class="foreign-config__result"
+          aria-live="polite"
+        ></pre>
       </details>
 
       <details class="foreign-config__action">
@@ -99,7 +109,12 @@
         <form
           class="foreign-config__form"
           data-foreign-config-form="clear"
-          data-endpoint="{{ request.url_for('controller_foreign_config_clear').path }}"
+          method="post"
+          action="{{ request.url_for('controller_foreign_config_clear').path }}"
+          hx-post="{{ request.url_for('controller_foreign_config_clear').path }}"
+          hx-ext="json-enc"
+          hx-target="#foreign-config-clear-result"
+          hx-swap="innerHTML"
         >
           <label class="foreign-config__field">
             <span>Confirmation phrase</span>
@@ -121,6 +136,11 @@
             Clear foreign configuration
           </button>
         </form>
+        <pre
+          id="foreign-config-clear-result"
+          class="foreign-config__result"
+          aria-live="polite"
+        ></pre>
       </details>
     {% else %}
       <p class="foreign-config__empty">
