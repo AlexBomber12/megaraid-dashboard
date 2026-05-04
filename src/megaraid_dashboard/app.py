@@ -37,6 +37,7 @@ from megaraid_dashboard.web.static import CacheControlStaticFiles
 LOGGER = structlog.get_logger(__name__)
 _COLLECTOR_LOCK_RETRY_SECONDS = 30.0
 _HEALTH_CHECK_SQLITE_BUSY_TIMEOUT_MS = 250
+_METRICS_SERVER_STARTUP_TIMEOUT_SECONDS = 5.0
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 _STATIC_DIR = _PACKAGE_ROOT / "static"
 
@@ -100,7 +101,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.metrics_lock_fd = None
 
     try:
-        if settings.metrics_enabled and not _start_metrics_server(
+        if settings.metrics_enabled and not await _start_metrics_server(
             app=app,
             settings=settings,
             runtime=metrics_runtime,
@@ -152,15 +153,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             engine.dispose()
 
 
-def _start_metrics_server(
+async def _start_metrics_server(
     *,
     app: FastAPI,
     settings: Settings,
     runtime: _MetricsRuntime,
 ) -> bool:
     metrics_lock_fd = _try_acquire_metrics_lock(settings.metrics_lock_path)
-    app.state.metrics_lock_fd = metrics_lock_fd
     if metrics_lock_fd is None:
+        app.state.metrics_lock_fd = None
         return False
 
     try:
@@ -173,7 +174,12 @@ def _start_metrics_server(
         )
         server = uvicorn.Server(config)
         task = asyncio.create_task(server.serve())
-    except Exception:
+        await _wait_for_metrics_server_startup(server=server, task=task)
+    except BaseException:
+        if "task" in locals() and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         _release_metrics_lock(metrics_lock_fd)
         app.state.metrics_lock_fd = None
         raise
@@ -184,6 +190,29 @@ def _start_metrics_server(
     app.state.metrics_server = server
     app.state.metrics_task = task
     return True
+
+
+async def _wait_for_metrics_server_startup(
+    *,
+    server: uvicorn.Server,
+    task: asyncio.Task[None],
+) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _METRICS_SERVER_STARTUP_TIMEOUT_SECONDS
+
+    while not server.started:
+        if task.done():
+            task.result()
+            msg = "metrics server exited before startup completed"
+            raise RuntimeError(msg)
+        if server.should_exit:
+            await task
+            msg = "metrics server stopped before startup completed"
+            raise RuntimeError(msg)
+        if loop.time() >= deadline:
+            msg = "timed out waiting for metrics server startup"
+            raise TimeoutError(msg)
+        await asyncio.sleep(0.01)
 
 
 async def _stop_metrics_server(runtime: _MetricsRuntime) -> None:

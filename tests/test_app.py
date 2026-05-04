@@ -230,6 +230,45 @@ def test_lifespan_skips_metrics_server_when_lock_is_already_held(
         get_settings.cache_clear()
 
 
+async def test_start_metrics_server_releases_lock_on_startup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    get_settings.cache_clear()
+    settings = get_settings()
+    test_app = FastAPI()
+    runtime = app._MetricsRuntime()
+
+    class FailedStartupServer:
+        started = False
+        should_exit = False
+
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        async def serve(self) -> None:
+            await asyncio.sleep(0)
+            raise OSError("address already in use")
+
+    monkeypatch.setattr(app.uvicorn, "Server", FailedStartupServer)
+
+    with pytest.raises(OSError, match="address already in use"):
+        await app._start_metrics_server(app=test_app, settings=settings, runtime=runtime)
+
+    reacquired_lock = app._try_acquire_metrics_lock(settings.metrics_lock_path)
+    try:
+        assert reacquired_lock is not None
+        assert test_app.state.metrics_lock_fd is None
+        assert runtime.server is None
+        assert runtime.task is None
+        assert runtime.lock_fd is None
+    finally:
+        if reacquired_lock is not None:
+            app._release_metrics_lock(reacquired_lock)
+        get_settings.cache_clear()
+
+
 async def test_start_collector_scheduler_releases_lock_on_start_cancellation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
