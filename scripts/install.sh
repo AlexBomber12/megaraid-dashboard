@@ -108,8 +108,9 @@ validate_root_owned_not_writable() {
     log_fail "failed to stat ${path}"
 
   [[ "${owner}" == "0" ]] || log_fail "${path} must be owned by root before sudoers grant"
-  [[ "${perms:5:1}" != "w" && "${perms:8:1}" != "w" ]] || \
+  if [[ "${perms:5:1}" == "w" || "${perms:8:1}" == "w" ]]; then
     log_fail "${path} must not be writable by group or other before sudoers grant"
+  fi
 }
 
 validate_storcli_sudo_target() {
@@ -430,8 +431,9 @@ phase_config() {
   prompt_config_value METRICS_INTERVAL_SECONDS "collector interval seconds" "300"
 
   GIT_SHA="unknown"
-  if [[ -d "${repo_root}/.git" ]]; then
-    GIT_SHA="$(cd "${repo_root}" && git rev-parse HEAD 2>/dev/null || true)"
+  if command_exists git && \
+    [[ "$(git -C "${repo_root}" rev-parse --is-inside-work-tree 2>/dev/null || true)" == "true" ]]; then
+    GIT_SHA="$(git -C "${repo_root}" rev-parse HEAD 2>/dev/null || true)"
     [[ -n "${GIT_SHA}" ]] || GIT_SHA="unknown"
   fi
 

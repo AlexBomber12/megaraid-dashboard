@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import stat
 import subprocess
 from pathlib import Path
@@ -58,6 +59,43 @@ def test_phase_config_falls_back_when_git_sha_lookup_fails(tmp_path: Path) -> No
     assert result.returncode == 0, result.stderr
     assert values["GIT_SHA"] == "unknown"
     assert "dubious ownership" not in result.stderr
+
+
+def test_phase_config_reads_git_sha_when_git_metadata_is_file(tmp_path: Path) -> None:
+    repo_root = tmp_path / "linked-worktree"
+    repo_root.mkdir()
+    (repo_root / ".git").write_text("gitdir: /tmp/worktrees/linked-worktree\n", encoding="utf-8")
+    git_sha = "abcdef0123456789abcdef0123456789abcdef01"
+    git_stub = (
+        "#!/bin/sh\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "--is-inside-work-tree" ]; then\n'
+        "  printf 'true\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "-C" ] && [ "$2" = "'
+        f"{repo_root}"
+        '" ] && [ "$3" = "rev-parse" ] && [ "$4" = "HEAD" ]; then\n'
+        f"  printf '{git_sha}\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        'printf "unexpected git args: %s\\n" "$*" >&2\n'
+        "exit 2\n"
+    )
+
+    result = _run_phase_config(
+        tmp_path,
+        args=["--non-interactive"],
+        install_env=_install_env(tmp_path),
+        git_stub=git_stub,
+        repo_root=repo_root,
+    )
+
+    values = _read_env_file(tmp_path / "etc" / "env")
+
+    assert result.returncode == 0, result.stderr
+    assert values["GIT_SHA"] == git_sha
 
 
 def test_phase_config_non_interactive_lists_missing_required_values(tmp_path: Path) -> None:
@@ -160,6 +198,7 @@ def _run_phase_config(
     args: list[str],
     install_env: dict[str, str],
     git_stub: str | None = None,
+    repo_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env_file = tmp_path / "etc" / "env"
     env_file.parent.mkdir(exist_ok=True)
@@ -174,7 +213,12 @@ def _run_phase_config(
     python.write_text("#!/bin/sh\nprintf '$2b$%s\\n' \"$3\"\n")
     python.chmod(0o755)
 
-    command_parts = ["source", str(INSTALL_SCRIPT) + ";", "parse_args", *args, ";", "phase_config"]
+    command_parts = ["source", str(INSTALL_SCRIPT) + ";"]
+    if repo_root is not None:
+        command_parts.extend(
+            ["source_repo_root()", "{", "printf", "%s", shlex.quote(str(repo_root)) + ";", "}", ";"]
+        )
+    command_parts.extend(["parse_args", *args, ";", "phase_config"])
     command = " ".join(command_parts)
     return subprocess.run(
         ["bash", "-c", command],
