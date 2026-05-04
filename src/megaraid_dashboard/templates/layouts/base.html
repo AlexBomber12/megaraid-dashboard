@@ -45,20 +45,27 @@
         <div class="site-header__inner">
           <div class="site-header__left">
             <a class="brand" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
-            <nav class="site-nav" aria-label="Primary navigation">
-              <a
-                class="site-nav__link{% if active_nav == 'overview' %} site-nav__link--active{% endif %}"
-                href="{{ request.url_for('overview').path }}"
-              >Dashboard</a>
-              <a
-                class="site-nav__link{% if active_nav == 'drives' %} site-nav__link--active{% endif %}"
-                href="{{ request.url_for('drives').path }}"
-              >Drives</a>
-              <a
-                class="site-nav__link{% if active_nav == 'events' %} site-nav__link--active{% endif %}"
-                href="{{ request.url_for('events').path }}"
-              >Events</a>
-            </nav>
+            <details class="site-nav-details">
+              <summary class="site-nav-toggle" aria-label="Toggle primary navigation">
+                <span class="site-nav-toggle__bar"></span>
+                <span class="site-nav-toggle__bar"></span>
+                <span class="site-nav-toggle__bar"></span>
+              </summary>
+              <nav class="site-nav" aria-label="Primary navigation">
+                <a
+                  class="site-nav__link{% if active_nav == 'overview' %} site-nav__link--active{% endif %}"
+                  href="{{ request.url_for('overview').path }}"
+                >Dashboard</a>
+                <a
+                  class="site-nav__link{% if active_nav == 'drives' %} site-nav__link--active{% endif %}"
+                  href="{{ request.url_for('drives').path }}"
+                >Drives</a>
+                <a
+                  class="site-nav__link{% if active_nav == 'events' %} site-nav__link--active{% endif %}"
+                  href="{{ request.url_for('events').path }}"
+                >Events</a>
+              </nav>
+            </details>
           </div>
           <div class="site-header__actions">
             <noscript><time class="utc-clock">{{ current_utc_label }}</time></noscript>
