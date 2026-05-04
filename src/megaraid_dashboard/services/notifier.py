@@ -14,6 +14,7 @@ from megaraid_dashboard.alerts import AlertMessage, AlertTransport
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.dao import (
     count_events_notified_since,
+    get_maintenance_state,
     iter_pending_events,
     mark_event_notified,
 )
@@ -50,6 +51,25 @@ def run_notifier_cycle(
         msg = "now must be a timezone-aware UTC datetime"
         raise ValueError(msg)
     now_utc = now.astimezone(UTC)
+    maintenance_state = get_maintenance_state(session, now=now_utc)
+    if maintenance_state.active:
+        _LOG.info(
+            "notifier_skipped_for_maintenance",
+            active_until=(
+                maintenance_state.expires_at.isoformat()
+                if maintenance_state.expires_at is not None
+                else None
+            ),
+            started_by=maintenance_state.started_by,
+        )
+        return NotifierCycleResult(
+            attempted=0,
+            sent=0,
+            deduplicated=0,
+            failed=0,
+            throttle_warning=False,
+        )
+
     earliest_since = now_utc - timedelta(minutes=_max_suppress_window_minutes(settings))
 
     pending = list(
