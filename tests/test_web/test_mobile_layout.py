@@ -84,6 +84,17 @@ def test_mobile_layout_does_not_require_new_javascript() -> None:
     assert all("mobile" not in source for source in parser.sources)
 
 
+def test_mobile_table_keeps_sort_headers_visible() -> None:
+    stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text()
+
+    mobile_rules = stylesheet.split("@media (max-width: 720px)", maxsplit=1)[1]
+
+    assert ".data-table thead {\n    display: block;" in mobile_rules
+    assert ".data-table th[data-sort-key]" in mobile_rules
+    assert ".data-table tbody tr {\n    display: block;" in mobile_rules
+    assert ".data-table thead {\n    display: none;" not in mobile_rules
+
+
 def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) -> None:
     session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
     with session_factory() as session:
