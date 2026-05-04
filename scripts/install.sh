@@ -370,6 +370,7 @@ STORCLI_USE_SUDO
 LOG_LEVEL
 METRICS_INTERVAL_SECONDS
 DATABASE_URL
+GIT_SHA
 EOF
 }
 
@@ -404,8 +405,10 @@ phase_config() {
 
   local ADMIN_USERNAME ADMIN_PASSWORD ALERT_SMTP_HOST ALERT_SMTP_PORT ALERT_SMTP_USER
   local ALERT_SMTP_PASSWORD ALERT_FROM ALERT_TO LOG_LEVEL METRICS_INTERVAL_SECONDS
-  local ADMIN_PASSWORD_HASH
+  local ADMIN_PASSWORD_HASH GIT_SHA
   local preserve_existing_hash="false"
+  local repo_root
+  repo_root="$(source_repo_root)"
 
   ADMIN_PASSWORD_HASH="$(env_file_value ADMIN_PASSWORD_HASH)"
   if [[ -n "${ADMIN_PASSWORD_HASH}" && "${FORCE_RECONFIG}" != "true" ]]; then
@@ -425,6 +428,11 @@ phase_config() {
   prompt_config_value STORCLI_PATH "storcli path" "${STORCLI_PATH}"
   prompt_config_value LOG_LEVEL "log level" "info"
   prompt_config_value METRICS_INTERVAL_SECONDS "collector interval seconds" "300"
+
+  GIT_SHA="unknown"
+  if [[ -d "${repo_root}/.git" ]]; then
+    GIT_SHA="$(cd "${repo_root}" && git rev-parse HEAD)"
+  fi
 
   if [[ "${#MISSING_CONFIG_VARS[@]}" -gt 0 ]]; then
     log_fail "required config missing in non-interactive mode: ${MISSING_CONFIG_VARS[*]}"
@@ -451,6 +459,7 @@ STORCLI_USE_SUDO=true
 LOG_LEVEL=${LOG_LEVEL}
 METRICS_INTERVAL_SECONDS=${METRICS_INTERVAL_SECONDS}
 DATABASE_URL=sqlite:///${DATA_DIR}/megaraid.db
+GIT_SHA=${GIT_SHA}
 EOF
   chmod 0600 "${ENV_FILE}.tmp"
   chown "root:${INSTALL_USER}" "${ENV_FILE}.tmp"

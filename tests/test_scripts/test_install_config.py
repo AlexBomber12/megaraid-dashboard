@@ -38,9 +38,10 @@ def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -
         "LOG_LEVEL": "info",
         "METRICS_INTERVAL_SECONDS": "300",
         "DATABASE_URL": f"sqlite:///{tmp_path}/data/megaraid.db",
+        "GIT_SHA": _repo_git_sha(),
     }
     assert values["ADMIN_PASSWORD_HASH"].startswith("$2b$")
-    Settings(_env_file=env_file)
+    Settings(_env_file=_settings_env_file_without_build_metadata(env_file, tmp_path))
 
 
 def test_phase_config_non_interactive_lists_missing_required_values(tmp_path: Path) -> None:
@@ -202,6 +203,27 @@ def _read_env_file(path: Path) -> dict[str, str]:
         key, value = line.split("=", maxsplit=1)
         values[key] = value
     return values
+
+
+def _repo_git_sha() -> str:
+    result = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout.strip()
+
+
+def _settings_env_file_without_build_metadata(env_file: Path, tmp_path: Path) -> Path:
+    settings_env_file = tmp_path / "settings.env"
+    settings_env_file.write_text(
+        "\n".join(
+            line for line in env_file.read_text().splitlines() if not line.startswith("GIT_SHA=")
+        )
+        + "\n"
+    )
+    return settings_env_file
 
 
 def _stub_bin(tmp_path: Path) -> Path:

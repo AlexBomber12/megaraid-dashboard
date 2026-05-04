@@ -4,7 +4,6 @@ import os
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -16,6 +15,7 @@ from markupsafe import Markup, escape
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.requests import Request
 
+from megaraid_dashboard import __version__
 from megaraid_dashboard.db.dao import get_maintenance_state
 
 _SLOT_TOKEN_RE = re.compile(
@@ -40,8 +40,8 @@ def create_templates(
     environment.filters["utc_to_cest"] = utc_to_cest
     environment.filters["iso_utc"] = iso_utc
     environment.filters["slot_link"] = _slot_link_filter
-    environment.globals["app_version"] = _app_version()
-    environment.globals["build_sha"] = os.environ.get("GIT_SHA", "unknown")
+    environment.globals["app_version"] = __version__
+    environment.globals["build_sha"] = (os.environ.get("GIT_SHA") or "unknown")[:8]
     processors: list[_ContextProcessor] = [_maintenance_context_processor]
     if context_processors is not None:
         processors.extend(context_processors)
@@ -118,10 +118,3 @@ def _to_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
-
-
-def _app_version() -> str:
-    try:
-        return version("megaraid-dashboard")
-    except PackageNotFoundError:
-        return "dev"
