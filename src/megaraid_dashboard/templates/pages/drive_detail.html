@@ -88,6 +88,7 @@
     data-replace-missing-url="{{ request.url_for('drive_replace_missing', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
     data-replace-topology-url="{{ request.url_for('drive_replace_topology', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
     data-replace-insert-url="{{ request.url_for('drive_replace_insert', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
+    data-replace-rebuild-status-url="{{ request.url_for('drive_rebuild_status', enclosure=view_model.enclosure_id, slot=view_model.slot_id).path }}"
   >
     <h2 class="replace-wizard__title">Replace drive</h2>
     <button type="button" class="button button--warning" data-replace-action="open">Begin replace</button>
@@ -208,6 +209,14 @@
       <h3>Result</h3>
       <pre class="mono replace-wizard__output" data-replace-output></pre>
       <button type="button" class="button" data-replace-action="close">Close</button>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="rebuild" hidden>
+      <h3>Step 4: rebuild progress</h3>
+      <div class="replace-wizard__progress" data-rebuild-progress>
+        Loading rebuild status...
+      </div>
+      <button type="button" class="button" data-replace-action="close">Close wizard</button>
     </div>
   </section>
 

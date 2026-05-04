@@ -23,7 +23,7 @@ from starlette.concurrency import run_in_threadpool
 
 from megaraid_dashboard import __version__
 from megaraid_dashboard.config import Settings, get_settings
-from megaraid_dashboard.db.dao import get_latest_snapshot
+from megaraid_dashboard.db.dao import get_latest_snapshot, record_event
 from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
@@ -35,11 +35,13 @@ from megaraid_dashboard.services.drive_actions import (
     ReplaceStep,
     build_insert_replacement_command,
     build_locate_command,
+    build_rebuild_status_command,
     build_set_missing_command,
     build_set_offline_command,
     build_show_drive_command,
     can_transition,
     can_transition_step3,
+    parse_rebuild_status,
     validate_enclosure_slot,
 )
 from megaraid_dashboard.services.drive_history import (
@@ -69,6 +71,7 @@ from megaraid_dashboard.services.overview import (
 from megaraid_dashboard.storcli import (
     DriveShow,
     StorcliError,
+    StorcliParseError,
     parse_drive_show,
     run_storcli,
 )
@@ -740,6 +743,96 @@ async def drive_replace_topology(enclosure: str, slot: str, request: Request) ->
     )
 
 
+@router.get("/drives/{enclosure}:{slot}/replace/rebuild-status", name="drive_rebuild_status")
+async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> Response:
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+        argv = build_rebuild_status_command(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    settings: Settings = request.app.state.settings
+    try:
+        payload = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        status = parse_rebuild_status(payload)
+    except StorcliParseError as exc:
+        if _is_htmx_request(request):
+            return _rebuild_status_error_partial(
+                request=request,
+                error="storcli parse failed",
+                detail=str(exc),
+            )
+        return JSONResponse({"error": "storcli parse failed", "detail": str(exc)}, status_code=502)
+    except StorcliError as exc:
+        if _is_htmx_request(request):
+            return _rebuild_status_error_partial(
+                request=request,
+                error="storcli command failed",
+                detail=str(exc),
+            )
+        return JSONResponse(
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
+        )
+
+    if 0 <= status.percent_complete < 100 and status.state == "In progress":
+        await run_in_threadpool(
+            _record_rebuild_progress_observed_once_sync,
+            request=request,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            percent_complete=status.percent_complete,
+            state=status.state,
+        )
+    if status.percent_complete >= 100 or status.state == "Complete":
+        await run_in_threadpool(
+            _record_rebuild_complete_once_sync,
+            request=request,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            require_replacement_cycle=False,
+        )
+    elif status.state == "Not in progress":
+        await run_in_threadpool(
+            _record_rebuild_complete_once_sync,
+            request=request,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            require_replacement_cycle=True,
+        )
+
+    if _accepts_html(request):
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="partials/rebuild_progress.html",
+            context={"status": status},
+        )
+
+    return JSONResponse(
+        {
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "percent_complete": status.percent_complete,
+            "state": status.state,
+            "time_remaining_minutes": status.time_remaining_minutes,
+        }
+    )
+
+
+def _rebuild_status_error_partial(*, request: Request, error: str, detail: str) -> Response:
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="partials/rebuild_progress_error.html",
+        context={"error": error, "detail": detail},
+        status_code=200,
+    )
+
+
 @router.post("/drives/{enclosure}:{slot}/replace/insert", name="drive_replace_insert")
 async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> JSONResponse:
     """Step 3: insert the replacement drive into the missing slot, kicking off rebuild."""
@@ -1009,12 +1102,202 @@ def _load_last_operator_action_for_slot(
         ).one_or_none()
 
 
+def _load_replacement_cycle_marker_for_slot(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+) -> Event | None:
+    slot_token = f"drive {enclosure_id}:{slot_id}"
+    successful_rebuild_start = (
+        Event.summary.like(f"replace step insert {slot_token} %")
+        & Event.summary.like("% succeeded")
+        & ~Event.summary.like("% failed%")
+    )
+    return session.scalars(
+        select(Event)
+        .where(Event.category == "operator_action")
+        .where(successful_rebuild_start)
+        .order_by(Event.occurred_at.desc(), Event.id.desc())
+        .limit(1)
+    ).one_or_none()
+
+
+def _load_rebuild_complete_operator_action_for_slot(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    cycle_marker: Event | None,
+) -> Event | None:
+    query = (
+        select(Event)
+        .where(Event.category == "operator_action")
+        .where(Event.summary == f"rebuild complete drive {enclosure_id}:{slot_id}")
+    )
+    if cycle_marker is not None:
+        query = query.where(
+            or_(
+                Event.occurred_at > cycle_marker.occurred_at,
+                (Event.occurred_at == cycle_marker.occurred_at) & (Event.id > cycle_marker.id),
+            )
+        )
+    return session.scalars(
+        query.order_by(Event.occurred_at.desc(), Event.id.desc()).limit(1)
+    ).one_or_none()
+
+
+def _load_rebuild_progress_marker_for_slot(
+    session: Session,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    cycle_marker: Event | None,
+) -> Event | None:
+    query = (
+        select(Event)
+        .where(Event.category == "system")
+        .where(Event.summary == f"rebuild progress observed drive {enclosure_id}:{slot_id}")
+    )
+    if cycle_marker is not None:
+        query = query.where(
+            or_(
+                Event.occurred_at > cycle_marker.occurred_at,
+                (Event.occurred_at == cycle_marker.occurred_at) & (Event.id > cycle_marker.id),
+            )
+        )
+    return session.scalars(
+        query.order_by(Event.occurred_at.desc(), Event.id.desc()).limit(1)
+    ).one_or_none()
+
+
 def _extract_serial_from_audit(message: str) -> str | None:
     tokens = message.split()
     for index, token in enumerate(tokens):
         if token == "serial" and index + 1 < len(tokens):
             return tokens[index + 1]
     return None
+
+
+def _record_rebuild_progress_observed_once_sync(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+    percent_complete: int,
+    state: str,
+) -> None:
+    try:
+        with _session(request) as session:
+            if session.get_bind().dialect.name == "sqlite":
+                session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            else:
+                session.begin()
+            if session.get_bind().dialect.name == "postgresql":
+                session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                    {"lock_key": f"rebuild-progress:{enclosure_id}:{slot_id}"},
+                )
+
+            cycle_marker = _load_replacement_cycle_marker_for_slot(
+                session,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+            )
+            observed = _load_rebuild_progress_marker_for_slot(
+                session,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                cycle_marker=cycle_marker,
+            )
+            if observed is not None:
+                session.rollback()
+                return
+            record_event(
+                session,
+                severity="info",
+                category="system",
+                subject="Controller",
+                summary=f"rebuild progress observed drive {enclosure_id}:{slot_id}",
+                after={"percent_complete": percent_complete, "state": state},
+            )
+            session.commit()
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "rebuild_progress_marker_failed",
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+        raise
+
+
+def _record_rebuild_complete_once_sync(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+    require_replacement_cycle: bool = False,
+) -> None:
+    try:
+        with _session(request) as session:
+            if session.get_bind().dialect.name == "sqlite":
+                session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            else:
+                session.begin()
+            if session.get_bind().dialect.name == "postgresql":
+                session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                    {"lock_key": f"rebuild-complete:{enclosure_id}:{slot_id}"},
+                )
+
+            cycle_marker = _load_replacement_cycle_marker_for_slot(
+                session,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+            )
+            if require_replacement_cycle and cycle_marker is None:
+                session.rollback()
+                return
+            if require_replacement_cycle:
+                progress_marker = _load_rebuild_progress_marker_for_slot(
+                    session,
+                    enclosure_id=enclosure_id,
+                    slot_id=slot_id,
+                    cycle_marker=cycle_marker,
+                )
+                if progress_marker is None:
+                    session.rollback()
+                    return
+            completed = _load_rebuild_complete_operator_action_for_slot(
+                session,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                cycle_marker=cycle_marker,
+            )
+            if completed is not None:
+                session.rollback()
+                return
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=f"rebuild complete drive {enclosure_id}:{slot_id}",
+            )
+            session.commit()
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action="rebuild_complete",
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+        raise
+
+
+def _accepts_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "").lower()
+    if "text/html" not in accept:
+        return False
+    return "application/json" not in accept
 
 
 _ARRAY_MEMBER_STATES: frozenset[str] = frozenset(

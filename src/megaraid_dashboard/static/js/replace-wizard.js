@@ -44,12 +44,14 @@
     const missingUrl = root.dataset.replaceMissingUrl;
     const topologyUrl = root.dataset.replaceTopologyUrl;
     const insertUrl = root.dataset.replaceInsertUrl;
+    const rebuildStatusUrl = root.dataset.replaceRebuildStatusUrl;
     const stages = {
       confirm: root.querySelector('[data-stage="confirm"]'),
       serial: root.querySelector('[data-stage="serial"]'),
       "physical-swap": root.querySelector('[data-stage="physical-swap"]'),
       insert: root.querySelector('[data-stage="insert"]'),
       result: root.querySelector('[data-stage="result"]'),
+      rebuild: root.querySelector('[data-stage="rebuild"]'),
     };
     const serialInput = root.querySelector('[data-replace-input="serial"]');
     const dryRunInput = root.querySelector('[data-replace-input="dry-run"]');
@@ -61,6 +63,7 @@
     const arrayCell = root.querySelector('[data-replace-meta="array"]');
     const rowCell = root.querySelector('[data-replace-meta="row"]');
     const output = root.querySelector("[data-replace-output]");
+    let rebuildProgress = root.querySelector("[data-rebuild-progress]");
     const openButton = root.querySelector('[data-replace-action="open"]');
     let inFlight = false;
     let topology = null;
@@ -106,6 +109,16 @@
       updateCloseControls();
     }
 
+    function stopRebuildPolling() {
+      if (!rebuildProgress) return;
+      if (window.htmx) window.htmx.trigger(rebuildProgress, "htmx:abort");
+
+      const nextRebuildProgress = rebuildProgress.cloneNode(false);
+      nextRebuildProgress.textContent = "Loading rebuild status...";
+      rebuildProgress.replaceWith(nextRebuildProgress);
+      rebuildProgress = nextRebuildProgress;
+    }
+
     function close() {
       show(null);
       openButton.hidden = false;
@@ -117,6 +130,7 @@
       if (dgCell) dgCell.textContent = "...";
       if (arrayCell) arrayCell.textContent = "...";
       if (rowCell) rowCell.textContent = "...";
+      stopRebuildPolling();
       topology = null;
       updateRunButton();
       updateRunStep3Button();
@@ -173,6 +187,15 @@
       } finally {
         updateRunStep3Button();
       }
+    }
+
+    function startRebuildPolling() {
+      if (!rebuildProgress || !rebuildStatusUrl || !window.htmx) return;
+      rebuildProgress.setAttribute("hx-get", rebuildStatusUrl);
+      rebuildProgress.setAttribute("hx-trigger", "load, every 30s");
+      rebuildProgress.setAttribute("hx-target", "this");
+      rebuildProgress.setAttribute("hx-swap", "innerHTML");
+      window.htmx.process(rebuildProgress);
     }
 
     root.addEventListener("click", async function (evt) {
@@ -235,6 +258,10 @@
           output.textContent = "Running step 3 insert...\n";
           const insertResponse = await postJson(insertUrl, body);
           appendResult("insert response", insertResponse);
+          if (insertResponse.ok && !body.dry_run) {
+            show("rebuild");
+            startRebuildPolling();
+          }
         } catch (error) {
           appendRequestError("replace request failed", error);
         } finally {
