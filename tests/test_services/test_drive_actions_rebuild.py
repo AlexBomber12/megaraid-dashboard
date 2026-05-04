@@ -79,6 +79,26 @@ def test_parse_rebuild_status_not_in_progress() -> None:
     assert status.time_remaining_minutes == 0
 
 
+def test_parse_rebuild_status_converts_seconds_to_minutes() -> None:
+    status = parse_rebuild_status(
+        _payload(
+            {
+                "Drive /c0/e2/s0 - Rebuild Progress": [
+                    {
+                        "Progress%": "42%",
+                        "State": "In progress",
+                        "Estimated Time Left": "30 Seconds",
+                    }
+                ]
+            }
+        )
+    )
+
+    assert status.percent_complete == 42
+    assert status.state == "In progress"
+    assert status.time_remaining_minutes == 0
+
+
 def test_parse_rebuild_status_rbld_at_zero_percent_is_in_progress() -> None:
     status = parse_rebuild_status(
         _payload(

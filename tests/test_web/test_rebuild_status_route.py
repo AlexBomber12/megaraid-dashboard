@@ -72,6 +72,30 @@ def test_drive_rebuild_status_returns_json(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls == [["/c0/e2/s0", "show", "rebuild", "J"]]
 
 
+def test_drive_rebuild_status_accepts_html_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=42, state="In progress", eta="1234 Minutes")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    headers = {**TEST_AUTH_HEADER, "Accept": "Text/HTML"}
+    with TestClient(test_app, headers=headers) as client:
+        response = client.get("/drives/2:0/replace/rebuild-status")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert 'class="rebuild-progress"' in response.text
+
+
 def test_drive_rebuild_status_records_completion_audit_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

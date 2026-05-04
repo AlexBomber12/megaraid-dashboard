@@ -222,19 +222,23 @@ def _parse_minutes(value: Any) -> int | None:
     if lowered in {"0", "0 minutes", "0 minute"}:
         return 0
 
+    days = _unit_value(lowered, ("day", "days", "d"))
     hours = _unit_value(lowered, ("hour", "hours", "hr", "hrs", "h"))
     minutes = _unit_value(lowered, ("minute", "minutes", "min", "mins", "m"))
-    if hours is not None or minutes is not None:
-        return (hours or 0) * 60 + (minutes or 0)
+    seconds = _unit_value(lowered, ("second", "seconds", "sec", "secs", "s"))
+    if days is not None or hours is not None or minutes is not None or seconds is not None:
+        return int((days or 0) * 24 * 60 + (hours or 0) * 60 + (minutes or 0) + (seconds or 0) / 60)
+    if any(character.isalpha() for character in lowered):
+        return None
     return _parse_int(lowered)
 
 
-def _unit_value(text: str, units: tuple[str, ...]) -> int | None:
+def _unit_value(text: str, units: tuple[str, ...]) -> float | None:
     unit_pattern = "|".join(re.escape(unit) for unit in units)
-    match = re.search(rf"(\d+)\s*(?:{unit_pattern})\b", text)
+    match = re.search(rf"(\d+(?:\.\d+)?)\s*(?:{unit_pattern})\b", text)
     if match is None:
         return None
-    return int(match.group(1))
+    return float(match.group(1))
 
 
 def _normalize_rebuild_state(raw_state: str | None, percent: int | None) -> str:

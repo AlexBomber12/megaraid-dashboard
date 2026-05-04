@@ -1165,7 +1165,7 @@ def _record_rebuild_complete_once_sync(
 
 
 def _accepts_html(request: Request) -> bool:
-    accept = request.headers.get("accept", "")
+    accept = request.headers.get("accept", "").lower()
     if "text/html" not in accept:
         return False
     return "application/json" not in accept
