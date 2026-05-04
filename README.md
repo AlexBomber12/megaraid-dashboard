@@ -47,7 +47,9 @@ pytest
 - [Architecture](docs/ARCHITECTURE.md) - high-level data flow, components, schema, and state.
 - [Troubleshooting](TROUBLESHOOTING.md) - symptom-to-cause diagnostic reference.
 - [Proxy setup](docs/PROXY-SETUP.md) - nginx reverse proxy, TLS, and `/raid/` path prefix.
-- Security audit - audit checklist and findings; forthcoming.
+- [Threat model](docs/THREAT-MODEL.md) - assets, trust boundaries, actors, and STRIDE review.
+- [Security audit](docs/SECURITY-AUDIT-2026-Q2.md) - quarterly pass-1 audit checklist,
+  findings, and remediation plan. Run `scripts/security-scan.sh` during each quarterly review.
 
 ## Cross-References
 
