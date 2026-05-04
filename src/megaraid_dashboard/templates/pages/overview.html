@@ -4,6 +4,56 @@
 
 {% block content %}
   {% include "partials/overview_data.html" %}
+  <section class="foreign-config" aria-label="Patrol read">
+    <h2>Patrol read</h2>
+    <p>
+      Whole-controller background media scan. Starting a pass can affect array
+      performance while it runs.
+    </p>
+    <pre
+      id="patrol-read-state"
+      class="foreign-config__result"
+      hx-get="{{ request.url_for('controller_patrol_read').path }}"
+      hx-trigger="load, every 60s"
+      hx-swap="innerHTML"
+      aria-live="polite"
+    >Loading patrol read state...</pre>
+    <div class="foreign-config__form">
+      <button
+        class="button button--warning"
+        type="button"
+        hx-post="{{ request.url_for('controller_patrol_read_start').path }}"
+        hx-target="#patrol-read-state"
+        hx-swap="innerHTML"
+        hx-confirm="Start patrol read now? This can affect performance while it runs."
+      >Start</button>
+      <button
+        class="button"
+        type="button"
+        hx-post="{{ request.url_for('controller_patrol_read_stop').path }}"
+        hx-target="#patrol-read-state"
+        hx-swap="innerHTML"
+      >Stop</button>
+      <form
+        method="post"
+        action="{{ request.url_for('controller_patrol_read_mode').path }}"
+        hx-post="{{ request.url_for('controller_patrol_read_mode').path }}"
+        hx-ext="json-enc"
+        hx-target="#patrol-read-state"
+        hx-swap="innerHTML"
+      >
+        <label class="foreign-config__field">
+          <span>Mode</span>
+          <select class="input" name="mode">
+            <option value="auto">auto</option>
+            <option value="manual">manual</option>
+            <option value="disable">disable</option>
+          </select>
+        </label>
+        <button class="button button--primary" type="submit">Set mode</button>
+      </form>
+    </div>
+  </section>
   {% if not maintenance_state.active %}
     {% include "partials/maintenance_start_form.html" %}
   {% endif %}
