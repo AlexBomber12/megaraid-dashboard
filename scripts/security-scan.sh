@@ -26,13 +26,13 @@ run_scanner() {
 }
 
 echo "==> ruff (security rules)"
-run_scanner "ruff security rules" 1 .venv/bin/ruff check --select S --output-format concise src/
+run_scanner "ruff security rules" 1 python -m ruff check --select S --output-format concise src/
 
 echo "==> pip-audit"
-run_scanner "pip-audit" 1 .venv/bin/pip-audit --skip-editable
+run_scanner "pip-audit" 1 python -m pip_audit --skip-editable
 
 echo "==> bandit (deeper SAST)"
-run_scanner "bandit" 1 .venv/bin/bandit -r src/ -ll
+run_scanner "bandit" 1 python -m bandit -r src/ -ll
 
 echo "==> file permissions on /etc/megaraid-dashboard/env"
 stat -c "%a %U:%G %n" /etc/megaraid-dashboard/env 2>/dev/null || echo "env file not present (dev environment)"
