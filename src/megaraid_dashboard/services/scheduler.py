@@ -25,6 +25,7 @@ from megaraid_dashboard.db.dao import (
     record_event,
     upsert_temp_state,
 )
+from megaraid_dashboard.db.event_metrics import stage_event_metric
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.db.retention import (
     downsample_to_daily,
@@ -40,7 +41,6 @@ from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 from megaraid_dashboard.web.metrics import (
     COLLECTOR_CYCLE_DURATION,
     COLLECTOR_LAST_RUN_TIMESTAMP,
-    EVENTS_TOTAL,
 )
 
 LOGGER = structlog.get_logger(__name__)
@@ -280,7 +280,7 @@ class CollectorService:
             )
             for event in events:
                 session.add(event)
-                EVENTS_TOTAL.labels(severity=event.severity, category=event.category).inc()
+                stage_event_metric(session, severity=event.severity, category=event.category)
             if events:
                 session.commit()
 
