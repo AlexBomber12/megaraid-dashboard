@@ -86,6 +86,7 @@ def test_temperature_threshold_defaults_validate(monkeypatch: pytest.MonkeyPatch
     assert settings.cv_capacitance_warning_percent == 70
     assert settings.collector_enabled is True
     assert settings.collector_lock_path == "/tmp/megaraid-dashboard-collector.lock"
+    assert settings.metrics_lock_path == "/tmp/megaraid-dashboard-metrics.lock"
     assert settings.auth_rate_limit_per_minute == 5
     assert settings.auth_rate_limit_burst == 2
     assert settings.trusted_proxy_ips == ""
@@ -261,6 +262,14 @@ def test_collector_lock_path_must_not_be_empty(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", " ")
 
     with pytest.raises(ValidationError, match="collector_lock_path"):
+        Settings()
+
+
+def test_metrics_lock_path_must_not_be_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("METRICS_LOCK_PATH", " ")
+
+    with pytest.raises(ValidationError, match="metrics_lock_path"):
         Settings()
 
 

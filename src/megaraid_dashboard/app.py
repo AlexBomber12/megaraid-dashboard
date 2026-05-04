@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
+import uvicorn
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
@@ -27,6 +28,7 @@ from megaraid_dashboard.db import get_engine, get_sessionmaker
 from megaraid_dashboard.services import CollectorService, EventDetector
 from megaraid_dashboard.web.auth import BasicAuthMiddleware
 from megaraid_dashboard.web.csrf import CsrfMiddleware
+from megaraid_dashboard.web.metrics import create_metrics_app
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
 from megaraid_dashboard.web.routes import router
@@ -35,6 +37,7 @@ from megaraid_dashboard.web.static import CacheControlStaticFiles
 LOGGER = structlog.get_logger(__name__)
 _COLLECTOR_LOCK_RETRY_SECONDS = 30.0
 _HEALTH_CHECK_SQLITE_BUSY_TIMEOUT_MS = 250
+_METRICS_SERVER_STARTUP_TIMEOUT_SECONDS = 5.0
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 _STATIC_DIR = _PACKAGE_ROOT / "static"
 
@@ -45,6 +48,13 @@ class _CollectorRuntime:
     scheduler: AsyncIOScheduler | None = None
     lock_fd: int | None = None
     retry_task: asyncio.Task[None] | None = None
+
+
+@dataclass
+class _MetricsRuntime:
+    server: uvicorn.Server | None = None
+    task: asyncio.Task[None] | None = None
+    lock_fd: int | None = None
 
 
 def create_app() -> FastAPI:
@@ -76,6 +86,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         _upgrade_database(settings.database_url, connection=connection)
     session_factory = get_sessionmaker(engine)
     collector_runtime = _CollectorRuntime()
+    metrics_runtime = _MetricsRuntime()
     app.state.engine = engine
     app.state.health_engine = health_engine
     app.state.health_executor = health_executor
@@ -85,8 +96,22 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.collector_lock_fd = None
     app.state.collector_retry_task = None
     app.state.scheduler = None
+    app.state.metrics_server = None
+    app.state.metrics_task = None
+    app.state.metrics_lock_fd = None
 
     try:
+        if settings.metrics_enabled and not await _start_metrics_server(
+            app=app,
+            settings=settings,
+            runtime=metrics_runtime,
+        ):
+            LOGGER.info(
+                "metrics_server_not_started",
+                reason="metrics_lock_held",
+                lock_path=settings.metrics_lock_path,
+            )
+
         if settings.collector_enabled:
             collector_started = await _start_collector_scheduler(
                 app=app,
@@ -112,6 +137,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         yield
     finally:
+        await _stop_metrics_server(metrics_runtime)
         if collector_runtime.retry_task is not None:
             collector_runtime.retry_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -125,6 +151,84 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             health_executor.shutdown(wait=False, cancel_futures=True)
             health_engine.dispose()
             engine.dispose()
+
+
+async def _start_metrics_server(
+    *,
+    app: FastAPI,
+    settings: Settings,
+    runtime: _MetricsRuntime,
+) -> bool:
+    metrics_lock_fd = _try_acquire_metrics_lock(settings.metrics_lock_path)
+    if metrics_lock_fd is None:
+        app.state.metrics_lock_fd = None
+        return False
+
+    try:
+        config = uvicorn.Config(
+            create_metrics_app(),
+            host=settings.metrics_listen_address,
+            port=settings.metrics_port,
+            log_level="warning",
+            loop="asyncio",
+        )
+        server = uvicorn.Server(config)
+        task = asyncio.create_task(_serve_metrics_server(server))
+        await _wait_for_metrics_server_startup(server=server, task=task)
+    except BaseException:
+        if "task" in locals() and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        _release_metrics_lock(metrics_lock_fd)
+        app.state.metrics_lock_fd = None
+        raise
+
+    runtime.server = server
+    runtime.task = task
+    runtime.lock_fd = metrics_lock_fd
+    app.state.metrics_server = server
+    app.state.metrics_task = task
+    return True
+
+
+async def _serve_metrics_server(server: uvicorn.Server) -> None:
+    await server.serve()
+
+
+async def _wait_for_metrics_server_startup(
+    *,
+    server: uvicorn.Server,
+    task: asyncio.Task[None],
+) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _METRICS_SERVER_STARTUP_TIMEOUT_SECONDS
+
+    while not server.started:
+        if task.done():
+            task.result()
+            msg = "metrics server exited before startup completed"
+            raise RuntimeError(msg)
+        if server.should_exit:
+            await task
+            msg = "metrics server stopped before startup completed"
+            raise RuntimeError(msg)
+        if loop.time() >= deadline:
+            msg = "timed out waiting for metrics server startup"
+            raise TimeoutError(msg)
+        await asyncio.sleep(0.01)
+
+
+async def _stop_metrics_server(runtime: _MetricsRuntime) -> None:
+    try:
+        if runtime.server is None or runtime.task is None:
+            return
+        runtime.server.should_exit = True
+        await runtime.task
+    finally:
+        if runtime.lock_fd is not None:
+            _release_metrics_lock(runtime.lock_fd)
+            runtime.lock_fd = None
 
 
 async def _start_collector_scheduler(
@@ -238,17 +342,17 @@ def _current_database_heads(connection: Connection | None) -> set[str] | None:
     return set(context.get_current_heads())
 
 
-def _try_acquire_collector_lock(lock_path: str) -> int | None:
+def _try_acquire_process_lock(lock_path: str, *, lock_name: str) -> int | None:
     flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
     try:
         lock_fd = os.open(lock_path, flags, 0o600)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
-            msg = f"collector lock path must not be a symlink: {lock_path}"
+            msg = f"{lock_name} lock path must not be a symlink: {lock_path}"
             raise RuntimeError(msg) from exc
         raise
     try:
-        _validate_collector_lock_file(lock_fd, lock_path)
+        _validate_process_lock_file(lock_fd, lock_path, lock_name=lock_name)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         os.close(lock_fd)
@@ -262,20 +366,36 @@ def _try_acquire_collector_lock(lock_path: str) -> int | None:
     return lock_fd
 
 
-def _validate_collector_lock_file(lock_fd: int, lock_path: str) -> None:
+def _validate_process_lock_file(lock_fd: int, lock_path: str, *, lock_name: str) -> None:
     lock_stat = os.fstat(lock_fd)
     if not stat.S_ISREG(lock_stat.st_mode):
-        msg = f"collector lock path must be a regular file: {lock_path}"
+        msg = f"{lock_name} lock path must be a regular file: {lock_path}"
         raise RuntimeError(msg)
     if lock_stat.st_uid != os.getuid():
-        msg = f"collector lock path must be owned by the current user: {lock_path}"
+        msg = f"{lock_name} lock path must be owned by the current user: {lock_path}"
         raise RuntimeError(msg)
     if lock_stat.st_nlink != 1:
-        msg = f"collector lock path must not have hard links: {lock_path}"
+        msg = f"{lock_name} lock path must not have hard links: {lock_path}"
         raise RuntimeError(msg)
+
+
+def _try_acquire_collector_lock(lock_path: str) -> int | None:
+    return _try_acquire_process_lock(lock_path, lock_name="collector")
+
+
+def _try_acquire_metrics_lock(lock_path: str) -> int | None:
+    return _try_acquire_process_lock(lock_path, lock_name="metrics")
 
 
 def _release_collector_lock(lock_fd: int) -> None:
+    _release_process_lock(lock_fd)
+
+
+def _release_metrics_lock(lock_fd: int) -> None:
+    _release_process_lock(lock_fd)
+
+
+def _release_process_lock(lock_fd: int) -> None:
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
     finally:
