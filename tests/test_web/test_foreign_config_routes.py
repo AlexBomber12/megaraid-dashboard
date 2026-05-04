@@ -19,6 +19,7 @@ from megaraid_dashboard.db.models import (
     Event,
     PhysicalDriveSnapshot,
 )
+from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliParseError
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "storcli" / "redacted"
@@ -233,6 +234,64 @@ def test_import_returns_502_when_command_status_failed(
         assert event.summary.startswith(f"foreign config import digest={digest}")
         assert "failed: StorcliCommandFailed" in event.summary
         assert "import not allowed" in event.summary
+
+
+def test_import_audits_rejection_when_precheck_parse_error(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        del args
+        raise StorcliParseError("Response Data is not a mapping")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/import",
+            headers=headers,
+            json={"confirmation": "anything"},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli parse failed"
+        assert "Response Data is not a mapping" in body["detail"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith("foreign config import digest=unknown")
+        assert "rejected: storcli parse failed" in event.summary
+        assert "Response Data is not a mapping" in event.summary
+
+
+def test_import_audits_rejection_when_precheck_command_error(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        del args
+        raise StorcliCommandFailed("storcli unavailable", err_msg="storcli unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/import",
+            headers=headers,
+            json={"confirmation": "anything"},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli command failed"
+        assert "storcli unavailable" in body["detail"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith("foreign config import digest=unknown")
+        assert "rejected: storcli command failed" in event.summary
+        assert "storcli unavailable" in event.summary
 
 
 def test_import_rejects_confirmation_mismatch(
@@ -463,6 +522,64 @@ def test_clear_returns_502_when_command_status_failed(
         assert event.summary.startswith(f"foreign config clear digest={digest}")
         assert "failed: StorcliCommandFailed" in event.summary
         assert "delete failed" in event.summary
+
+
+def test_clear_audits_rejection_when_precheck_parse_error(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        del args
+        raise StorcliParseError("Response Data is not a mapping")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/clear",
+            headers=headers,
+            json={"confirmation": "CLEAR FOREIGN CONFIG"},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli parse failed"
+        assert "Response Data is not a mapping" in body["detail"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith("foreign config clear digest=unknown")
+        assert "rejected: storcli parse failed" in event.summary
+        assert "Response Data is not a mapping" in event.summary
+
+
+def test_clear_audits_rejection_when_precheck_command_error(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        del args
+        raise StorcliCommandFailed("storcli unavailable", err_msg="storcli unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/foreign-config/clear",
+            headers=headers,
+            json={"confirmation": "CLEAR FOREIGN CONFIG"},
+        )
+
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "storcli command failed"
+        assert "storcli unavailable" in body["detail"]
+        event = _read_single_event(test_app)
+        assert event.summary.startswith("foreign config clear digest=unknown")
+        assert "rejected: storcli command failed" in event.summary
+        assert "storcli unavailable" in event.summary
 
 
 def test_clear_rejects_wrong_confirmation_phrase(

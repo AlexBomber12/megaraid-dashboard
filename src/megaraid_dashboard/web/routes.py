@@ -1595,13 +1595,21 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
     try:
         live_foreign_config = await _query_live_foreign_config(settings=settings)
     except StorcliParseError as exc:
-        return JSONResponse(
-            {"error": "storcli parse failed", "detail": str(exc)},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest="",
+            reason=f"storcli parse failed: {_truncate_audit_detail(str(exc))}",
+            rejection_body={"error": "storcli parse failed", "detail": str(exc)},
             status_code=502,
         )
     except StorcliError as exc:
-        return JSONResponse(
-            {"error": "storcli command failed", "detail": str(exc)},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="import",
+            digest="",
+            reason=f"storcli command failed: {_truncate_audit_detail(str(exc))}",
+            rejection_body={"error": "storcli command failed", "detail": str(exc)},
             status_code=502,
         )
 
@@ -1711,13 +1719,21 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
     try:
         live_foreign_config = await _query_live_foreign_config(settings=settings)
     except StorcliParseError as exc:
-        return JSONResponse(
-            {"error": "storcli parse failed", "detail": str(exc)},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest="",
+            reason=f"storcli parse failed: {_truncate_audit_detail(str(exc))}",
+            rejection_body={"error": "storcli parse failed", "detail": str(exc)},
             status_code=502,
         )
     except StorcliError as exc:
-        return JSONResponse(
-            {"error": "storcli command failed", "detail": str(exc)},
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action="clear",
+            digest="",
+            reason=f"storcli command failed: {_truncate_audit_detail(str(exc))}",
+            rejection_body={"error": "storcli command failed", "detail": str(exc)},
             status_code=502,
         )
 
