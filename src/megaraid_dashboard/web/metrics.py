@@ -11,7 +11,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
 
-from megaraid_dashboard.db import ControllerSnapshot
+from megaraid_dashboard.db import ControllerSnapshot, PhysicalDriveSnapshot, VirtualDriveSnapshot
+from megaraid_dashboard.services.overview import derive_controller_health
 
 
 class MegaraidCollector:
@@ -44,7 +45,23 @@ class MegaraidCollector:
                 return []
             physical_drives = list(snap.physical_drives)
             virtual_drives = list(snap.virtual_drives)
+            cachevault = snap.cachevault
 
+        controller_health = GaugeMetricFamily(
+            "megaraid_controller_health",
+            "Controller health (0=optimal, 1=warning, 2=critical).",
+            labels=["model", "serial"],
+        )
+        roc_temperature = GaugeMetricFamily(
+            "megaraid_controller_roc_temperature_celsius",
+            "Controller RoC silicon temperature in Celsius.",
+            labels=["model", "serial"],
+        )
+        cv_capacitance = GaugeMetricFamily(
+            "megaraid_cv_capacitance_percent",
+            "Cache vault capacitance percent.",
+            labels=["model", "serial"],
+        )
         temperature = GaugeMetricFamily(
             "megaraid_drive_temperature_celsius",
             "Per-physical-drive temperature in Celsius from latest snapshot.",
@@ -60,6 +77,19 @@ class MegaraidCollector:
             "Per-virtual-drive state (0=optimal, 1=warning, 2=critical).",
             labels=["vd_id", "name", "raid_level"],
         )
+
+        controller_labels = [snap.model_name, snap.serial_number]
+        controller_health.add_metric(
+            controller_labels,
+            float(_encode_controller_health(snap, physical_drives, virtual_drives)),
+        )
+        controller_families = [controller_health]
+        if snap.roc_temperature_celsius is not None:
+            roc_temperature.add_metric(controller_labels, float(snap.roc_temperature_celsius))
+            controller_families.append(roc_temperature)
+        if cachevault is not None and cachevault.capacitance_percent is not None:
+            cv_capacitance.add_metric(controller_labels, float(cachevault.capacitance_percent))
+            controller_families.append(cv_capacitance)
 
         for physical_drive in physical_drives:
             labels = [
@@ -80,7 +110,25 @@ class MegaraidCollector:
             ]
             virtual_drive_state.add_metric(labels, float(_encode_vd_state(virtual_drive.state)))
 
-        return [temperature, physical_drive_state, virtual_drive_state]
+        return [
+            *controller_families,
+            temperature,
+            physical_drive_state,
+            virtual_drive_state,
+        ]
+
+
+def _encode_controller_health(
+    snap: ControllerSnapshot,
+    pds: list[PhysicalDriveSnapshot],
+    vds: list[VirtualDriveSnapshot],
+) -> int:
+    health = derive_controller_health(snap, pds, vds)
+    return {
+        "optimal": 0,
+        "warning": 1,
+        "critical": 2,
+    }[health]
 
 
 def _encode_pd_state(state: str) -> int:
