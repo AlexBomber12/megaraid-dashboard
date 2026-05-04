@@ -104,6 +104,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.metrics_enabled and not await _start_metrics_server(
             app=app,
             settings=settings,
+            session_factory=session_factory,
             runtime=metrics_runtime,
         ):
             LOGGER.info(
@@ -157,6 +158,7 @@ async def _start_metrics_server(
     *,
     app: FastAPI,
     settings: Settings,
+    session_factory: sessionmaker[Session] | None = None,
     runtime: _MetricsRuntime,
 ) -> bool:
     metrics_lock_fd = _try_acquire_metrics_lock(settings.metrics_lock_path)
@@ -166,7 +168,7 @@ async def _start_metrics_server(
 
     try:
         config = uvicorn.Config(
-            create_metrics_app(),
+            create_metrics_app(session_factory),
             host=settings.metrics_listen_address,
             port=settings.metrics_port,
             log_level="warning",
