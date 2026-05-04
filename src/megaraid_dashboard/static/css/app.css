@@ -213,6 +213,77 @@ a:hover {
   background: var(--surface-hover);
 }
 
+.maintenance-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-tight);
+  min-height: 48px;
+  padding: var(--space-3) var(--space-section);
+  border-bottom: 2px solid var(--color-warning);
+  background: rgba(240, 180, 77, 0.15);
+  color: inherit;
+}
+
+.maintenance-banner + .app-shell .site-header {
+  top: 48px;
+}
+
+.maintenance-banner__icon {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  flex: 0 0 auto;
+  color: var(--color-warning);
+}
+
+.maintenance-banner__body {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: var(--space-tight);
+  min-width: 0;
+}
+
+.maintenance-start {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-section);
+  padding: var(--tile-padding);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--tile-radius);
+}
+
+.maintenance-start__title {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
+.maintenance-start form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.maintenance-start__field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.maintenance-start__field span {
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: var(--text-transform-label);
+}
+
 .button__icon {
   width: var(--icon-size-sm);
   height: var(--icon-size-sm);
