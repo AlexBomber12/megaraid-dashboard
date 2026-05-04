@@ -77,6 +77,7 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
             "data-replace-missing-url": "/drives/252:4/replace/missing",
             "data-replace-topology-url": "/drives/252:4/replace/topology",
             "data-replace-insert-url": "/drives/252:4/replace/insert",
+            "data-replace-rebuild-status-url": "/drives/252:4/replace/rebuild-status",
         }
     ]
     assert "Replace drive" in response.text
@@ -116,6 +117,9 @@ def test_drive_detail_replace_urls_include_forwarded_prefix(
     )
     assert parsed.wizard_roots[0]["data-replace-insert-url"] == (
         "/raid/drives/252:4/replace/insert"
+    )
+    assert parsed.wizard_roots[0]["data-replace-rebuild-status-url"] == (
+        "/raid/drives/252:4/replace/rebuild-status"
     )
 
 
@@ -193,6 +197,15 @@ def test_replace_wizard_js_step3_posts_insert_without_client_topology() -> None:
     assert "array: topology.array," not in source
     assert "row: topology.row," not in source
     assert "postJson(insertUrl, body)" in source
+
+
+def test_replace_wizard_js_starts_rebuild_polling_after_insert_success() -> None:
+    source = Path("src/megaraid_dashboard/static/js/replace-wizard.js").read_text(encoding="utf-8")
+
+    assert "const rebuildStatusUrl = root.dataset.replaceRebuildStatusUrl;" in source
+    assert 'show("rebuild");' in source
+    assert "startRebuildPolling();" in source
+    assert 'rebuildProgress.setAttribute("hx-trigger", "load, every 30s");' in source
 
 
 def _drive_detail_response(

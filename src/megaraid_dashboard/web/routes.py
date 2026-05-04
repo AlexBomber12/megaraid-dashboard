@@ -35,11 +35,13 @@ from megaraid_dashboard.services.drive_actions import (
     ReplaceStep,
     build_insert_replacement_command,
     build_locate_command,
+    build_rebuild_status_command,
     build_set_missing_command,
     build_set_offline_command,
     build_show_drive_command,
     can_transition,
     can_transition_step3,
+    parse_rebuild_status,
     validate_enclosure_slot,
 )
 from megaraid_dashboard.services.drive_history import (
@@ -69,6 +71,7 @@ from megaraid_dashboard.services.overview import (
 from megaraid_dashboard.storcli import (
     DriveShow,
     StorcliError,
+    StorcliParseError,
     parse_drive_show,
     run_storcli,
 )
@@ -740,6 +743,57 @@ async def drive_replace_topology(enclosure: str, slot: str, request: Request) ->
     )
 
 
+@router.get("/drives/{enclosure}:{slot}/replace/rebuild-status", name="drive_rebuild_status")
+async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> Response:
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+        argv = build_rebuild_status_command(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    settings: Settings = request.app.state.settings
+    try:
+        payload = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        status = parse_rebuild_status(payload)
+    except StorcliParseError as exc:
+        return JSONResponse({"error": "storcli parse failed", "detail": str(exc)}, status_code=502)
+    except StorcliError as exc:
+        return JSONResponse(
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
+        )
+
+    if status.percent_complete >= 100 or status.state == "Complete":
+        await run_in_threadpool(
+            _record_rebuild_complete_once_sync,
+            request=request,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+
+    if _accepts_html(request):
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="partials/rebuild_progress.html",
+            context={"status": status},
+        )
+
+    return JSONResponse(
+        {
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "percent_complete": status.percent_complete,
+            "state": status.state,
+            "time_remaining_minutes": status.time_remaining_minutes,
+        }
+    )
+
+
 @router.post("/drives/{enclosure}:{slot}/replace/insert", name="drive_replace_insert")
 async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> JSONResponse:
     """Step 3: insert the replacement drive into the missing slot, kicking off rebuild."""
@@ -1015,6 +1069,43 @@ def _extract_serial_from_audit(message: str) -> str | None:
         if token == "serial" and index + 1 < len(tokens):
             return tokens[index + 1]
     return None
+
+
+def _record_rebuild_complete_once_sync(
+    *,
+    request: Request,
+    enclosure_id: int,
+    slot_id: int,
+) -> None:
+    latest = _load_last_operator_action_for_slot(
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if latest is not None and latest.summary == f"rebuild complete drive {enclosure_id}:{slot_id}":
+        return
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=f"rebuild complete drive {enclosure_id}:{slot_id}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action="rebuild_complete",
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+        raise
+
+
+def _accepts_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    if "text/html" not in accept:
+        return False
+    return "application/json" not in accept
 
 
 _ARRAY_MEMBER_STATES: frozenset[str] = frozenset(
