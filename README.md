@@ -45,7 +45,7 @@ pytest
 - Install - production installer notes; forthcoming.
 - [Runbook](docs/RUNBOOK.md) - routine operations, incidents, recovery, backups, and upgrades.
 - [Architecture](docs/ARCHITECTURE.md) - high-level data flow, components, schema, and state.
-- Troubleshooting - diagnostic reference; forthcoming.
+- [Troubleshooting](TROUBLESHOOTING.md) - symptom-to-cause diagnostic reference.
 - [Proxy setup](docs/PROXY-SETUP.md) - nginx reverse proxy, TLS, and `/raid/` path prefix.
 - Security audit - audit checklist and findings; forthcoming.
 
