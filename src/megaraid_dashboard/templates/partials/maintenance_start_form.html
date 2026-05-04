@@ -1,0 +1,25 @@
+<section class="maintenance-start" aria-label="Start maintenance">
+  <h2 class="maintenance-start__title">Start maintenance window</h2>
+  <form
+    hx-post="{{ request.url_for('maintenance_start').path }}"
+    hx-ext="json-enc"
+    hx-swap="none"
+    hx-on::after-request="if (event.detail.successful) window.location.reload()"
+  >
+    <label class="maintenance-start__field">
+      <span>Duration</span>
+      <select class="input" name="duration_minutes">
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes</option>
+        <option value="60" selected>1 hour</option>
+        <option value="240">4 hours</option>
+        <option value="1440">24 hours</option>
+      </select>
+    </label>
+    <label class="maintenance-start__field">
+      <span>Reason</span>
+      <input class="input" type="text" name="reason" maxlength="200" required>
+    </label>
+    <button type="submit" class="button">Start maintenance</button>
+  </form>
+</section>

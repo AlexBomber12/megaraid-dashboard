@@ -6,21 +6,31 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi.templating import Jinja2Templates
 from jinja2 import Environment, FileSystemLoader, pass_context, select_autoescape
 from jinja2.runtime import Context
 from markupsafe import Markup, escape
+from sqlalchemy.orm import Session, sessionmaker
+from starlette.requests import Request
+
+from megaraid_dashboard.db.dao import get_maintenance_state
 
 _SLOT_TOKEN_RE = re.compile(
     r"(?P<event_slot_ref>e(?P<enclosure>\d+):s(?P<slot>\d+))"
     r"|(?P<slot_context>\b(?:PD|drive|slot|slots?)\s+)(?P<slot_ref>\d+:\d+)",
     re.IGNORECASE,
 )
+_ContextProcessor = Callable[[Request], dict[str, Any]]
 
 
-def create_templates(directory: Path) -> Jinja2Templates:
+def create_templates(
+    directory: Path,
+    *,
+    context_processors: list[_ContextProcessor] | None = None,
+) -> Jinja2Templates:
     environment = Environment(
         loader=FileSystemLoader(directory),
         autoescape=select_autoescape(enabled_extensions=("html", "xml")),
@@ -32,7 +42,16 @@ def create_templates(directory: Path) -> Jinja2Templates:
     environment.filters["slot_link"] = _slot_link_filter
     environment.globals["app_version"] = _app_version()
     environment.globals["build_sha"] = os.environ.get("GIT_SHA", "unknown")
-    return Jinja2Templates(env=environment)
+    processors: list[_ContextProcessor] = [_maintenance_context_processor]
+    if context_processors is not None:
+        processors.extend(context_processors)
+    return Jinja2Templates(env=environment, context_processors=processors)
+
+
+def _maintenance_context_processor(request: Request) -> dict[str, Any]:
+    session_factory = cast(sessionmaker[Session], request.app.state.session_factory)
+    with session_factory() as session:
+        return {"maintenance_state": get_maintenance_state(session, now=datetime.now(UTC))}
 
 
 def iso_utc(value: datetime | None) -> str:

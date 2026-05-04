@@ -4,4 +4,7 @@
 
 {% block content %}
   {% include "partials/overview_data.html" %}
+  {% if not maintenance_state.active %}
+    {% include "partials/maintenance_start_form.html" %}
+  {% endif %}
 {% endblock %}
