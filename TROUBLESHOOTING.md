@@ -111,7 +111,7 @@ sudo systemd-run --wait --pipe --collect \
 sudo grep -E '^(ALERT_SMTP_HOST|ALERT_SMTP_PORT|ALERT_SMTP_USER|ALERT_SMTP_USE_STARTTLS|ALERT_FROM|ALERT_TO|ALERT_SEVERITY_THRESHOLD|ALERT_SUPPRESS_WINDOW_MINUTES|ALERT_THROTTLE_PER_HOUR)=' /etc/megaraid-dashboard/env
 journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'alert\|smtp\|notifier\|maintenance\|throttle'
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select id,severity,category,summary,notified_at,created_at from events order by id desc limit 20;"
-sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from app_state where key='maintenance_mode';"
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from system_state where key='maintenance_mode';"
 ```
 
 ### Fixes
@@ -182,7 +182,7 @@ sudo sed -n '1,200p' /etc/sudoers.d/megaraid-dashboard
 sudo -u raid-monitor sudo -n /usr/local/sbin/storcli64 /c0/e252/s0 start locate J
 sudo -u raid-monitor sudo -n /usr/local/sbin/storcli64 /c0/e252/s0 stop locate J
 journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'locate\|sudo\|storcli'
-sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select created_at,category,summary,result from events where category='operator_action' order by id desc limit 10;"
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select created_at,category,summary from events where category='operator_action' order by id desc limit 10;"
 ```
 
 Replace `e252/s0` with the enclosure and slot shown on the drive detail page.
@@ -215,7 +215,7 @@ The replace wizard returns HTTP 409, or the output panel shows an error such as
 
 ```bash
 journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'replace\|offline\|missing\|insert'
-sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select created_at,category,summary,result from events where category='operator_action' order by id desc limit 20;"
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select created_at,category,summary from events where category='operator_action' order by id desc limit 20;"
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select enclosure_id,slot_id,state,serial_number from pd_snapshots order by id desc limit 30;"
 sudo -u raid-monitor sudo -n /usr/local/sbin/storcli64 /c0/e252/s0 show all J >/tmp/slot.json
 python3 -m json.tool /tmp/slot.json >/dev/null && grep -i 'SN\|State' /tmp/slot.json
@@ -363,7 +363,7 @@ sudo -u raid-monitor sudo -n /usr/local/sbin/storcli64 /c0 show all J >/tmp/cont
 python3 -m json.tool /tmp/controller.json >/dev/null && grep -i 'temperature\|roc' /tmp/controller.json
 rm -f /tmp/controller.json
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select created_at,severity,category,summary,notified_at from events where summary like '%RoC%' or summary like '%temperature%' order by id desc limit 20;"
-sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from app_state where key='maintenance_mode';"
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from system_state where key='maintenance_mode';"
 journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'roc\|temperature\|notifier\|maintenance'
 ```
 
