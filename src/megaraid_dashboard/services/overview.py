@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -286,7 +286,12 @@ def _load_overview_strip(
     drives_url: str = "/drives",
 ) -> OverviewStripSection:
     return OverviewStripSection(
-        controller=_load_controller_tile(latest_snapshot, overview_url=overview_url),
+        controller=_load_controller_tile(
+            latest_snapshot,
+            physical_drives=() if latest_snapshot is None else latest_snapshot.physical_drives,
+            virtual_drives=() if latest_snapshot is None else latest_snapshot.virtual_drives,
+            overview_url=overview_url,
+        ),
         vd=_load_vd_tile(latest_snapshot, overview_url=overview_url),
         raid=_load_raid_tile(latest_snapshot, overview_url=overview_url),
         bbu=_load_bbu_tile(latest_snapshot, overview_url=overview_url, drives_url=drives_url),
@@ -302,14 +307,19 @@ def _load_overview_strip(
 def _load_controller_tile(
     latest_snapshot: ControllerSnapshot | None,
     *,
+    physical_drives: Sequence[PhysicalDriveSnapshot] = (),
+    virtual_drives: Sequence[VirtualDriveSnapshot] = (),
     overview_url: str = "/",
 ) -> StripTileViewModel:
     status = "neutral"
     value = "Unknown"
     if latest_snapshot is not None:
-        alarm_state = latest_snapshot.alarm_state.casefold()
-        status = "optimal" if alarm_state in {"none", "off"} else "critical"
-        value = "Optimal" if status == "optimal" else "Alarm"
+        status = derive_controller_health(latest_snapshot, physical_drives, virtual_drives)
+        value = {
+            "optimal": "Optimal",
+            "warning": "Degraded",
+            "critical": "Alarm",
+        }[status]
 
     return StripTileViewModel(
         label="Controller",
@@ -488,6 +498,7 @@ def _get_latest_overview_snapshot(session: Session) -> ControllerSnapshot | None
     return session.scalars(
         select(ControllerSnapshot)
         .options(
+            selectinload(ControllerSnapshot.physical_drives),
             selectinload(ControllerSnapshot.virtual_drives),
             selectinload(ControllerSnapshot.cachevault),
         )
@@ -743,18 +754,12 @@ def _controller_health_card(
     snapshot: ControllerSnapshot,
     physical_drive_severity: str,
 ) -> StatCard:
-    severity = "optimal"
-    if snapshot.alarm_state != "Off":
-        severity = _worst_severity(severity, "warning")
-
-    for virtual_drive in snapshot.virtual_drives:
-        if virtual_drive.state not in _VD_OPTIMAL_STATES:
-            severity = _worst_severity(
-                severity,
-                _event_severity_to_status(virtual_drive_state_severity(virtual_drive.state)),
-            )
-
-    severity = _worst_severity(severity, physical_drive_severity)
+    severity = derive_controller_health(
+        snapshot,
+        (),
+        snapshot.virtual_drives,
+        physical_drive_severity=physical_drive_severity,
+    )
 
     value_by_severity = {
         "optimal": "Optimal",
@@ -767,6 +772,27 @@ def _controller_health_card(
         value=value_by_severity[severity],
         severity=severity,
     )
+
+
+def derive_controller_health(
+    snapshot: ControllerSnapshot,
+    physical_drives: Sequence[PhysicalDriveSnapshot],
+    virtual_drives: Sequence[VirtualDriveSnapshot],
+    *,
+    physical_drive_severity: str | None = None,
+) -> Literal["optimal", "warning", "critical"]:
+    if snapshot.alarm_state.casefold() not in {"none", "off"}:
+        return "critical"
+
+    severity: Literal["optimal", "warning", "critical"] = "optimal"
+    resolved_physical_drive_severity = physical_drive_severity
+    if resolved_physical_drive_severity is None:
+        resolved_physical_drive_severity = _physical_drive_aggregate_status(physical_drives)
+    severity = _worst_controller_health(severity, resolved_physical_drive_severity)
+
+    severity = _worst_controller_health(severity, _virtual_drive_aggregate_status(virtual_drives))
+
+    return severity
 
 
 def _virtual_drive_card(virtual_drive: VirtualDriveSnapshot | None) -> StatCard:
@@ -1005,6 +1031,20 @@ def _virtual_drive_aggregate_status(virtual_drives: Sequence[VirtualDriveSnapsho
     return "warning"
 
 
+def _physical_drive_aggregate_status(
+    physical_drives: Sequence[PhysicalDriveSnapshot],
+) -> Literal["optimal", "warning", "critical"]:
+    severity: Literal["optimal", "warning", "critical"] = "optimal"
+    for physical_drive in physical_drives:
+        state_status = _event_severity_to_status(
+            physical_drive_state_severity("Onln", physical_drive.state)
+        )
+        if physical_drive.state not in _PD_OPTIMAL_STATES and state_status == "optimal":
+            state_status = "warning"
+        severity = _worst_controller_health(severity, state_status)
+    return severity
+
+
 def _virtual_drive_aggregate_value(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
     if not virtual_drives:
         return "Unknown"
@@ -1158,6 +1198,17 @@ def _format_tb(size_bytes: int) -> str:
 
 def _worst_severity(current: str, candidate: str) -> str:
     return _higher_severity(current, candidate)
+
+
+def _worst_controller_health(
+    current: Literal["optimal", "warning", "critical"],
+    candidate: str,
+) -> Literal["optimal", "warning", "critical"]:
+    if candidate == "critical":
+        return "critical"
+    if candidate == "warning" and current == "optimal":
+        return "warning"
+    return current
 
 
 def _higher_severity(a: str, b: str) -> str:
