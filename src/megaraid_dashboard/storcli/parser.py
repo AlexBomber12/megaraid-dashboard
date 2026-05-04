@@ -161,6 +161,27 @@ def parse_foreign_config(payload: dict[str, Any]) -> ForeignConfig:
     total_size_bytes = _foreign_total_size_bytes(response, disk_groups)
 
     if dg_count == 0 and drive_count == 0:
+        # Some firmware revisions report foreign config via summary count fields
+        # (e.g. "Total foreign DG Count" / "Total foreign drive Count") without
+        # emitting the detailed DG/PD list blocks. Fall back to those counts
+        # before declaring the config absent so the import/clear routes do not
+        # incorrectly reject a real foreign configuration.
+        summary_dg, summary_drive = _foreign_summary_counts(response)
+        if summary_dg > 0 or summary_drive > 0:
+            digest = _foreign_config_digest(
+                dg_count=summary_dg,
+                drive_count=summary_drive,
+                total_size_bytes=total_size_bytes,
+                disk_groups=disk_groups,
+            )
+            return ForeignConfig(
+                present=True,
+                dg_count=summary_dg,
+                drive_count=summary_drive,
+                total_size_bytes=total_size_bytes,
+                disk_groups=disk_groups,
+                digest=digest,
+            )
         return ForeignConfig(present=False, digest="")
 
     digest = _foreign_config_digest(
@@ -257,6 +278,53 @@ def _coerce_dg_id(value: Any) -> int | None:
             text = head.strip()
         try:
             return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _foreign_summary_counts(response: Mapping[str, Any]) -> tuple[int, int]:
+    """Extract ``(dg_count, drive_count)`` from foreign-config summary keys.
+
+    Firmware revisions that omit the detailed DG/PD list blocks still tend to
+    report counts via top-level summary fields like ``Total foreign DG Count``
+    and ``Total foreign drive Count``. Match keys case-insensitively on the
+    ``total ... foreign ... (dg|drive) ... count`` shape so cosmetic spelling
+    differences across revisions still resolve.
+    """
+    dg_count = 0
+    drive_count = 0
+    for key, value in response.items():
+        if not isinstance(key, str):
+            continue
+        normalized = key.casefold()
+        if "total" not in normalized or "foreign" not in normalized:
+            continue
+        if "count" not in normalized:
+            continue
+        coerced = _coerce_count(value)
+        if coerced is None or coerced <= 0:
+            continue
+        if "dg" in normalized and dg_count == 0:
+            dg_count = coerced
+        elif "drive" in normalized and drive_count == 0:
+            drive_count = coerced
+    return dg_count, drive_count
+
+
+def _coerce_count(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(float(stripped))
         except ValueError:
             return None
     return None

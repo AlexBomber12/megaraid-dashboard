@@ -96,6 +96,67 @@ def test_parse_foreign_config_non_mapping_response_treated_as_absent(
     assert foreign_config.digest == ""
 
 
+def test_parse_foreign_config_uses_summary_counts_when_lists_missing() -> None:
+    payload: dict[str, Any] = {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {
+                    "Total foreign DG Count": 2,
+                    "Total foreign drive Count": 5,
+                },
+            }
+        ]
+    }
+    foreign_config = parse_foreign_config(payload)
+
+    assert foreign_config.present is True
+    assert foreign_config.dg_count == 2
+    assert foreign_config.drive_count == 5
+    assert foreign_config.disk_groups == []
+    assert foreign_config.total_size_bytes is None
+    assert foreign_config.digest == "FC-DG2-PD5-UNKNOWN"
+
+
+def test_parse_foreign_config_summary_counts_accept_string_values() -> None:
+    payload: dict[str, Any] = {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {
+                    "Total Foreign DG Count": "1",
+                    "Total Foreign Drive Count": "3",
+                },
+            }
+        ]
+    }
+    foreign_config = parse_foreign_config(payload)
+
+    assert foreign_config.present is True
+    assert foreign_config.dg_count == 1
+    assert foreign_config.drive_count == 3
+
+
+def test_parse_foreign_config_zero_summary_counts_treated_as_absent() -> None:
+    payload: dict[str, Any] = {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {
+                    "Total foreign DG Count": 0,
+                    "Total foreign drive Count": 0,
+                },
+            }
+        ]
+    }
+    foreign_config = parse_foreign_config(payload)
+
+    assert foreign_config.present is False
+    assert foreign_config.dg_count == 0
+    assert foreign_config.drive_count == 0
+    assert foreign_config.digest == ""
+
+
 def test_parse_foreign_config_digest_is_stable() -> None:
     payload = load_fixture("c0_fall_show_all_present.json")
     first = parse_foreign_config(payload)
