@@ -54,6 +54,20 @@ def test_controller_tile_reports_alarm_as_critical(
     assert tile.icon == "cpu"
 
 
+@pytest.mark.parametrize("state", ["Pdgd", "Partially Degraded"])
+def test_controller_tile_is_critical_for_partially_degraded_drive(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    state: str,
+) -> None:
+    snapshot = _latest(session, _snapshot(sample_snapshot, vd_states=("Optl", state)))
+
+    tile = _load_controller_tile(snapshot, virtual_drives=snapshot.virtual_drives)
+
+    assert tile.value == "Alarm"
+    assert tile.status == "critical"
+
+
 def test_vd_tile_summarizes_all_optimal_drives(
     session: Session,
     sample_snapshot: StorcliSnapshot,

@@ -59,6 +59,18 @@ def test_controller_health_metric_is_warning_with_degraded_virtual_drive(
     assert _controller_metric("megaraid_controller_health", 1.0) in response_text
 
 
+@pytest.mark.parametrize("state", ["Pdgd", "Partially Degraded"])
+def test_controller_health_metric_is_critical_with_partially_degraded_virtual_drive(
+    session_factory: sessionmaker[Session],
+    state: str,
+) -> None:
+    _insert(session_factory, _snapshot(vd_state=state))
+
+    response_text = _scrape_metrics(session_factory)
+
+    assert _controller_metric("megaraid_controller_health", 2.0) in response_text
+
+
 def test_controller_roc_temperature_metric_uses_snapshot_value(
     session_factory: sessionmaker[Session],
 ) -> None:

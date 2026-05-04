@@ -790,7 +790,10 @@ def derive_controller_health(
         resolved_physical_drive_severity = _physical_drive_aggregate_status(physical_drives)
     severity = _worst_controller_health(severity, resolved_physical_drive_severity)
 
-    severity = _worst_controller_health(severity, _virtual_drive_aggregate_status(virtual_drives))
+    severity = _worst_controller_health(
+        severity,
+        _virtual_drive_controller_health_status(virtual_drives),
+    )
 
     return severity
 
@@ -1029,6 +1032,18 @@ def _virtual_drive_aggregate_status(virtual_drives: Sequence[VirtualDriveSnapsho
     if states <= _VD_OPTIMAL_STATES:
         return "optimal"
     return "warning"
+
+
+def _virtual_drive_controller_health_status(
+    virtual_drives: Sequence[VirtualDriveSnapshot],
+) -> Literal["optimal", "warning", "critical"]:
+    severity: Literal["optimal", "warning", "critical"] = "optimal"
+    for virtual_drive in virtual_drives:
+        severity = _worst_controller_health(
+            severity,
+            _event_severity_to_status(virtual_drive_state_severity(virtual_drive.state)),
+        )
+    return severity
 
 
 def _physical_drive_aggregate_status(
