@@ -125,6 +125,63 @@ def test_drive_rebuild_status_records_completion_audit_once(
     assert events[0].operator_username == "admin"
 
 
+def test_drive_rebuild_status_records_completion_on_terminal_idle_after_replacement_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=0, state="Not in progress")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _record_operator_action(
+            test_app,
+            summary=(
+                "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded"
+            ),
+        )
+        first = client.get("/drives/2:0/replace/rebuild-status")
+        second = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert [event.summary for event in events] == [
+        "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded",
+        "rebuild complete drive 2:0",
+    ]
+
+
+def test_drive_rebuild_status_does_not_record_idle_completion_without_replacement_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_storcli(
+        args: list[str],
+        *,
+        use_sudo: bool,
+        binary_path: str,
+    ) -> dict[str, Any]:
+        del args, use_sudo, binary_path
+        return _rebuild_payload(percent=0, state="Not in progress")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/2:0/replace/rebuild-status")
+        events = _all_events(test_app)
+
+    assert response.status_code == 200
+    assert events == []
+
+
 def test_drive_rebuild_status_does_not_duplicate_completion_audit_after_later_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
