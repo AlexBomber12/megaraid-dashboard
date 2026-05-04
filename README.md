@@ -44,6 +44,9 @@ mypy src
 pytest
 ```
 
+Pre-commit is optional: `pip install pre-commit && pre-commit install`. Hooks run on
+`git commit`; CI remains the canonical validation gate.
+
 ## Documentation
 
 - Install - production installer notes; forthcoming.
