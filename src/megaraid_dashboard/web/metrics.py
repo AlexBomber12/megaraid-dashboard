@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Gauge, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    generate_latest,
+)
 from prometheus_client.core import GaugeMetricFamily
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -11,8 +18,36 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
 
-from megaraid_dashboard.db import ControllerSnapshot, PhysicalDriveSnapshot, VirtualDriveSnapshot
-from megaraid_dashboard.services.overview import derive_controller_health
+from megaraid_dashboard.db.models import (
+    ControllerSnapshot,
+    PhysicalDriveSnapshot,
+    VirtualDriveSnapshot,
+)
+
+EVENTS_TOTAL = Counter(
+    "megaraid_events_total",
+    "Cumulative count of events raised by the detector.",
+    labelnames=["severity", "category"],
+)
+ALERTS_SENT_TOTAL = Counter(
+    "megaraid_alerts_sent_total",
+    "Cumulative count of alert emails dispatched.",
+)
+COLLECTOR_CYCLE_DURATION = Gauge(
+    "megaraid_collector_cycle_duration_seconds",
+    "Duration in seconds of the last completed collector cycle.",
+)
+COLLECTOR_LAST_RUN_TIMESTAMP = Gauge(
+    "megaraid_collector_last_run_timestamp",
+    "Unix timestamp of the last successful collector cycle.",
+)
+
+_RUNTIME_METRICS = (
+    EVENTS_TOTAL,
+    ALERTS_SENT_TOTAL,
+    COLLECTOR_CYCLE_DURATION,
+    COLLECTOR_LAST_RUN_TIMESTAMP,
+)
 
 
 class MegaraidCollector:
@@ -123,6 +158,8 @@ def _encode_controller_health(
     pds: list[PhysicalDriveSnapshot],
     vds: list[VirtualDriveSnapshot],
 ) -> int:
+    from megaraid_dashboard.services.overview import derive_controller_health
+
     health = derive_controller_health(snap, pds, vds)
     return {
         "optimal": 0,
@@ -151,6 +188,8 @@ def _encode_vd_state(state: str) -> int:
 
 def build_registry(session_factory: sessionmaker[Session] | None = None) -> CollectorRegistry:
     registry = CollectorRegistry(auto_describe=True)
+    for metric in _RUNTIME_METRICS:
+        registry.register(metric)
     up = Gauge(
         "megaraid_exporter_up",
         "1 when the megaraid-dashboard exporter is running.",
@@ -172,3 +211,14 @@ def create_metrics_app(session_factory: sessionmaker[Session] | None = None) -> 
     app = Starlette(routes=[Route("/metrics", endpoint=metrics_endpoint)])
     app.state.registry = build_registry(session_factory)
     return app
+
+
+def _reset_runtime_metrics_for_tests() -> None:
+    EVENTS_TOTAL._metrics.clear()
+    _set_metric_value(ALERTS_SENT_TOTAL, 0.0)
+    _set_metric_value(COLLECTOR_CYCLE_DURATION, 0.0)
+    _set_metric_value(COLLECTOR_LAST_RUN_TIMESTAMP, 0.0)
+
+
+def _set_metric_value(metric: Any, value: float) -> None:
+    metric._value.set(value)

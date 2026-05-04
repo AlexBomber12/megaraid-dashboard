@@ -23,6 +23,7 @@ from megaraid_dashboard.db.models import (
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
+from megaraid_dashboard.web.metrics import EVENTS_TOTAL
 
 
 def insert_snapshot(
@@ -138,6 +139,7 @@ def record_event(
     )
     session.add(event)
     session.flush()
+    EVENTS_TOTAL.labels(severity=severity, category=category).inc()
     return event
 
 

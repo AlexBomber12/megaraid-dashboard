@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.web.metrics import EVENTS_TOTAL
 
 
 def record_operator_action(
@@ -29,4 +30,5 @@ def record_operator_action(
     )
     session.add(event)
     session.flush()
+    EVENTS_TOTAL.labels(severity=event.severity, category=event.category).inc()
     return event
