@@ -156,6 +156,7 @@ Command:
 
 ```bash
 curl -i \
+  --path-as-is \
   -H "Authorization: Basic $auth" \
   -X POST \
   "$target/static/../maintenance/start"
@@ -328,7 +329,7 @@ Finding: none.
 Command:
 
 ```bash
-curl -i -H "Authorization: Basic $auth" "$target/static/../etc/passwd"
+curl -i --path-as-is -H "Authorization: Basic $auth" "$target/static/../etc/passwd"
 ```
 
 Expected: `404 Not Found`; no host file disclosure.
