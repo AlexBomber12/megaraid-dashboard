@@ -77,6 +77,25 @@ def test_parse_foreign_config_empty_response_treated_as_absent() -> None:
     assert foreign_config.digest == ""
 
 
+@pytest.mark.parametrize("response_data", [[], "unexpected", 0])
+def test_parse_foreign_config_non_mapping_response_treated_as_absent(
+    response_data: Any,
+) -> None:
+    payload: dict[str, Any] = {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": response_data,
+            }
+        ]
+    }
+    foreign_config = parse_foreign_config(payload)
+
+    assert foreign_config.present is False
+    assert foreign_config.dg_count == 0
+    assert foreign_config.digest == ""
+
+
 def test_parse_foreign_config_digest_is_stable() -> None:
     payload = load_fixture("c0_fall_show_all_present.json")
     first = parse_foreign_config(payload)

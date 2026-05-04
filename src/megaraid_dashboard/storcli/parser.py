@@ -409,7 +409,10 @@ def _first_controller(payload: dict[str, Any]) -> Mapping[str, Any]:
 
 
 def _response_data(controller: Mapping[str, Any]) -> Mapping[str, Any]:
-    return _mapping(controller.get("Response Data", {}))
+    try:
+        return _mapping(controller.get("Response Data", {}))
+    except TypeError as exc:
+        raise StorcliParseError("Response Data is not a mapping") from exc
 
 
 def _command_failed(controller: Mapping[str, Any]) -> bool:
