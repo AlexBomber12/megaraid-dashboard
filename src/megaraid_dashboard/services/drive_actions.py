@@ -110,7 +110,7 @@ def parse_rebuild_status(payload: dict[str, Any]) -> RebuildStatus:
     explicit_state = _find_text_value(
         response_data,
         key_fragments=("state", "status"),
-        value_hints=("rebuild", "progress", "complete", "not in progress", "none"),
+        value_hints=("rebuild", "rbld", "progress", "complete", "not in progress", "none"),
     )
     time_remaining = _find_time_remaining_minutes(response_data)
 
@@ -246,7 +246,12 @@ def _normalize_rebuild_state(raw_state: str | None, percent: int | None) -> str:
             return "Complete"
         if "not" in lowered or "none" in lowered or "idle" in lowered:
             return "Not in progress"
-        if "progress" in lowered or "rebuild" in lowered or "active" in lowered:
+        if (
+            "progress" in lowered
+            or "rebuild" in lowered
+            or "rbld" in lowered
+            or "active" in lowered
+        ):
             return "In progress"
     if percent is not None and percent > 0:
         return "In progress"

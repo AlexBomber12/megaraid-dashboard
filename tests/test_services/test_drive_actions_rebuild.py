@@ -79,6 +79,26 @@ def test_parse_rebuild_status_not_in_progress() -> None:
     assert status.time_remaining_minutes == 0
 
 
+def test_parse_rebuild_status_rbld_at_zero_percent_is_in_progress() -> None:
+    status = parse_rebuild_status(
+        _payload(
+            {
+                "Drive /c0/e2/s0 - Rebuild Progress": [
+                    {
+                        "Progress%": "0%",
+                        "State": "Rbld",
+                        "Estimated Time Left": "1234 Minutes",
+                    }
+                ]
+            }
+        )
+    )
+
+    assert status.percent_complete == 0
+    assert status.state == "In progress"
+    assert status.time_remaining_minutes == 1234
+
+
 def test_parse_rebuild_status_raises_on_malformed_input() -> None:
     with pytest.raises(StorcliParseError):
         parse_rebuild_status({"Controllers": [{"Response Data": {"Drive": [{"State": "Onln"}]}}]})
