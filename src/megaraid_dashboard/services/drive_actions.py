@@ -207,7 +207,7 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
     state = _normalize_patrol_read_state(state_raw)
     progress_percent = _find_percent_complete(response_data)
     if progress_percent is None and state_raw is not None:
-        progress_percent = _parse_int(state_raw) if "%" in state_raw else None
+        progress_percent = _parse_trailing_percent(state_raw) if state == "active" else None
     last_run_timestamp = _find_patrol_read_text(
         response_data,
         ("last run", "last completed", "last start", "last"),
@@ -351,6 +351,13 @@ def _parse_int(value: Any) -> int | None:
         if match is not None:
             return int(float(match.group(0)))
     return None
+
+
+def _parse_trailing_percent(value: str) -> int | None:
+    match = re.search(r"(?:^|\s)(\d+(?:\.\d+)?)\s*%?\s*$", value)
+    if match is None:
+        return None
+    return int(float(match.group(1)))
 
 
 def _parse_minutes(value: Any) -> int | None:

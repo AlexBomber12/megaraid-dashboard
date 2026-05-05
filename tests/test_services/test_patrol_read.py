@@ -100,6 +100,14 @@ def test_parse_patrol_read_status_from_controller_properties() -> None:
     assert status.is_running is True
 
 
+def test_parse_patrol_read_status_from_active_state_without_percent_sign() -> None:
+    status = parse_patrol_read_status(_patrol_payload(mode="Auto", state="Active 33"))
+
+    assert status.state == "active"
+    assert status.progress_percent == 33
+    assert status.is_running is True
+
+
 def test_parse_patrol_read_status_not_in_progress_is_idle() -> None:
     status = parse_patrol_read_status(_patrol_payload(mode="Auto", state="Not in progress"))
 
