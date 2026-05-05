@@ -283,7 +283,9 @@ def test_alert_status_last_sent_has_noscript_utc_fallback(
 
     assert response.status_code == 200
     assert "<noscript>2026-04-25T12:05:00Z UTC</noscript>" in response.text
-    assert 'datetime="2026-04-25T12:05:00Z"\n          data-local-time' in response.text
+    assert (
+        'datetime="2026-04-25T12:05:00Z"\n          data-local-time\n          hidden'
+    ) in response.text
 
 
 def test_overview_renders_recent_activity_timeline_with_links(
