@@ -176,6 +176,29 @@ def test_patrol_read_start_rejects_when_already_running(
     assert event.summary == "patrol read start rejected: already running"
 
 
+def test_patrol_read_start_rejection_is_swappable_for_htmx(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        return _patrol_payload(mode="Manual", state="Active")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            "/controller/patrol-read/start",
+            headers={
+                **_csrf_request_headers(client, csrf_headers),
+                "HX-Request": "true",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["error"] == "patrol read already running"
+
+
 def test_patrol_read_stop_rejects_when_not_running(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -229,6 +252,32 @@ def test_patrol_read_mode_rejects_without_maintenance_mode_and_audits(
     assert response.json()["error"] == "patrol read changes require maintenance_mode"
     assert calls == []
     assert event.summary == "patrol read mode set to manual rejected: maintenance_mode required"
+
+
+def test_patrol_read_maintenance_rejection_is_swappable_for_htmx(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            "/controller/patrol-read/mode",
+            headers={
+                **_csrf_request_headers(client, csrf_headers),
+                "HX-Request": "true",
+            },
+            json={"mode": "manual"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["error"] == "patrol read changes require maintenance_mode"
 
 
 @pytest.mark.parametrize(

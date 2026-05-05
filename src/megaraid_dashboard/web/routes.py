@@ -1746,7 +1746,15 @@ async def _reject_patrol_read_mutation(
             },
             status_code=500,
         )
-    return JSONResponse(rejection_body, status_code=status_code)
+    return JSONResponse(
+        rejection_body, status_code=_patrol_read_rejection_status(request, status_code)
+    )
+
+
+def _patrol_read_rejection_status(request: Request, status_code: int) -> int:
+    if request.headers.get("HX-Request", "").lower() == "true":
+        return 200
+    return status_code
 
 
 def _record_patrol_read_operator_action_sync(
