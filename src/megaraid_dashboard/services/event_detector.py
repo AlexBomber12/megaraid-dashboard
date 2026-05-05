@@ -242,7 +242,31 @@ class EventDetector:
 
         events: list[DetectedEvent] = []
         if previous_temperature is None:
-            return []
+            if current_temperature >= self.roc_temp_warning:
+                events.append(
+                    _roc_temperature_event(
+                        severity="warning",
+                        summary=(
+                            f"RoC temperature {current_temperature} C reached warning "
+                            f"threshold ({self.roc_temp_warning} C) after unavailable sample"
+                        ),
+                        previous_temperature=previous_temperature,
+                        current_temperature=current_temperature,
+                    )
+                )
+            if current_temperature >= self.roc_temp_critical:
+                events.append(
+                    _roc_temperature_event(
+                        severity="critical",
+                        summary=(
+                            f"RoC temperature {current_temperature} C reached critical "
+                            f"threshold ({self.roc_temp_critical} C) after unavailable sample"
+                        ),
+                        previous_temperature=previous_temperature,
+                        current_temperature=current_temperature,
+                    )
+                )
+            return events
 
         if previous_temperature < self.roc_temp_warning <= current_temperature:
             events.append(

@@ -72,8 +72,51 @@ def test_roc_temperature_uses_configured_thresholds() -> None:
 
 
 @pytest.mark.parametrize(
+    ("current_temperature", "expected"),
+    [
+        (
+            98,
+            [
+                (
+                    "warning",
+                    "RoC temperature 98 C reached warning threshold (95 C) "
+                    "after unavailable sample",
+                )
+            ],
+        ),
+        (
+            105,
+            [
+                (
+                    "warning",
+                    "RoC temperature 105 C reached warning threshold (95 C) "
+                    "after unavailable sample",
+                ),
+                (
+                    "critical",
+                    "RoC temperature 105 C reached critical threshold (105 C) "
+                    "after unavailable sample",
+                ),
+            ],
+        ),
+    ],
+)
+def test_roc_temperature_recovery_from_unavailable_evaluates_thresholds(
+    current_temperature: int,
+    expected: list[tuple[str, str]],
+) -> None:
+    events = _detector().detect(
+        _previous(None),
+        _current(current_temperature),
+    )
+
+    assert [(event.severity, event.summary) for event in events] == expected
+    assert all(event.before == {"roc_temperature_celsius": None} for event in events)
+
+
+@pytest.mark.parametrize(
     ("previous_temperature", "current_temperature"),
-    [(85, None), (None, None), (None, 98)],
+    [(85, None), (None, None)],
 )
 def test_roc_temperature_unavailable_skips_event(
     previous_temperature: int | None,
