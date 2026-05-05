@@ -46,6 +46,7 @@ def test_healthz_returns_ok_for_healthy_database_and_running_collector(
     with TestClient(test_app) as client:
         test_app.state.collector = object()
         test_app.state.collector_lock_fd = 1
+        test_app.state.scheduler = object()
 
         response = client.get("/healthz")
 

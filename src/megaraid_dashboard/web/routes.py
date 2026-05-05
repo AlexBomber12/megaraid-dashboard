@@ -3189,7 +3189,8 @@ def _collector_health(request: Request) -> CollectorHealth:
 
     collector = getattr(request.app.state, "collector", None)
     lock_fd = getattr(request.app.state, "collector_lock_fd", None)
-    if collector is not None and lock_fd is not None:
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if collector is not None and lock_fd is not None and scheduler is not None:
         return "ok"
 
     retry_task = getattr(request.app.state, "collector_retry_task", None)
