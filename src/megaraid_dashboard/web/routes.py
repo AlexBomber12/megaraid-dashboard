@@ -1716,6 +1716,7 @@ def _patrol_read_response_body(status: PatrolReadStatus) -> dict[str, Any]:
         "mode": status.mode,
         "state": status.state,
         "progress_percent": status.progress_percent,
+        "completed_drive_count": status.completed_drive_count,
         "last_run_timestamp": status.last_run_timestamp,
     }
 

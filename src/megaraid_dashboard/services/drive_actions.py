@@ -169,6 +169,7 @@ class PatrolReadStatus:
     mode: str
     state: str
     progress_percent: int | None
+    completed_drive_count: int | None
     last_run_timestamp: str | None
 
     @property
@@ -206,10 +207,13 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
     state_raw = _find_patrol_read_text(response_data, ("current state", "state", "status"))
     state = _normalize_patrol_read_state(state_raw)
     progress_percent = None
+    completed_drive_count = None
     if state in {"active", "paused"}:
         progress_percent = _find_patrol_read_progress_percent(response_data)
-        if progress_percent is None and state_raw is not None:
-            progress_percent = _parse_trailing_percent(state_raw)
+        if state_raw is not None:
+            if progress_percent is None:
+                progress_percent = _parse_trailing_percent(state_raw)
+            completed_drive_count = _parse_trailing_drive_count(state_raw)
     last_run_timestamp = _find_patrol_read_text(
         response_data,
         ("last run", "last completed", "last start", "last"),
@@ -220,6 +224,7 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
         progress_percent=(
             max(0, min(100, progress_percent)) if progress_percent is not None else None
         ),
+        completed_drive_count=completed_drive_count,
         last_run_timestamp=last_run_timestamp,
     )
 
@@ -379,10 +384,19 @@ def _parse_int(value: Any) -> int | None:
 
 
 def _parse_trailing_percent(value: str) -> int | None:
-    match = re.search(r"(?:^|\s)(\d+(?:\.\d+)?)\s*%?\s*$", value)
+    match = re.search(r"(?:^|\s)(\d+(?:\.\d+)?)\s*%\s*$", value)
     if match is None:
         return None
     return int(float(match.group(1)))
+
+
+def _parse_trailing_drive_count(value: str) -> int | None:
+    if re.search(r"%\s*$", value) is not None:
+        return None
+    match = re.search(r"(?:^|\s)(\d+)\s*$", value)
+    if match is None:
+        return None
+    return int(match.group(1))
 
 
 def _parse_minutes(value: Any) -> int | None:

@@ -96,15 +96,32 @@ def test_parse_patrol_read_status_from_controller_properties() -> None:
     assert status.mode == "auto"
     assert status.state == "active"
     assert status.progress_percent == 33
+    assert status.completed_drive_count is None
     assert status.last_run_timestamp == "2026/05/04 01:00:00"
     assert status.is_running is True
 
 
-def test_parse_patrol_read_status_from_active_state_without_percent_sign() -> None:
+def test_parse_patrol_read_status_from_active_state_drive_count() -> None:
     status = parse_patrol_read_status(_patrol_payload(mode="Auto", state="Active 33"))
 
     assert status.state == "active"
-    assert status.progress_percent == 33
+    assert status.progress_percent is None
+    assert status.completed_drive_count == 33
+    assert status.is_running is True
+
+
+def test_parse_patrol_read_status_from_explicit_progress_percent() -> None:
+    status = parse_patrol_read_status(
+        _patrol_payload(
+            mode="Auto",
+            state="Active 33",
+            extra_props=[("PR Progress", "42%")],
+        )
+    )
+
+    assert status.state == "active"
+    assert status.progress_percent == 42
+    assert status.completed_drive_count == 33
     assert status.is_running is True
 
 
@@ -113,6 +130,7 @@ def test_parse_patrol_read_status_not_in_progress_is_idle() -> None:
 
     assert status.state == "stopped"
     assert status.progress_percent is None
+    assert status.completed_drive_count is None
     assert status.is_running is False
 
 
@@ -186,6 +204,7 @@ def test_patrol_read_get_returns_current_state(monkeypatch: pytest.MonkeyPatch) 
         "mode": "auto",
         "state": "stopped",
         "progress_percent": None,
+        "completed_drive_count": None,
         "last_run_timestamp": "2026/05/04 01:00:00",
     }
     assert calls == [["/c0", "show", "patrolread", "J"]]
