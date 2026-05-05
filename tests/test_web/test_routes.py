@@ -271,6 +271,21 @@ def test_alert_status_pending_count_uses_warning_cell(
     assert "Pending" in response.text
 
 
+def test_alert_status_last_sent_has_noscript_utc_fallback(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _insert_sent_alert(test_app, notified_at=datetime(2026, 4, 25, 12, 5, tzinfo=UTC))
+
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "<noscript>2026-04-25T12:05:00Z UTC</noscript>" in response.text
+    assert 'datetime="2026-04-25T12:05:00Z"\n          data-local-time' in response.text
+
+
 def test_overview_renders_recent_activity_timeline_with_links(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -926,6 +941,22 @@ def _insert_pending_alert(test_app: FastAPI) -> None:
                 category="pd_state",
                 subject="e252:s4",
                 summary="Drive state changed",
+            )
+        )
+        session.commit()
+
+
+def _insert_sent_alert(test_app: FastAPI, *, notified_at: datetime) -> None:
+    session_factory = cast(sessionmaker[Session], test_app.state.session_factory)
+    with session_factory() as session:
+        session.add(
+            Event(
+                occurred_at=notified_at,
+                severity="critical",
+                category="pd_state",
+                subject="e252:s4",
+                summary="Drive state changed",
+                notified_at=notified_at,
             )
         )
         session.commit()

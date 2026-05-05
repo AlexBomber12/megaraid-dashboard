@@ -3,6 +3,7 @@
     <div class="alert-status__label">Last sent</div>
     <div class="alert-status__value mono">
       {% if view_model.alert_status.last_alert_sent_at %}
+        <noscript>{{ view_model.alert_status.last_alert_sent_at | iso_utc }} UTC</noscript>
         <time
           datetime="{{ view_model.alert_status.last_alert_sent_at | iso_utc }}"
           data-local-time

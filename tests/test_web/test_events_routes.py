@@ -406,6 +406,7 @@ def test_events_page_formats_time_and_severity_badges() -> None:
 
     assert response.status_code == 200
     assert 'datetime="2026-04-25T12:00:00Z" data-local-time' in response.text
+    assert "<noscript>2026-04-25T12:00:00Z UTC</noscript>" in response.text
     assert "2026-04-25T12:00:00Z UTC" in response.text
     assert "status-badge--optimal" in response.text
     assert "status-badge--warning" in response.text

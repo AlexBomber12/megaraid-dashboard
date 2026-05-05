@@ -23,9 +23,12 @@
           {%- endif %}
         </span>
       </div>
-      <time class="timeline__time" datetime="{{ event.occurred_at | iso_utc }}" data-local-time>
-        {{ event.occurred_at | iso_utc }} UTC
-      </time>
+      <span class="timeline__time">
+        <noscript>{{ event.occurred_at | iso_utc }} UTC</noscript>
+        <time datetime="{{ event.occurred_at | iso_utc }}" data-local-time>
+          {{ event.occurred_at | iso_utc }} UTC
+        </time>
+      </span>
     </li>
   {% endfor %}
 {%- endmacro %}
