@@ -460,19 +460,29 @@ def test_patrol_read_start_and_stop_reject_without_maintenance_before_state_chec
 
 
 @pytest.mark.parametrize(
-    ("path", "show_state", "expected_action", "expected_audit"),
+    ("path", "show_state", "refreshed_state", "expected_audit", "expected_calls"),
     [
         (
             "/controller/patrol-read/start",
             "Stopped",
-            "start",
+            "Active",
             "patrol read start succeeded",
+            [
+                ["/c0", "show", "patrolread", "J"],
+                ["/c0", "start", "patrolread", "J"],
+                ["/c0", "show", "patrolread", "J"],
+            ],
         ),
         (
             "/controller/patrol-read/stop",
             "Active",
-            "stop",
+            "Stopped",
             "patrol read stop succeeded",
+            [
+                ["/c0", "show", "patrolread", "J"],
+                ["/c0", "stop", "patrolread", "J"],
+                ["/c0", "show", "patrolread", "J"],
+            ],
         ),
     ],
 )
@@ -481,15 +491,20 @@ def test_patrol_read_start_and_stop_succeed_and_audit(
     csrf_headers: Callable[[TestClient], dict[str, str]],
     path: str,
     show_state: str,
-    expected_action: str,
+    refreshed_state: str,
     expected_audit: str,
+    expected_calls: list[list[str]],
 ) -> None:
     calls: list[list[str]] = []
+    show_calls = 0
 
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        nonlocal show_calls
         calls.append(list(args))
         if list(args) == ["/c0", "show", "patrolread", "J"]:
-            return _patrol_payload(mode="Manual", state=show_state)
+            show_calls += 1
+            state = show_state if show_calls == 1 else refreshed_state
+            return _patrol_payload(mode="Manual", state=state)
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -500,8 +515,8 @@ def test_patrol_read_start_and_stop_succeed_and_audit(
         event = _read_single_event(test_app)
 
     assert response.status_code == 200
-    assert response.json()["action"] == expected_action
-    assert calls[0] == ["/c0", "show", "patrolread", "J"]
+    assert response.json()["state"] == refreshed_state.lower()
+    assert calls == expected_calls
     assert event.summary == expected_audit
 
 
@@ -513,6 +528,8 @@ def test_patrol_read_mode_set_succeeds_and_audits(
 
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         calls.append(list(args))
+        if list(args) == ["/c0", "show", "patrolread", "J"]:
+            return _patrol_payload(mode="Manual", state="Stopped")
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -527,8 +544,11 @@ def test_patrol_read_mode_set_succeeds_and_audits(
         event = _read_single_event(test_app)
 
     assert response.status_code == 200
-    assert response.json()["argv"] == ["/c0", "set", "patrolread=on", "mode=manual", "J"]
-    assert calls == [["/c0", "set", "patrolread=on", "mode=manual", "J"]]
+    assert response.json()["mode"] == "manual"
+    assert calls == [
+        ["/c0", "set", "patrolread=on", "mode=manual", "J"],
+        ["/c0", "show", "patrolread", "J"],
+    ]
     assert event.summary == "patrol read mode set to manual succeeded"
 
 
@@ -540,6 +560,8 @@ def test_patrol_read_mode_accepts_form_encoded_posts(
 
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         calls.append(list(args))
+        if list(args) == ["/c0", "show", "patrolread", "J"]:
+            return _patrol_payload(mode="Manual", state="Stopped")
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -554,8 +576,11 @@ def test_patrol_read_mode_accepts_form_encoded_posts(
         event = _read_single_event(test_app)
 
     assert response.status_code == 200
-    assert response.json()["argv"] == ["/c0", "set", "patrolread=on", "mode=manual", "J"]
-    assert calls == [["/c0", "set", "patrolread=on", "mode=manual", "J"]]
+    assert response.json()["mode"] == "manual"
+    assert calls == [
+        ["/c0", "set", "patrolread=on", "mode=manual", "J"],
+        ["/c0", "show", "patrolread", "J"],
+    ]
     assert event.summary == "patrol read mode set to manual succeeded"
 
 

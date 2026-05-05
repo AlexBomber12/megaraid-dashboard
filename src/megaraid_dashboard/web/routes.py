@@ -1826,7 +1826,30 @@ async def _run_patrol_read_mutation(
             status_code=502,
         )
 
-    return JSONResponse({"action": action, "argv": argv, "result": result})
+    try:
+        status = await _query_live_patrol_read(settings=settings)
+    except StorcliParseError as exc:
+        return _patrol_read_error_response(
+            request,
+            {
+                "error": "storcli refresh parse failed",
+                "action": action,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return _patrol_read_error_response(
+            request,
+            {
+                "error": "storcli refresh failed",
+                "action": action,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(_patrol_read_response_body(status))
 
 
 async def _reject_patrol_read_mutation(
