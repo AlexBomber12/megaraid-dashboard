@@ -549,9 +549,16 @@ def _parse_consistency_check_inconsistency_candidate(
         return count, str(candidate)
     if isinstance(candidate, str):
         detail = candidate.strip()
-        if detail and detail.lower() not in {"no", "none", "n/a", "na", "0"}:
+        if detail and not _is_negative_consistency_check_inconsistency_detail(detail):
             return None, detail
     return None
+
+
+def _is_negative_consistency_check_inconsistency_detail(detail: str) -> bool:
+    normalized = re.sub(r"[\s_-]+", " ", detail.strip().lower())
+    if normalized in {"no", "none", "n/a", "na", "0"}:
+        return True
+    return re.search(r"\b(no|none|zero|0)\b.*\binconsistenc(?:y|ies)\b", normalized) is not None
 
 
 def _walk_storcli_properties(value: Any) -> list[tuple[str, Any]]:

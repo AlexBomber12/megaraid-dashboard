@@ -117,6 +117,20 @@ def test_parse_consistency_check_status_detects_inconsistency() -> None:
     assert status.has_inconsistency is True
 
 
+def test_parse_consistency_check_status_ignores_negative_inconsistency_phrase() -> None:
+    status = parse_consistency_check_status(
+        _cc_show_payload(mode="Manual"),
+        _cc_progress_payload(
+            state="Stopped",
+            extra_props=[("CC Inconsistencies", "No inconsistencies found")],
+        ),
+    )
+
+    assert status.inconsistency_count is None
+    assert status.inconsistency_detail is None
+    assert status.has_inconsistency is False
+
+
 def test_parse_consistency_check_status_from_vd_operation_status_row() -> None:
     status = parse_consistency_check_status(
         _cc_show_payload(mode="Manual"),
@@ -291,6 +305,41 @@ def test_consistency_check_get_records_inconsistency_event_once(
     assert events[0].severity == "warning"
     assert events[0].category == "consistency_check_inconsistency"
     assert events[0].summary == "consistency check inconsistency detected"
+
+
+def test_consistency_check_get_records_recurring_inconsistency_after_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    progress_payloads = [
+        _cc_progress_payload(state="Stopped", extra_props=[("CC Inconsistencies", "2")]),
+        _cc_progress_payload(state="Stopped", extra_props=[("CC Inconsistencies", "0")]),
+        _cc_progress_payload(state="Stopped", extra_props=[("CC Inconsistencies", "4")]),
+        _cc_progress_payload(state="Stopped", extra_props=[("CC Inconsistencies", "4")]),
+    ]
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        if list(args) == ["/c0", "show", "cc", "J"]:
+            return _cc_show_payload(mode="Auto")
+        return progress_payloads.pop(0)
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        responses = [client.get("/controller/consistency-check") for _ in range(4)]
+        events = _read_events(test_app)
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    assert [event.severity for event in events] == ["warning", "info", "warning"]
+    assert [event.summary for event in events] == [
+        "consistency check inconsistency detected",
+        "consistency check inconsistency resolved",
+        "consistency check inconsistency detected",
+    ]
+    assert events[0].after_json is not None
+    assert events[0].after_json["inconsistency_count"] == 2
+    assert events[2].after_json is not None
+    assert events[2].after_json["inconsistency_count"] == 4
 
 
 def test_consistency_check_mutation_command_error_is_swappable_for_htmx(

@@ -2395,38 +2395,48 @@ async def _record_consistency_check_inconsistency_if_needed(
     request: Request,
     status: ConsistencyCheckStatus,
 ) -> None:
-    if not status.has_inconsistency:
-        return
     await run_in_threadpool(
-        _record_consistency_check_inconsistency_once_sync,
+        _record_consistency_check_inconsistency_state_sync,
         request=request,
         status=status,
     )
 
 
-def _record_consistency_check_inconsistency_once_sync(
+def _record_consistency_check_inconsistency_state_sync(
     *,
     request: Request,
     status: ConsistencyCheckStatus,
 ) -> None:
-    summary = "consistency check inconsistency detected"
+    detected_summary = "consistency check inconsistency detected"
+    resolved_summary = "consistency check inconsistency resolved"
     try:
         with _session(request) as session, session.begin():
             existing = session.scalars(
                 select(Event)
                 .where(Event.category == "consistency_check_inconsistency")
-                .where(Event.summary == summary)
                 .order_by(Event.occurred_at.desc(), Event.id.desc())
                 .limit(1)
             ).one_or_none()
-            if existing is not None:
+            if status.has_inconsistency:
+                if existing is not None and existing.summary == detected_summary:
+                    return
+                record_event(
+                    session,
+                    severity="warning",
+                    category="consistency_check_inconsistency",
+                    subject="Controller",
+                    summary=detected_summary,
+                    after=_consistency_check_response_body(status),
+                )
+                return
+            if existing is None or existing.summary == resolved_summary:
                 return
             record_event(
                 session,
-                severity="warning",
+                severity="info",
                 category="consistency_check_inconsistency",
                 subject="Controller",
-                summary=summary,
+                summary=resolved_summary,
                 after=_consistency_check_response_body(status),
             )
     except SQLAlchemyError:
