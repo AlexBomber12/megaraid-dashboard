@@ -60,10 +60,10 @@ class _MetricsRuntime:
 def create_app() -> FastAPI:
     app = FastAPI(title="MegaRAID Dashboard", lifespan=_lifespan)
     app.state.settings = get_settings()
-    app.add_middleware(ForwardedPrefixMiddleware)
     app.add_middleware(CsrfMiddleware)
     app.add_middleware(BasicAuthMiddleware, settings=app.state.settings)
     app.add_middleware(AuthRateLimitMiddleware, settings=app.state.settings)
+    app.add_middleware(ForwardedPrefixMiddleware)
     app.mount(
         "/static",
         CacheControlStaticFiles(directory=_STATIC_DIR),

@@ -306,10 +306,10 @@ def test_create_app_middleware_order(
 
     middleware_classes = [middleware.cls for middleware in test_app.user_middleware]
     assert middleware_classes[:4] == [
+        ForwardedPrefixMiddleware,
         AuthRateLimitMiddleware,
         BasicAuthMiddleware,
         CsrfMiddleware,
-        ForwardedPrefixMiddleware,
     ]
 
 
