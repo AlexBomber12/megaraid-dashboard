@@ -1659,13 +1659,14 @@ async def controller_patrol_read_stop(request: Request) -> JSONResponse:
 
 
 @router.post("/controller/patrol-read/mode", name="controller_patrol_read_mode")
-async def controller_patrol_read_mode(
-    body: PatrolReadModeRequest, request: Request
-) -> JSONResponse:
+async def controller_patrol_read_mode(request: Request) -> JSONResponse:
+    body = await _parse_patrol_read_mode_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
     try:
         argv = build_patrol_read_mode_command(body.mode)
     except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
+        return _patrol_read_error_response(request, {"error": str(exc)}, status_code=400)
     settings: Settings = request.app.state.settings
     return await _run_patrol_read_mutation(
         request=request,
@@ -1674,6 +1675,31 @@ async def controller_patrol_read_mode(
         argv=argv,
         audit_message=f"patrol read mode set to {body.mode}",
     )
+
+
+async def _parse_patrol_read_mode_request_body(
+    request: Request,
+) -> PatrolReadModeRequest | JSONResponse:
+    content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].lower()
+    try:
+        if content_type == "application/json":
+            payload: Any = await request.json()
+        else:
+            payload = dict(await request.form())
+    except ValueError:
+        return _patrol_read_error_response(
+            request,
+            {"error": "request body must be valid JSON"},
+            status_code=400,
+        )
+    try:
+        return PatrolReadModeRequest.model_validate(payload)
+    except ValidationError as exc:
+        return _patrol_read_error_response(
+            request,
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
 
 
 async def _query_live_patrol_read(*, settings: Settings) -> PatrolReadStatus:
@@ -1789,7 +1815,8 @@ async def _run_patrol_read_mutation(
         return JSONResponse(audit_failure_body, status_code=500)
 
     if storcli_error is not None:
-        return JSONResponse(
+        return _patrol_read_error_response(
+            request,
             {
                 "error": "storcli command failed",
                 "action": action,

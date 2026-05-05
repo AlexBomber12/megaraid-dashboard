@@ -38,7 +38,6 @@
         method="post"
         action="{{ request.url_for('controller_patrol_read_mode').path }}"
         hx-post="{{ request.url_for('controller_patrol_read_mode').path }}"
-        hx-ext="json-enc"
         hx-target="#patrol-read-state"
         hx-swap="innerHTML"
       >

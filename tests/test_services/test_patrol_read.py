@@ -491,6 +491,94 @@ def test_patrol_read_mode_set_succeeds_and_audits(
     assert event.summary == "patrol read mode set to manual succeeded"
 
 
+def test_patrol_read_mode_accepts_form_encoded_posts(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        calls.append(list(args))
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            "/controller/patrol-read/mode",
+            headers=_csrf_request_headers(client, csrf_headers),
+            data={"mode": "manual"},
+        )
+        event = _read_single_event(test_app)
+
+    assert response.status_code == 200
+    assert response.json()["argv"] == ["/c0", "set", "patrolread=on", "mode=manual", "J"]
+    assert calls == [["/c0", "set", "patrolread=on", "mode=manual", "J"]]
+    assert event.summary == "patrol read mode set to manual succeeded"
+
+
+@pytest.mark.parametrize(
+    ("path", "post_data", "expected_action", "expected_calls"),
+    [
+        (
+            "/controller/patrol-read/start",
+            None,
+            "start",
+            [["/c0", "show", "patrolread", "J"], ["/c0", "start", "patrolread", "J"]],
+        ),
+        (
+            "/controller/patrol-read/stop",
+            None,
+            "stop",
+            [["/c0", "show", "patrolread", "J"], ["/c0", "stop", "patrolread", "J"]],
+        ),
+        (
+            "/controller/patrol-read/mode",
+            {"mode": "manual"},
+            "mode",
+            [["/c0", "set", "patrolread=on", "mode=manual", "J"]],
+        ),
+    ],
+)
+def test_patrol_read_mutation_command_error_is_swappable_for_htmx(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    path: str,
+    post_data: dict[str, str] | None,
+    expected_action: str,
+    expected_calls: list[list[str]],
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        calls.append(list(args))
+        if list(args) == ["/c0", "show", "patrolread", "J"]:
+            state = "Stopped" if expected_action == "start" else "Active"
+            return _patrol_payload(mode="Manual", state=state)
+        raise StorcliNotAvailable("storcli unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            path,
+            headers={
+                **_csrf_request_headers(client, csrf_headers),
+                "HX-Request": "true",
+            },
+            data=post_data,
+        )
+        event = _read_single_event(test_app)
+
+    assert response.status_code == 200
+    assert response.json()["error"] == "storcli command failed"
+    assert response.json()["action"] == expected_action
+    assert calls == expected_calls
+    assert event.summary.endswith("failed: StorcliNotAvailable: storcli unavailable")
+
+
 def _patrol_payload(*, mode: str, state: str) -> dict[str, Any]:
     return {
         "Controllers": [
