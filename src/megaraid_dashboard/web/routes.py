@@ -1544,10 +1544,16 @@ async def controller_patrol_read(request: Request) -> JSONResponse:
     try:
         status = await _query_live_patrol_read(settings=settings)
     except StorcliParseError as exc:
-        return JSONResponse({"error": "storcli parse failed", "detail": str(exc)}, status_code=502)
+        return _patrol_read_error_response(
+            request,
+            {"error": "storcli parse failed", "detail": str(exc)},
+            status_code=502,
+        )
     except StorcliError as exc:
-        return JSONResponse(
-            {"error": "storcli command failed", "detail": str(exc)}, status_code=502
+        return _patrol_read_error_response(
+            request,
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
         )
     return JSONResponse(_patrol_read_response_body(status))
 
@@ -1566,10 +1572,20 @@ async def controller_patrol_read_start(request: Request) -> JSONResponse:
     try:
         status = await _query_live_patrol_read(settings=settings)
     except StorcliParseError as exc:
-        return JSONResponse({"error": "storcli parse failed", "detail": str(exc)}, status_code=502)
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            error_message="storcli parse failed",
+            exc=exc,
+        )
     except StorcliError as exc:
-        return JSONResponse(
-            {"error": "storcli command failed", "detail": str(exc)}, status_code=502
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            error_message="storcli command failed",
+            exc=exc,
         )
     if not patrol_read_can_start(status):
         return await _reject_patrol_read_mutation(
@@ -1606,10 +1622,20 @@ async def controller_patrol_read_stop(request: Request) -> JSONResponse:
     try:
         status = await _query_live_patrol_read(settings=settings)
     except StorcliParseError as exc:
-        return JSONResponse({"error": "storcli parse failed", "detail": str(exc)}, status_code=502)
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            error_message="storcli parse failed",
+            exc=exc,
+        )
     except StorcliError as exc:
-        return JSONResponse(
-            {"error": "storcli command failed", "detail": str(exc)}, status_code=502
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            error_message="storcli command failed",
+            exc=exc,
         )
     if not patrol_read_can_stop(status):
         return await _reject_patrol_read_mutation(
@@ -1666,6 +1692,51 @@ def _patrol_read_response_body(status: PatrolReadStatus) -> dict[str, Any]:
         "progress_percent": status.progress_percent,
         "last_run_timestamp": status.last_run_timestamp,
     }
+
+
+def _patrol_read_error_response(
+    request: Request, body: dict[str, Any], *, status_code: int
+) -> JSONResponse:
+    return JSONResponse(
+        body,
+        status_code=_patrol_read_rejection_status(request, status_code),
+    )
+
+
+async def _fail_patrol_read_precheck(
+    *,
+    request: Request,
+    action: Literal["start", "stop"],
+    audit_message: str,
+    error_message: str,
+    exc: StorcliError,
+) -> JSONResponse:
+    outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+    try:
+        await run_in_threadpool(
+            _record_patrol_read_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "storcli_error": str(exc),
+            },
+            status_code=500,
+        )
+    return _patrol_read_error_response(
+        request,
+        {
+            "error": error_message,
+            "action": action,
+            "detail": str(exc),
+        },
+        status_code=502,
+    )
 
 
 async def _run_patrol_read_mutation(

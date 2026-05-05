@@ -21,7 +21,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_patrol_read_stop_command,
     parse_patrol_read_status,
 )
-from megaraid_dashboard.storcli import run_storcli
+from megaraid_dashboard.storcli import StorcliNotAvailable, StorcliParseError, run_storcli
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -158,6 +158,26 @@ def test_patrol_read_get_returns_current_state(monkeypatch: pytest.MonkeyPatch) 
     assert calls == [["/c0", "show", "patrolread", "J"]]
 
 
+def test_patrol_read_get_error_is_swappable_for_htmx(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        raise StorcliNotAvailable("storcli unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get(
+            "/controller/patrol-read",
+            headers={"HX-Request": "true"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "error": "storcli command failed",
+        "detail": "storcli unavailable",
+    }
+
+
 def test_patrol_read_start_rejects_when_already_running(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -231,6 +251,76 @@ def test_patrol_read_stop_rejects_when_not_running(
     assert response.json()["error"] == "patrol read is not running"
     assert calls == [["/c0", "show", "patrolread", "J"]]
     assert event.summary == "patrol read stop rejected: not running"
+
+
+@pytest.mark.parametrize(
+    ("path", "error", "expected_action", "expected_error", "expected_audit"),
+    [
+        (
+            "/controller/patrol-read/start",
+            StorcliParseError("invalid patrol read payload"),
+            "start",
+            "storcli parse failed",
+            "patrol read start failed: StorcliParseError: invalid patrol read payload",
+        ),
+        (
+            "/controller/patrol-read/stop",
+            StorcliNotAvailable("storcli unavailable"),
+            "stop",
+            "storcli command failed",
+            "patrol read stop failed: StorcliNotAvailable: storcli unavailable",
+        ),
+    ],
+)
+def test_patrol_read_start_and_stop_audit_failed_precheck(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    path: str,
+    error: Exception,
+    expected_action: str,
+    expected_error: str,
+    expected_audit: str,
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        raise error
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(path, headers=_csrf_request_headers(client, csrf_headers))
+        event = _read_single_event(test_app)
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "error": expected_error,
+        "action": expected_action,
+        "detail": str(error),
+    }
+    assert event.summary == expected_audit
+
+
+def test_patrol_read_precheck_error_is_swappable_for_htmx(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        raise StorcliNotAvailable("storcli unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            "/controller/patrol-read/start",
+            headers={
+                **_csrf_request_headers(client, csrf_headers),
+                "HX-Request": "true",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["error"] == "storcli command failed"
 
 
 def test_patrol_read_mode_rejects_without_maintenance_mode_and_audits(
