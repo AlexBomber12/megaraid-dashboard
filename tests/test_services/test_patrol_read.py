@@ -99,6 +99,14 @@ def test_parse_patrol_read_status_from_controller_properties() -> None:
     assert status.is_running is True
 
 
+def test_parse_patrol_read_status_not_in_progress_is_idle() -> None:
+    status = parse_patrol_read_status(_patrol_payload(mode="Auto", state="Not in progress"))
+
+    assert status.state == "stopped"
+    assert status.progress_percent is None
+    assert status.is_running is False
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "argv",
@@ -278,6 +286,46 @@ def test_patrol_read_maintenance_rejection_is_swappable_for_htmx(
 
     assert response.status_code == 200
     assert response.json()["error"] == "patrol read changes require maintenance_mode"
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_audit"),
+    [
+        (
+            "/controller/patrol-read/start",
+            "patrol read start rejected: maintenance_mode required",
+        ),
+        (
+            "/controller/patrol-read/stop",
+            "patrol read stop rejected: maintenance_mode required",
+        ),
+    ],
+)
+def test_patrol_read_start_and_stop_reject_without_maintenance_before_state_check(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    path: str,
+    expected_audit: str,
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        calls.append(list(args))
+        return _patrol_payload(mode="Manual", state="Active")
+
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(path, headers=_csrf_request_headers(client, csrf_headers))
+        event = _read_single_event(test_app)
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "patrol read changes require maintenance_mode"
+    assert calls == []
+    assert event.summary == expected_audit
 
 
 @pytest.mark.parametrize(

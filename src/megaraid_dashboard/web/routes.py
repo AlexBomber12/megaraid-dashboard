@@ -1555,6 +1555,14 @@ async def controller_patrol_read(request: Request) -> JSONResponse:
 @router.post("/controller/patrol-read/start", name="controller_patrol_read_start")
 async def controller_patrol_read_start(request: Request) -> JSONResponse:
     settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return await _reject_patrol_read_maintenance_required(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            settings=settings,
+        )
+
     try:
         status = await _query_live_patrol_read(settings=settings)
     except StorcliParseError as exc:
@@ -1587,6 +1595,14 @@ async def controller_patrol_read_start(request: Request) -> JSONResponse:
 @router.post("/controller/patrol-read/stop", name="controller_patrol_read_stop")
 async def controller_patrol_read_stop(request: Request) -> JSONResponse:
     settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return await _reject_patrol_read_maintenance_required(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            settings=settings,
+        )
+
     try:
         status = await _query_live_patrol_read(settings=settings)
     except StorcliParseError as exc:
@@ -1661,16 +1677,11 @@ async def _run_patrol_read_mutation(
     audit_message: str,
 ) -> JSONResponse:
     if not settings.maintenance_mode:
-        return await _reject_patrol_read_mutation(
+        return await _reject_patrol_read_maintenance_required(
             request=request,
             action=action,
             audit_message=audit_message,
-            reason="maintenance_mode required",
-            rejection_body={
-                "error": "patrol read changes require maintenance_mode",
-                "maintenance_mode": settings.maintenance_mode,
-            },
-            status_code=403,
+            settings=settings,
         )
 
     result: dict[str, Any] | None = None
@@ -1748,6 +1759,26 @@ async def _reject_patrol_read_mutation(
         )
     return JSONResponse(
         rejection_body, status_code=_patrol_read_rejection_status(request, status_code)
+    )
+
+
+async def _reject_patrol_read_maintenance_required(
+    *,
+    request: Request,
+    action: Literal["start", "stop", "mode"],
+    audit_message: str,
+    settings: Settings,
+) -> JSONResponse:
+    return await _reject_patrol_read_mutation(
+        request=request,
+        action=action,
+        audit_message=audit_message,
+        reason="maintenance_mode required",
+        rejection_body={
+            "error": "patrol read changes require maintenance_mode",
+            "maintenance_mode": settings.maintenance_mode,
+        },
+        status_code=403,
     )
 
 

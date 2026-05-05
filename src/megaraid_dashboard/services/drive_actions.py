@@ -413,6 +413,8 @@ def _normalize_patrol_read_state(raw_state: str | None) -> str:
     if raw_state is None:
         return "unknown"
     lowered = raw_state.strip().lower()
+    if "not in progress" in lowered:
+        return "stopped"
     if "active" in lowered or "running" in lowered or "progress" in lowered:
         return "active"
     if "paused" in lowered:
