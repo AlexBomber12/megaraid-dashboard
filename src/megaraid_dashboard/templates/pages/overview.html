@@ -53,6 +53,60 @@
       </form>
     </div>
   </section>
+  <section class="foreign-config" aria-label="Consistency check">
+    <h2>Consistency check</h2>
+    <p>
+      Whole-VD parity verification. Starting a pass can consume controller and
+      disk bandwidth while it runs.
+    </p>
+    <pre
+      id="consistency-check-state"
+      class="foreign-config__result"
+      hx-get="{{ request.url_for('controller_consistency_check').path }}"
+      hx-trigger="load, every 60s"
+      hx-swap="innerHTML"
+      aria-live="polite"
+    >Loading consistency check state...</pre>
+    <div class="foreign-config__form">
+      <form
+        method="post"
+        action="{{ request.url_for('controller_consistency_check_start').path }}"
+        hx-post="{{ request.url_for('controller_consistency_check_start').path }}"
+        hx-target="#consistency-check-state"
+        hx-swap="innerHTML"
+        hx-confirm="Start consistency check now? This can affect array performance while it runs."
+      >
+        <label class="foreign-config__field">
+          <span>VD</span>
+          <input class="input" name="vd_id" type="number" min="0" max="255" placeholder="all">
+        </label>
+        <button class="button button--warning" type="submit">Start</button>
+      </form>
+      <button
+        class="button"
+        type="button"
+        hx-post="{{ request.url_for('controller_consistency_check_stop').path }}"
+        hx-target="#consistency-check-state"
+        hx-swap="innerHTML"
+      >Stop</button>
+      <form
+        method="post"
+        action="{{ request.url_for('controller_consistency_check_mode').path }}"
+        hx-post="{{ request.url_for('controller_consistency_check_mode').path }}"
+        hx-target="#consistency-check-state"
+        hx-swap="innerHTML"
+      >
+        <label class="foreign-config__field">
+          <span>Mode</span>
+          <select class="input" name="mode">
+            <option value="auto">auto</option>
+            <option value="manual">manual</option>
+          </select>
+        </label>
+        <button class="button button--primary" type="submit">Set mode</button>
+      </form>
+    </div>
+  </section>
   {% if not maintenance_state.active %}
     {% include "partials/maintenance_start_form.html" %}
   {% endif %}
