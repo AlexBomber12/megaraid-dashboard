@@ -7,6 +7,7 @@ from typing import Any, Literal
 from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliParseError
 
 LocateAction = Literal["start", "stop"]
+PatrolReadMode = Literal["auto", "manual", "disable"]
 ReplaceStep = Literal["offline", "missing"]
 
 _LOCATE_VERB: dict[LocateAction, str] = {
@@ -53,6 +54,40 @@ def build_show_drive_command(enclosure: int, slot: int) -> list[str]:
 def build_rebuild_status_command(enclosure: int, slot: int) -> list[str]:
     validate_enclosure_slot(enclosure, slot)
     return [f"/c0/e{enclosure}/s{slot}", "show", "rebuild", "J"]
+
+
+def build_patrol_read_show_command() -> list[str]:
+    """Show controller patrol-read state.
+
+    Firmware syntax verified from StorCLI/PERCCLI-compatible docs:
+    ``/c0 show patrolread J``.
+    """
+    return ["/c0", "show", "patrolread", "J"]
+
+
+def build_patrol_read_start_command() -> list[str]:
+    """Start an immediate whole-controller patrol-read pass: ``/c0 start patrolread J``."""
+    return ["/c0", "start", "patrolread", "J"]
+
+
+def build_patrol_read_stop_command() -> list[str]:
+    """Stop the active patrol-read pass: ``/c0 stop patrolread J``."""
+    return ["/c0", "stop", "patrolread", "J"]
+
+
+def build_patrol_read_mode_command(mode: PatrolReadMode) -> list[str]:
+    """Set patrol-read scheduling mode.
+
+    StorCLI uses ``patrolread=on mode=auto`` or ``patrolread=on mode=manual``
+    for enabled modes, and ``patrolread=off`` for disable.
+    """
+    if mode == "auto":
+        return ["/c0", "set", "patrolread=on", "mode=auto", "J"]
+    if mode == "manual":
+        return ["/c0", "set", "patrolread=on", "mode=manual", "J"]
+    if mode == "disable":
+        return ["/c0", "set", "patrolread=off", "J"]
+    raise ValueError(f"unknown patrol read mode: {mode!r}")
 
 
 def build_insert_replacement_command(
@@ -129,6 +164,19 @@ class RebuildStatus:
     time_remaining_minutes: int | None
 
 
+@dataclass(frozen=True)
+class PatrolReadStatus:
+    mode: str
+    state: str
+    progress_percent: int | None
+    completed_drive_count: int | None
+    last_run_timestamp: str | None
+
+    @property
+    def is_running(self) -> bool:
+        return self.state.lower() in {"active", "paused", "running", "in progress"}
+
+
 def parse_rebuild_status(payload: dict[str, Any]) -> RebuildStatus:
     response_data = _single_controller_response_data(payload)
     percent = _find_percent_complete(response_data)
@@ -151,6 +199,42 @@ def parse_rebuild_status(payload: dict[str, Any]) -> RebuildStatus:
         state=state,
         time_remaining_minutes=time_remaining,
     )
+
+
+def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
+    response_data = _single_controller_response_data(payload)
+    mode = _find_patrol_read_text(response_data, ("mode",)) or "unknown"
+    state_raw = _find_patrol_read_text(response_data, ("current state", "state", "status"))
+    state = _normalize_patrol_read_state(state_raw)
+    progress_percent = None
+    completed_drive_count = None
+    if state in {"active", "paused"}:
+        progress_percent = _find_patrol_read_progress_percent(response_data)
+        if state_raw is not None:
+            if progress_percent is None:
+                progress_percent = _parse_trailing_percent(state_raw)
+            completed_drive_count = _parse_trailing_drive_count(state_raw)
+    last_run_timestamp = _find_patrol_read_text(
+        response_data,
+        ("last run", "last completed", "last start", "last"),
+    )
+    return PatrolReadStatus(
+        mode=mode.lower(),
+        state=state,
+        progress_percent=(
+            max(0, min(100, progress_percent)) if progress_percent is not None else None
+        ),
+        completed_drive_count=completed_drive_count,
+        last_run_timestamp=last_run_timestamp,
+    )
+
+
+def patrol_read_can_start(status: PatrolReadStatus) -> bool:
+    return status.state.lower() in {"stopped", "ready"}
+
+
+def patrol_read_can_stop(status: PatrolReadStatus) -> bool:
+    return status.is_running
 
 
 def _single_controller_response_data(payload: dict[str, Any]) -> dict[str, Any]:
@@ -192,6 +276,36 @@ def _find_percent_complete(value: Any) -> int | None:
     return None
 
 
+def _find_patrol_read_progress_percent(value: Any) -> int | None:
+    for key, candidate in _walk_storcli_properties(value):
+        percent = _parse_patrol_read_progress_candidate(key, candidate)
+        if percent is not None:
+            return percent
+    for key, candidate in _walk_key_values(value):
+        percent = _parse_patrol_read_progress_candidate(key, candidate)
+        if percent is not None:
+            return percent
+    return None
+
+
+def _parse_patrol_read_progress_candidate(key: str, candidate: Any) -> int | None:
+    if not _is_patrol_read_progress_key(key):
+        return None
+    return _parse_int(candidate)
+
+
+def _is_patrol_read_progress_key(key: str) -> bool:
+    lowered_key = key.lower()
+    normalized_key = key.lower().replace(" ", "").replace("_", "")
+    if "rate" in normalized_key:
+        return False
+    if "progress" not in normalized_key and "percentcomplete" not in normalized_key:
+        return False
+    if "patrol" in normalized_key:
+        return True
+    return re.search(r"(?:^|[^a-z0-9])pr(?:[^a-z0-9]|$)", lowered_key) is not None
+
+
 def _find_time_remaining_minutes(value: Any) -> int | None:
     for key, candidate in _walk_key_values(value):
         normalized_key = key.lower().replace(" ", "").replace("_", "")
@@ -220,6 +334,35 @@ def _find_text_value(
     return None
 
 
+def _find_patrol_read_text(value: Any, key_hints: tuple[str, ...]) -> str | None:
+    for key, candidate in _walk_storcli_properties(value):
+        lowered_key = key.lower()
+        if any(hint in lowered_key for hint in key_hints) and isinstance(candidate, str):
+            text = candidate.strip()
+            if text:
+                return text
+    for key, candidate in _walk_key_values(value):
+        lowered_key = key.lower()
+        if any(hint in lowered_key for hint in key_hints) and isinstance(candidate, str):
+            text = candidate.strip()
+            if text:
+                return text
+    return None
+
+
+def _walk_storcli_properties(value: Any) -> list[tuple[str, Any]]:
+    pairs: list[tuple[str, Any]] = []
+    if isinstance(value, dict):
+        if isinstance(value.get("Ctrl_Prop"), str) and "Value" in value:
+            pairs.append((value["Ctrl_Prop"], value["Value"]))
+        for candidate in value.values():
+            pairs.extend(_walk_storcli_properties(candidate))
+    elif isinstance(value, list):
+        for item in value:
+            pairs.extend(_walk_storcli_properties(item))
+    return pairs
+
+
 def _walk_key_values(value: Any) -> list[tuple[str, Any]]:
     pairs: list[tuple[str, Any]] = []
     if isinstance(value, dict):
@@ -245,6 +388,22 @@ def _parse_int(value: Any) -> int | None:
         if match is not None:
             return int(float(match.group(0)))
     return None
+
+
+def _parse_trailing_percent(value: str) -> int | None:
+    match = re.search(r"(?:^|\s)(\d+(?:\.\d+)?)\s*%\s*$", value)
+    if match is None:
+        return None
+    return int(float(match.group(1)))
+
+
+def _parse_trailing_drive_count(value: str) -> int | None:
+    if re.search(r"%\s*$", value) is not None:
+        return None
+    match = re.search(r"(?:^|\s)(\d+)\s*$", value)
+    if match is None:
+        return None
+    return int(match.group(1))
 
 
 def _parse_minutes(value: Any) -> int | None:
@@ -301,6 +460,23 @@ def _normalize_rebuild_state(raw_state: str | None, percent: int | None) -> str:
     if percent is not None and percent > 0:
         return "In progress"
     return "Not in progress"
+
+
+def _normalize_patrol_read_state(raw_state: str | None) -> str:
+    if raw_state is None:
+        return "unknown"
+    lowered = raw_state.strip().lower()
+    if "not in progress" in lowered:
+        return "stopped"
+    if "active" in lowered or "running" in lowered or "progress" in lowered:
+        return "active"
+    if "paused" in lowered:
+        return "paused"
+    if "ready" in lowered:
+        return "ready"
+    if "stopped" in lowered or "aborted" in lowered:
+        return "stopped"
+    return lowered or "unknown"
 
 
 def validate_enclosure_slot(enclosure: int, slot: int) -> None:

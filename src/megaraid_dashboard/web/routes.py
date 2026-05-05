@@ -37,19 +37,28 @@ from megaraid_dashboard.db.models import (
 from megaraid_dashboard.services.audit import record_operator_action
 from megaraid_dashboard.services.drive_actions import (
     LocateAction,
+    PatrolReadMode,
+    PatrolReadStatus,
     ReplaceStep,
     build_foreign_config_clear_command,
     build_foreign_config_import_command,
     build_foreign_config_show_command,
     build_insert_replacement_command,
     build_locate_command,
+    build_patrol_read_mode_command,
+    build_patrol_read_show_command,
+    build_patrol_read_start_command,
+    build_patrol_read_stop_command,
     build_rebuild_status_command,
     build_set_missing_command,
     build_set_offline_command,
     build_show_drive_command,
     can_transition,
     can_transition_step3,
+    parse_patrol_read_status,
     parse_rebuild_status,
+    patrol_read_can_start,
+    patrol_read_can_stop,
     validate_enclosure_slot,
 )
 from megaraid_dashboard.services.drive_history import (
@@ -1506,6 +1515,10 @@ _FOREIGN_CONFIG_CLEAR_CONFIRMATION = "CLEAR FOREIGN CONFIG"
 _REBUILD_DRIVE_STATES: frozenset[str] = frozenset({"Rbld"})
 
 
+class PatrolReadModeRequest(BaseModel):
+    mode: PatrolReadMode
+
+
 class ForeignConfigImportRequest(BaseModel):
     confirmation: str = Field(min_length=1, max_length=200)
     dry_run: bool = False
@@ -1523,6 +1536,400 @@ class ForeignConfigImportRequest(BaseModel):
 class ForeignConfigClearRequest(BaseModel):
     confirmation: str = Field(min_length=1, max_length=200)
     dry_run: bool = False
+
+
+@router.get("/controller/patrol-read", name="controller_patrol_read")
+async def controller_patrol_read(request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    try:
+        status = await _query_live_patrol_read(settings=settings)
+    except StorcliParseError as exc:
+        return _patrol_read_error_response(
+            request,
+            {"error": "storcli parse failed", "detail": str(exc)},
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return _patrol_read_error_response(
+            request,
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
+        )
+    return JSONResponse(_patrol_read_response_body(status))
+
+
+@router.post("/controller/patrol-read/start", name="controller_patrol_read_start")
+async def controller_patrol_read_start(request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return await _reject_patrol_read_maintenance_required(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            settings=settings,
+        )
+
+    try:
+        status = await _query_live_patrol_read(settings=settings)
+    except StorcliParseError as exc:
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            error_message="storcli parse failed",
+            exc=exc,
+        )
+    except StorcliError as exc:
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            error_message="storcli command failed",
+            exc=exc,
+        )
+    if not patrol_read_can_start(status):
+        return await _reject_patrol_read_mutation(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            reason="already running",
+            rejection_body={
+                "error": "patrol read already running",
+                "patrol_read": _patrol_read_response_body(status),
+            },
+            status_code=409,
+        )
+    return await _run_patrol_read_mutation(
+        request=request,
+        settings=settings,
+        action="start",
+        argv=build_patrol_read_start_command(),
+        audit_message="patrol read start",
+    )
+
+
+@router.post("/controller/patrol-read/stop", name="controller_patrol_read_stop")
+async def controller_patrol_read_stop(request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return await _reject_patrol_read_maintenance_required(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            settings=settings,
+        )
+
+    try:
+        status = await _query_live_patrol_read(settings=settings)
+    except StorcliParseError as exc:
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            error_message="storcli parse failed",
+            exc=exc,
+        )
+    except StorcliError as exc:
+        return await _fail_patrol_read_precheck(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            error_message="storcli command failed",
+            exc=exc,
+        )
+    if not patrol_read_can_stop(status):
+        return await _reject_patrol_read_mutation(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            reason="not running",
+            rejection_body={
+                "error": "patrol read is not running",
+                "patrol_read": _patrol_read_response_body(status),
+            },
+            status_code=409,
+        )
+    return await _run_patrol_read_mutation(
+        request=request,
+        settings=settings,
+        action="stop",
+        argv=build_patrol_read_stop_command(),
+        audit_message="patrol read stop",
+    )
+
+
+@router.post("/controller/patrol-read/mode", name="controller_patrol_read_mode")
+async def controller_patrol_read_mode(request: Request) -> JSONResponse:
+    body = await _parse_patrol_read_mode_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    try:
+        argv = build_patrol_read_mode_command(body.mode)
+    except ValueError as exc:
+        return _patrol_read_error_response(request, {"error": str(exc)}, status_code=400)
+    settings: Settings = request.app.state.settings
+    return await _run_patrol_read_mutation(
+        request=request,
+        settings=settings,
+        action="mode",
+        argv=argv,
+        audit_message=f"patrol read mode set to {body.mode}",
+    )
+
+
+async def _parse_patrol_read_mode_request_body(
+    request: Request,
+) -> PatrolReadModeRequest | JSONResponse:
+    content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].lower()
+    try:
+        if content_type == "application/json":
+            payload: Any = await request.json()
+        else:
+            payload = dict(await request.form())
+    except ValueError:
+        return _patrol_read_error_response(
+            request,
+            {"error": "request body must be valid JSON"},
+            status_code=400,
+        )
+    try:
+        return PatrolReadModeRequest.model_validate(payload)
+    except ValidationError as exc:
+        return _patrol_read_error_response(
+            request,
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+async def _query_live_patrol_read(*, settings: Settings) -> PatrolReadStatus:
+    payload = await run_storcli(
+        build_patrol_read_show_command(),
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    return parse_patrol_read_status(payload)
+
+
+def _patrol_read_response_body(status: PatrolReadStatus) -> dict[str, Any]:
+    return {
+        "mode": status.mode,
+        "state": status.state,
+        "progress_percent": status.progress_percent,
+        "completed_drive_count": status.completed_drive_count,
+        "last_run_timestamp": status.last_run_timestamp,
+    }
+
+
+def _patrol_read_error_response(
+    request: Request, body: dict[str, Any], *, status_code: int
+) -> JSONResponse:
+    return JSONResponse(
+        body,
+        status_code=_patrol_read_rejection_status(request, status_code),
+    )
+
+
+async def _fail_patrol_read_precheck(
+    *,
+    request: Request,
+    action: Literal["start", "stop"],
+    audit_message: str,
+    error_message: str,
+    exc: StorcliError,
+) -> JSONResponse:
+    outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+    try:
+        await run_in_threadpool(
+            _record_patrol_read_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "storcli_error": str(exc),
+            },
+            status_code=500,
+        )
+    return _patrol_read_error_response(
+        request,
+        {
+            "error": error_message,
+            "action": action,
+            "detail": str(exc),
+        },
+        status_code=502,
+    )
+
+
+async def _run_patrol_read_mutation(
+    *,
+    request: Request,
+    settings: Settings,
+    action: Literal["start", "stop", "mode"],
+    argv: list[str],
+    audit_message: str,
+) -> JSONResponse:
+    if not settings.maintenance_mode:
+        return await _reject_patrol_read_maintenance_required(
+            request=request,
+            action=action,
+            audit_message=audit_message,
+            settings=settings,
+        )
+
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        ensure_command_succeeded(result)
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_patrol_read_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        audit_failure_body: dict[str, Any] = {
+            "error": "audit persistence failed",
+            "action": action,
+            "argv": argv,
+        }
+        if result is not None:
+            audit_failure_body["result"] = result
+        if storcli_error is not None:
+            audit_failure_body["storcli_error"] = str(storcli_error)
+        return JSONResponse(audit_failure_body, status_code=500)
+
+    if storcli_error is not None:
+        return _patrol_read_error_response(
+            request,
+            {
+                "error": "storcli command failed",
+                "action": action,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+
+    try:
+        status = await _query_live_patrol_read(settings=settings)
+    except StorcliParseError as exc:
+        return _patrol_read_error_response(
+            request,
+            {
+                "error": "storcli refresh parse failed",
+                "action": action,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return _patrol_read_error_response(
+            request,
+            {
+                "error": "storcli refresh failed",
+                "action": action,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(_patrol_read_response_body(status))
+
+
+async def _reject_patrol_read_mutation(
+    *,
+    request: Request,
+    action: Literal["start", "stop", "mode"],
+    audit_message: str,
+    reason: str,
+    rejection_body: dict[str, Any],
+    status_code: int,
+) -> JSONResponse:
+    outcome = f"rejected: {reason}"
+    try:
+        await run_in_threadpool(
+            _record_patrol_read_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "rejection_reason": reason,
+            },
+            status_code=500,
+        )
+    return JSONResponse(
+        rejection_body, status_code=_patrol_read_rejection_status(request, status_code)
+    )
+
+
+async def _reject_patrol_read_maintenance_required(
+    *,
+    request: Request,
+    action: Literal["start", "stop", "mode"],
+    audit_message: str,
+    settings: Settings,
+) -> JSONResponse:
+    return await _reject_patrol_read_mutation(
+        request=request,
+        action=action,
+        audit_message=audit_message,
+        reason="maintenance_mode required",
+        rejection_body={
+            "error": "patrol read changes require maintenance_mode",
+            "maintenance_mode": settings.maintenance_mode,
+        },
+        status_code=403,
+    )
+
+
+def _patrol_read_rejection_status(request: Request, status_code: int) -> int:
+    if request.headers.get("HX-Request", "").lower() == "true":
+        return 200
+    return status_code
+
+
+def _record_patrol_read_operator_action_sync(
+    *,
+    request: Request,
+    message: str,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=f"{message} {outcome}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action="patrol_read",
+            outcome=outcome,
+        )
+        raise
 
 
 @router.get("/controller/foreign-config", name="controller_foreign_config")

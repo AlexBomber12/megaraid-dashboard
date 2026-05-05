@@ -77,7 +77,13 @@ def test_phase_sudoers_writes_valid_fragment(tmp_path: Path) -> None:
         f"  {storcli} /c0/vall show all J, "
         f"  {storcli} /c0/eall/sall show all J, "
         f"  {storcli} /c0/cv show all J, "
-        f"  {storcli} /c0/bbu show all J\n"
+        f"  {storcli} /c0/bbu show all J, "
+        f"  {storcli} /c0 show patrolread J, "
+        f"  {storcli} /c0 start patrolread J, "
+        f"  {storcli} /c0 stop patrolread J, "
+        f"  {storcli} /c0 set patrolread=on mode=auto J, "
+        f"  {storcli} /c0 set patrolread=on mode=manual J, "
+        f"  {storcli} /c0 set patrolread=off J\n"
         "raid-monitor ALL=(root) NOPASSWD: MEGARAID_DASHBOARD_STORCLI\n"
     )
     assert stat.S_IMODE(sudoers.stat().st_mode) == 0o440
