@@ -467,6 +467,10 @@ def _find_patrol_read_text(value: Any, key_hints: tuple[str, ...]) -> str | None
 
 
 def _find_consistency_check_text(value: Any, key_hints: tuple[str, ...]) -> str | None:
+    operation_text = _find_consistency_check_operation_text(value, key_hints)
+    if operation_text is not None:
+        return operation_text
+
     for key, candidate in _walk_storcli_properties(value):
         lowered_key = key.lower()
         normalized_key = lowered_key.replace(" ", "").replace("_", "")
@@ -490,6 +494,35 @@ def _find_consistency_check_text(value: Any, key_hints: tuple[str, ...]) -> str 
             if text:
                 return text
     return None
+
+
+def _find_consistency_check_operation_text(value: Any, key_hints: tuple[str, ...]) -> str | None:
+    if isinstance(value, dict):
+        operation = value.get("Operation")
+        if isinstance(operation, str) and _is_consistency_check_operation(operation):
+            for key, candidate in value.items():
+                if key == "Operation" or not isinstance(candidate, str):
+                    continue
+                lowered_key = str(key).lower()
+                if any(hint in lowered_key for hint in key_hints):
+                    direct_text = candidate.strip()
+                    if direct_text:
+                        return direct_text
+        for candidate in value.values():
+            nested_text = _find_consistency_check_operation_text(candidate, key_hints)
+            if nested_text is not None:
+                return nested_text
+    elif isinstance(value, list):
+        for item in value:
+            nested_text = _find_consistency_check_operation_text(item, key_hints)
+            if nested_text is not None:
+                return nested_text
+    return None
+
+
+def _is_consistency_check_operation(operation: str) -> bool:
+    normalized = operation.strip().lower().replace(" ", "").replace("_", "")
+    return normalized in {"cc", "consistencycheck"}
 
 
 def _find_consistency_check_inconsistency(value: Any) -> tuple[int | None, str | None]:

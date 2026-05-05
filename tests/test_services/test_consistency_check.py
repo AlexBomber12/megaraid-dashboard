@@ -20,6 +20,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_consistency_check_show_progress_command,
     build_consistency_check_start_command,
     build_consistency_check_stop_command,
+    consistency_check_can_start,
     parse_consistency_check_status,
 )
 from megaraid_dashboard.storcli import StorcliNotAvailable, run_storcli
@@ -114,6 +115,31 @@ def test_parse_consistency_check_status_detects_inconsistency() -> None:
     assert status.inconsistency_count == 3
     assert status.inconsistency_detail == "3"
     assert status.has_inconsistency is True
+
+
+def test_parse_consistency_check_status_from_vd_operation_status_row() -> None:
+    status = parse_consistency_check_status(
+        _cc_show_payload(mode="Manual"),
+        {
+            "Controllers": [
+                {
+                    "Command Status": {"Status": "Success"},
+                    "Response Data": {
+                        "VD Operation Status": [
+                            {
+                                "VD": "0/0",
+                                "Operation": "CC",
+                                "Status": "Not in progress",
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+    )
+
+    assert status.state == "stopped"
+    assert consistency_check_can_start(status) is True
 
 
 @pytest.mark.asyncio
