@@ -205,9 +205,11 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
     mode = _find_patrol_read_text(response_data, ("mode",)) or "unknown"
     state_raw = _find_patrol_read_text(response_data, ("current state", "state", "status"))
     state = _normalize_patrol_read_state(state_raw)
-    progress_percent = _find_percent_complete(response_data)
-    if progress_percent is None and state_raw is not None:
-        progress_percent = _parse_trailing_percent(state_raw) if state == "active" else None
+    progress_percent = None
+    if state in {"active", "paused"}:
+        progress_percent = _find_patrol_read_progress_percent(response_data)
+        if progress_percent is None and state_raw is not None:
+            progress_percent = _parse_trailing_percent(state_raw)
     last_run_timestamp = _find_patrol_read_text(
         response_data,
         ("last run", "last completed", "last start", "last"),
@@ -267,6 +269,29 @@ def _find_percent_complete(value: Any) -> int | None:
             if percent is not None:
                 return percent
     return None
+
+
+def _find_patrol_read_progress_percent(value: Any) -> int | None:
+    for key, candidate in _walk_storcli_properties(value):
+        percent = _parse_patrol_read_progress_candidate(key, candidate)
+        if percent is not None:
+            return percent
+    for key, candidate in _walk_key_values(value):
+        percent = _parse_patrol_read_progress_candidate(key, candidate)
+        if percent is not None:
+            return percent
+    return None
+
+
+def _parse_patrol_read_progress_candidate(key: str, candidate: Any) -> int | None:
+    normalized_key = key.lower().replace(" ", "").replace("_", "")
+    if "patrol" not in normalized_key and "pr" not in normalized_key:
+        return None
+    if "rate" in normalized_key:
+        return None
+    if "progress" not in normalized_key and "percentcomplete" not in normalized_key:
+        return None
+    return _parse_int(candidate)
 
 
 def _find_time_remaining_minutes(value: Any) -> int | None:

@@ -116,6 +116,16 @@ def test_parse_patrol_read_status_not_in_progress_is_idle() -> None:
     assert status.is_running is False
 
 
+def test_parse_patrol_read_status_ignores_configured_rate_when_stopped() -> None:
+    status = parse_patrol_read_status(
+        _patrol_payload(mode="Auto", state="Not in progress", extra_props=[("PR Rate", "30%")])
+    )
+
+    assert status.state == "stopped"
+    assert status.progress_percent is None
+    assert status.is_running is False
+
+
 @pytest.mark.parametrize("state", ["Not in progress", "Ready", "Stopped"])
 def test_patrol_read_can_start_for_explicit_idle_states(state: str) -> None:
     status = parse_patrol_read_status(_patrol_payload(mode="Auto", state=state))
@@ -653,18 +663,25 @@ def test_patrol_read_mutation_command_error_is_swappable_for_htmx(
     assert event.summary.endswith("failed: StorcliNotAvailable: storcli unavailable")
 
 
-def _patrol_payload(*, mode: str, state: str) -> dict[str, Any]:
+def _patrol_payload(
+    *,
+    mode: str,
+    state: str,
+    extra_props: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    controller_properties = [
+        {"Ctrl_Prop": "PR Mode", "Value": mode},
+        {"Ctrl_Prop": "PR Current State", "Value": state},
+        {"Ctrl_Prop": "PR Last Run", "Value": "2026/05/04 01:00:00"},
+    ]
+    controller_properties.extend(
+        {"Ctrl_Prop": key, "Value": value} for key, value in (extra_props or [])
+    )
     return {
         "Controllers": [
             {
                 "Command Status": {"Status": "Success"},
-                "Response Data": {
-                    "Controller Properties": [
-                        {"Ctrl_Prop": "PR Mode", "Value": mode},
-                        {"Ctrl_Prop": "PR Current State", "Value": state},
-                        {"Ctrl_Prop": "PR Last Run", "Value": "2026/05/04 01:00:00"},
-                    ]
-                },
+                "Response Data": {"Controller Properties": controller_properties},
             }
         ]
     }
