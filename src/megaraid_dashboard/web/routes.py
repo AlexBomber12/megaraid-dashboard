@@ -1564,8 +1564,12 @@ async def controller_patrol_read_start(request: Request) -> JSONResponse:
             {"error": "storcli command failed", "detail": str(exc)}, status_code=502
         )
     if not patrol_read_can_start(status):
-        return JSONResponse(
-            {
+        return await _reject_patrol_read_mutation(
+            request=request,
+            action="start",
+            audit_message="patrol read start",
+            reason="already running",
+            rejection_body={
                 "error": "patrol read already running",
                 "patrol_read": _patrol_read_response_body(status),
             },
@@ -1592,8 +1596,12 @@ async def controller_patrol_read_stop(request: Request) -> JSONResponse:
             {"error": "storcli command failed", "detail": str(exc)}, status_code=502
         )
     if not patrol_read_can_stop(status):
-        return JSONResponse(
-            {
+        return await _reject_patrol_read_mutation(
+            request=request,
+            action="stop",
+            audit_message="patrol read stop",
+            reason="not running",
+            rejection_body={
                 "error": "patrol read is not running",
                 "patrol_read": _patrol_read_response_body(status),
             },
@@ -1653,8 +1661,12 @@ async def _run_patrol_read_mutation(
     audit_message: str,
 ) -> JSONResponse:
     if not settings.maintenance_mode:
-        return JSONResponse(
-            {
+        return await _reject_patrol_read_mutation(
+            request=request,
+            action=action,
+            audit_message=audit_message,
+            reason="maintenance_mode required",
+            rejection_body={
                 "error": "patrol read changes require maintenance_mode",
                 "maintenance_mode": settings.maintenance_mode,
             },
@@ -1706,6 +1718,35 @@ async def _run_patrol_read_mutation(
         )
 
     return JSONResponse({"action": action, "argv": argv, "result": result})
+
+
+async def _reject_patrol_read_mutation(
+    *,
+    request: Request,
+    action: Literal["start", "stop", "mode"],
+    audit_message: str,
+    reason: str,
+    rejection_body: dict[str, Any],
+    status_code: int,
+) -> JSONResponse:
+    outcome = f"rejected: {reason}"
+    try:
+        await run_in_threadpool(
+            _record_patrol_read_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "rejection_reason": reason,
+            },
+            status_code=500,
+        )
+    return JSONResponse(rejection_body, status_code=status_code)
 
 
 def _record_patrol_read_operator_action_sync(

@@ -168,10 +168,12 @@ def test_patrol_read_start_rejects_when_already_running(
             "/controller/patrol-read/start",
             headers=_csrf_request_headers(client, csrf_headers),
         )
+        event = _read_single_event(test_app)
 
     assert response.status_code == 409
     assert response.json()["error"] == "patrol read already running"
     assert calls == [["/c0", "show", "patrolread", "J"]]
+    assert event.summary == "patrol read start rejected: already running"
 
 
 def test_patrol_read_stop_rejects_when_not_running(
@@ -192,10 +194,41 @@ def test_patrol_read_stop_rejects_when_not_running(
             "/controller/patrol-read/stop",
             headers=_csrf_request_headers(client, csrf_headers),
         )
+        event = _read_single_event(test_app)
 
     assert response.status_code == 409
     assert response.json()["error"] == "patrol read is not running"
     assert calls == [["/c0", "show", "patrolread", "J"]]
+    assert event.summary == "patrol read stop rejected: not running"
+
+
+def test_patrol_read_mode_rejects_without_maintenance_mode_and_audits(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        calls.append(list(args))
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            "/controller/patrol-read/mode",
+            headers=_csrf_request_headers(client, csrf_headers),
+            json={"mode": "manual"},
+        )
+        event = _read_single_event(test_app)
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "patrol read changes require maintenance_mode"
+    assert calls == []
+    assert event.summary == "patrol read mode set to manual rejected: maintenance_mode required"
 
 
 @pytest.mark.parametrize(
