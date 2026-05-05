@@ -70,6 +70,26 @@ def test_configparser_value_escapes_percent_for_alembic() -> None:
     assert config.get_main_option("sqlalchemy.url") == database_url
 
 
+def test_create_app_orders_security_middleware(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    get_settings.cache_clear()
+
+    try:
+        test_app = app.create_app()
+
+        assert [middleware.cls.__name__ for middleware in test_app.user_middleware[:4]] == [
+            "ForwardedPrefixMiddleware",
+            "AuthRateLimitMiddleware",
+            "BasicAuthMiddleware",
+            "CsrfMiddleware",
+        ]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_upgrade_database_uses_existing_in_memory_connection() -> None:
     engine = get_engine("sqlite:///:memory:")
     try:
