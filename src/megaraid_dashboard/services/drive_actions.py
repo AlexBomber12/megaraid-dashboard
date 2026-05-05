@@ -223,7 +223,7 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
 
 
 def patrol_read_can_start(status: PatrolReadStatus) -> bool:
-    return not status.is_running
+    return status.state.lower() in {"stopped", "ready"}
 
 
 def patrol_read_can_stop(status: PatrolReadStatus) -> bool:

@@ -20,6 +20,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_patrol_read_start_command,
     build_patrol_read_stop_command,
     parse_patrol_read_status,
+    patrol_read_can_start,
 )
 from megaraid_dashboard.storcli import StorcliNotAvailable, StorcliParseError, run_storcli
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
@@ -107,6 +108,20 @@ def test_parse_patrol_read_status_not_in_progress_is_idle() -> None:
     assert status.is_running is False
 
 
+@pytest.mark.parametrize("state", ["Not in progress", "Ready", "Stopped"])
+def test_patrol_read_can_start_for_explicit_idle_states(state: str) -> None:
+    status = parse_patrol_read_status(_patrol_payload(mode="Auto", state=state))
+
+    assert patrol_read_can_start(status) is True
+
+
+@pytest.mark.parametrize("state", ["Unknown", "Active", "Paused", "unexpected firmware value"])
+def test_patrol_read_can_start_fails_closed_for_unknown_or_busy_states(state: str) -> None:
+    status = parse_patrol_read_status(_patrol_payload(mode="Auto", state=state))
+
+    assert patrol_read_can_start(status) is False
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "argv",
@@ -187,6 +202,32 @@ def test_patrol_read_start_rejects_when_already_running(
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         calls.append(list(args))
         return _patrol_payload(mode="Manual", state="Active")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            "/controller/patrol-read/start",
+            headers=_csrf_request_headers(client, csrf_headers),
+        )
+        event = _read_single_event(test_app)
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "patrol read already running"
+    assert calls == [["/c0", "show", "patrolread", "J"]]
+    assert event.summary == "patrol read start rejected: already running"
+
+
+def test_patrol_read_start_rejects_when_state_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        calls.append(list(args))
+        return _patrol_payload(mode="Manual", state="Unknown")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
 
