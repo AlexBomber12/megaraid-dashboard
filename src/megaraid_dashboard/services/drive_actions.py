@@ -289,14 +289,21 @@ def _find_patrol_read_progress_percent(value: Any) -> int | None:
 
 
 def _parse_patrol_read_progress_candidate(key: str, candidate: Any) -> int | None:
-    normalized_key = key.lower().replace(" ", "").replace("_", "")
-    if "patrol" not in normalized_key and "pr" not in normalized_key:
-        return None
-    if "rate" in normalized_key:
-        return None
-    if "progress" not in normalized_key and "percentcomplete" not in normalized_key:
+    if not _is_patrol_read_progress_key(key):
         return None
     return _parse_int(candidate)
+
+
+def _is_patrol_read_progress_key(key: str) -> bool:
+    lowered_key = key.lower()
+    normalized_key = key.lower().replace(" ", "").replace("_", "")
+    if "rate" in normalized_key:
+        return False
+    if "progress" not in normalized_key and "percentcomplete" not in normalized_key:
+        return False
+    if "patrol" in normalized_key:
+        return True
+    return re.search(r"(?:^|[^a-z0-9])pr(?:[^a-z0-9]|$)", lowered_key) is not None
 
 
 def _find_time_remaining_minutes(value: Any) -> int | None:

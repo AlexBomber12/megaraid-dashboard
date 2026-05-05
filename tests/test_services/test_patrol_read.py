@@ -125,6 +125,17 @@ def test_parse_patrol_read_status_from_explicit_progress_percent() -> None:
     assert status.is_running is True
 
 
+def test_parse_patrol_read_status_ignores_unrelated_progress_keys() -> None:
+    payload = _patrol_payload(mode="Auto", state="Active 33")
+    payload["Controllers"][0]["Response Data"]["Nested Status"] = {"Progress": "87%"}
+
+    status = parse_patrol_read_status(payload)
+
+    assert status.state == "active"
+    assert status.progress_percent is None
+    assert status.completed_drive_count == 33
+
+
 def test_parse_patrol_read_status_not_in_progress_is_idle() -> None:
     status = parse_patrol_read_status(_patrol_payload(mode="Auto", state="Not in progress"))
 
