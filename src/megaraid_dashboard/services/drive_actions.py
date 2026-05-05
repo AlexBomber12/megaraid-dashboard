@@ -8,6 +8,7 @@ from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliParseError
 
 LocateAction = Literal["start", "stop"]
 PatrolReadMode = Literal["auto", "manual", "disable"]
+ConsistencyCheckMode = Literal["auto", "manual"]
 ReplaceStep = Literal["offline", "missing"]
 
 _LOCATE_VERB: dict[LocateAction, str] = {
@@ -88,6 +89,33 @@ def build_patrol_read_mode_command(mode: PatrolReadMode) -> list[str]:
     if mode == "disable":
         return ["/c0", "set", "patrolread=off", "J"]
     raise ValueError(f"unknown patrol read mode: {mode!r}")
+
+
+def build_consistency_check_show_command() -> list[str]:
+    return ["/c0", "show", "cc", "J"]
+
+
+def build_consistency_check_show_progress_command() -> list[str]:
+    return ["/c0/vall", "show", "cc", "J"]
+
+
+def build_consistency_check_start_command(vd_id: int | None) -> list[str]:
+    if vd_id is None:
+        return ["/c0/vall", "start", "cc", "J"]
+    validate_virtual_drive(vd_id)
+    return [f"/c0/v{vd_id}", "start", "cc", "J"]
+
+
+def build_consistency_check_stop_command() -> list[str]:
+    return ["/c0/vall", "stop", "cc", "J"]
+
+
+def build_consistency_check_mode_command(mode: ConsistencyCheckMode) -> list[str]:
+    if mode == "auto":
+        return ["/c0", "set", "consistencycheck=on", "mode=auto", "J"]
+    if mode == "manual":
+        return ["/c0", "set", "consistencycheck=on", "mode=manual", "J"]
+    raise ValueError(f"unknown consistency check mode: {mode!r}")
 
 
 def build_insert_replacement_command(
@@ -177,6 +205,26 @@ class PatrolReadStatus:
         return self.state.lower() in {"active", "paused", "running", "in progress"}
 
 
+@dataclass(frozen=True)
+class ConsistencyCheckStatus:
+    mode: str
+    state: str
+    progress_percent: int | None
+    last_run_timestamp: str | None
+    inconsistency_count: int | None
+    inconsistency_detail: str | None
+
+    @property
+    def is_running(self) -> bool:
+        return self.state.lower() in {"active", "paused", "running", "in progress"}
+
+    @property
+    def has_inconsistency(self) -> bool:
+        if self.inconsistency_count is not None:
+            return self.inconsistency_count > 0
+        return self.inconsistency_detail is not None
+
+
 def parse_rebuild_status(payload: dict[str, Any]) -> RebuildStatus:
     response_data = _single_controller_response_data(payload)
     percent = _find_percent_complete(response_data)
@@ -229,11 +277,53 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
     )
 
 
+def parse_consistency_check_status(
+    show_payload: dict[str, Any],
+    progress_payload: dict[str, Any],
+) -> ConsistencyCheckStatus:
+    show_response_data = _single_controller_response_data(show_payload)
+    progress_response_data = _single_controller_response_data(progress_payload)
+    mode = _find_consistency_check_text(show_response_data, ("mode",)) or "unknown"
+    state_raw = _find_consistency_check_text(
+        progress_response_data,
+        ("current state", "state", "status"),
+    )
+    state = _normalize_patrol_read_state(state_raw)
+    progress_percent = _find_consistency_check_progress_percent(progress_response_data)
+    if progress_percent is None and state_raw is not None:
+        progress_percent = _parse_trailing_percent(state_raw)
+    last_run_timestamp = _find_consistency_check_text(
+        show_response_data,
+        ("last run", "last completed", "last start", "last"),
+    )
+    inconsistency_count, inconsistency_detail = _find_consistency_check_inconsistency(
+        progress_response_data
+    )
+    return ConsistencyCheckStatus(
+        mode=mode.lower(),
+        state=state,
+        progress_percent=(
+            max(0, min(100, progress_percent)) if progress_percent is not None else None
+        ),
+        last_run_timestamp=last_run_timestamp,
+        inconsistency_count=inconsistency_count,
+        inconsistency_detail=inconsistency_detail,
+    )
+
+
 def patrol_read_can_start(status: PatrolReadStatus) -> bool:
     return status.state.lower() in {"stopped", "ready"}
 
 
 def patrol_read_can_stop(status: PatrolReadStatus) -> bool:
+    return status.is_running
+
+
+def consistency_check_can_start(status: ConsistencyCheckStatus) -> bool:
+    return status.state.lower() in {"stopped", "ready"}
+
+
+def consistency_check_can_stop(status: ConsistencyCheckStatus) -> bool:
     return status.is_running
 
 
@@ -288,10 +378,36 @@ def _find_patrol_read_progress_percent(value: Any) -> int | None:
     return None
 
 
+def _find_consistency_check_progress_percent(value: Any) -> int | None:
+    for key, candidate in _walk_storcli_properties(value):
+        percent = _parse_consistency_check_progress_candidate(key, candidate)
+        if percent is not None:
+            return percent
+    for key, candidate in _walk_key_values(value):
+        percent = _parse_consistency_check_progress_candidate(key, candidate)
+        if percent is not None:
+            return percent
+    return None
+
+
 def _parse_patrol_read_progress_candidate(key: str, candidate: Any) -> int | None:
     if not _is_patrol_read_progress_key(key):
         return None
     return _parse_int(candidate)
+
+
+def _parse_consistency_check_progress_candidate(key: str, candidate: Any) -> int | None:
+    normalized_key = key.lower().replace(" ", "").replace("_", "")
+    if "rate" in normalized_key:
+        return None
+    if "progress" not in normalized_key and "percentcomplete" not in normalized_key:
+        return None
+    if "consistency" in normalized_key or re.search(
+        r"(?:^|[^a-z0-9])cc(?:[^a-z0-9]|$)",
+        key.lower(),
+    ):
+        return _parse_int(candidate)
+    return None
 
 
 def _is_patrol_read_progress_key(key: str) -> bool:
@@ -347,6 +463,61 @@ def _find_patrol_read_text(value: Any, key_hints: tuple[str, ...]) -> str | None
             text = candidate.strip()
             if text:
                 return text
+    return None
+
+
+def _find_consistency_check_text(value: Any, key_hints: tuple[str, ...]) -> str | None:
+    for key, candidate in _walk_storcli_properties(value):
+        lowered_key = key.lower()
+        normalized_key = lowered_key.replace(" ", "").replace("_", "")
+        if (
+            any(hint in lowered_key for hint in key_hints)
+            and ("consistency" in normalized_key or "cc" in normalized_key)
+            and isinstance(candidate, str)
+        ):
+            text = candidate.strip()
+            if text:
+                return text
+    for key, candidate in _walk_key_values(value):
+        lowered_key = key.lower()
+        normalized_key = lowered_key.replace(" ", "").replace("_", "")
+        if (
+            any(hint in lowered_key for hint in key_hints)
+            and ("consistency" in normalized_key or "cc" in normalized_key)
+            and isinstance(candidate, str)
+        ):
+            text = candidate.strip()
+            if text:
+                return text
+    return None
+
+
+def _find_consistency_check_inconsistency(value: Any) -> tuple[int | None, str | None]:
+    for key, candidate in _walk_storcli_properties(value):
+        result = _parse_consistency_check_inconsistency_candidate(key, candidate)
+        if result is not None:
+            return result
+    for key, candidate in _walk_key_values(value):
+        result = _parse_consistency_check_inconsistency_candidate(key, candidate)
+        if result is not None:
+            return result
+    return None, None
+
+
+def _parse_consistency_check_inconsistency_candidate(
+    key: str,
+    candidate: Any,
+) -> tuple[int | None, str | None] | None:
+    normalized_key = key.lower().replace(" ", "").replace("_", "")
+    if "inconsist" not in normalized_key:
+        return None
+    count = _parse_int(candidate)
+    if count is not None:
+        return count, str(candidate)
+    if isinstance(candidate, str):
+        detail = candidate.strip()
+        if detail and detail.lower() not in {"no", "none", "n/a", "na", "0"}:
+            return None, detail
     return None
 
 
@@ -488,3 +659,10 @@ def validate_enclosure_slot(enclosure: int, slot: int) -> None:
         raise ValueError("slot must be int in [0, 255]")
     if slot < 0 or slot > 255:
         raise ValueError("slot must be int in [0, 255]")
+
+
+def validate_virtual_drive(vd_id: int) -> None:
+    if not isinstance(vd_id, int) or isinstance(vd_id, bool):
+        raise ValueError("vd_id must be int in [0, 255]")
+    if vd_id < 0 or vd_id > 255:
+        raise ValueError("vd_id must be int in [0, 255]")

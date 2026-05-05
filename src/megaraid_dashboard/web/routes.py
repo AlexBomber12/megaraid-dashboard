@@ -36,10 +36,17 @@ from megaraid_dashboard.db.models import (
 )
 from megaraid_dashboard.services.audit import record_operator_action
 from megaraid_dashboard.services.drive_actions import (
+    ConsistencyCheckMode,
+    ConsistencyCheckStatus,
     LocateAction,
     PatrolReadMode,
     PatrolReadStatus,
     ReplaceStep,
+    build_consistency_check_mode_command,
+    build_consistency_check_show_command,
+    build_consistency_check_show_progress_command,
+    build_consistency_check_start_command,
+    build_consistency_check_stop_command,
     build_foreign_config_clear_command,
     build_foreign_config_import_command,
     build_foreign_config_show_command,
@@ -55,6 +62,9 @@ from megaraid_dashboard.services.drive_actions import (
     build_show_drive_command,
     can_transition,
     can_transition_step3,
+    consistency_check_can_start,
+    consistency_check_can_stop,
+    parse_consistency_check_status,
     parse_patrol_read_status,
     parse_rebuild_status,
     patrol_read_can_start,
@@ -119,6 +129,7 @@ _EVENT_CATEGORY_FILTERS = (
     "system",
     "operator_action",
     "foreign_config_detected",
+    "consistency_check_inconsistency",
 )
 
 HealthStatus = Literal["ok", "degraded"]
@@ -1519,6 +1530,14 @@ class PatrolReadModeRequest(BaseModel):
     mode: PatrolReadMode
 
 
+class ConsistencyCheckStartRequest(BaseModel):
+    vd_id: int | None = Field(default=None, ge=0, le=255)
+
+
+class ConsistencyCheckModeRequest(BaseModel):
+    mode: ConsistencyCheckMode
+
+
 class ForeignConfigImportRequest(BaseModel):
     confirmation: str = Field(min_length=1, max_length=200)
     dry_run: bool = False
@@ -1929,6 +1948,489 @@ def _record_patrol_read_operator_action_sync(
             action="patrol_read",
             outcome=outcome,
         )
+        raise
+
+
+@router.get("/controller/consistency-check", name="controller_consistency_check")
+async def controller_consistency_check(request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    try:
+        status = await _query_live_consistency_check(settings=settings)
+        await _record_consistency_check_inconsistency_if_needed(request=request, status=status)
+    except StorcliParseError as exc:
+        return _consistency_check_error_response(
+            request,
+            {"error": "storcli parse failed", "detail": str(exc)},
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return _consistency_check_error_response(
+            request,
+            {"error": "storcli command failed", "detail": str(exc)},
+            status_code=502,
+        )
+    return JSONResponse(_consistency_check_response_body(status))
+
+
+@router.post("/controller/consistency-check/start", name="controller_consistency_check_start")
+async def controller_consistency_check_start(request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    body = await _parse_consistency_check_start_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    target = "all" if body.vd_id is None else str(body.vd_id)
+    audit_message = (
+        "consistency check start all"
+        if body.vd_id is None
+        else f"consistency check start vd {body.vd_id}"
+    )
+    if not settings.maintenance_mode:
+        return await _reject_consistency_check_maintenance_required(
+            request=request,
+            action="start",
+            audit_message=audit_message,
+            settings=settings,
+        )
+
+    try:
+        status = await _query_live_consistency_check(settings=settings)
+    except StorcliParseError as exc:
+        return await _fail_consistency_check_precheck(
+            request=request,
+            action="start",
+            audit_message=audit_message,
+            error_message="storcli parse failed",
+            exc=exc,
+        )
+    except StorcliError as exc:
+        return await _fail_consistency_check_precheck(
+            request=request,
+            action="start",
+            audit_message=audit_message,
+            error_message="storcli command failed",
+            exc=exc,
+        )
+    if not consistency_check_can_start(status):
+        return await _reject_consistency_check_mutation(
+            request=request,
+            action="start",
+            audit_message=audit_message,
+            reason="already running",
+            rejection_body={
+                "error": "consistency check already running",
+                "target": target,
+                "consistency_check": _consistency_check_response_body(status),
+            },
+            status_code=409,
+        )
+    return await _run_consistency_check_mutation(
+        request=request,
+        settings=settings,
+        action="start",
+        argv=build_consistency_check_start_command(body.vd_id),
+        audit_message=audit_message,
+    )
+
+
+@router.post("/controller/consistency-check/stop", name="controller_consistency_check_stop")
+async def controller_consistency_check_stop(request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return await _reject_consistency_check_maintenance_required(
+            request=request,
+            action="stop",
+            audit_message="consistency check stop",
+            settings=settings,
+        )
+
+    try:
+        status = await _query_live_consistency_check(settings=settings)
+    except StorcliParseError as exc:
+        return await _fail_consistency_check_precheck(
+            request=request,
+            action="stop",
+            audit_message="consistency check stop",
+            error_message="storcli parse failed",
+            exc=exc,
+        )
+    except StorcliError as exc:
+        return await _fail_consistency_check_precheck(
+            request=request,
+            action="stop",
+            audit_message="consistency check stop",
+            error_message="storcli command failed",
+            exc=exc,
+        )
+    if not consistency_check_can_stop(status):
+        return await _reject_consistency_check_mutation(
+            request=request,
+            action="stop",
+            audit_message="consistency check stop",
+            reason="not running",
+            rejection_body={
+                "error": "consistency check is not running",
+                "consistency_check": _consistency_check_response_body(status),
+            },
+            status_code=409,
+        )
+    return await _run_consistency_check_mutation(
+        request=request,
+        settings=settings,
+        action="stop",
+        argv=build_consistency_check_stop_command(),
+        audit_message="consistency check stop",
+    )
+
+
+@router.post("/controller/consistency-check/mode", name="controller_consistency_check_mode")
+async def controller_consistency_check_mode(request: Request) -> JSONResponse:
+    body = await _parse_consistency_check_mode_request_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    try:
+        argv = build_consistency_check_mode_command(body.mode)
+    except ValueError as exc:
+        return _consistency_check_error_response(request, {"error": str(exc)}, status_code=400)
+    settings: Settings = request.app.state.settings
+    return await _run_consistency_check_mutation(
+        request=request,
+        settings=settings,
+        action="mode",
+        argv=argv,
+        audit_message=f"consistency check mode set to {body.mode}",
+    )
+
+
+async def _parse_consistency_check_start_request_body(
+    request: Request,
+) -> ConsistencyCheckStartRequest | JSONResponse:
+    if not request.headers.get("content-type"):
+        return ConsistencyCheckStartRequest()
+    payload = await _request_payload(request)
+    if isinstance(payload, JSONResponse):
+        return payload
+    if payload.get("vd_id") == "":
+        payload["vd_id"] = None
+    try:
+        return ConsistencyCheckStartRequest.model_validate(payload)
+    except ValidationError as exc:
+        return _consistency_check_error_response(
+            request,
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+async def _parse_consistency_check_mode_request_body(
+    request: Request,
+) -> ConsistencyCheckModeRequest | JSONResponse:
+    payload = await _request_payload(request)
+    if isinstance(payload, JSONResponse):
+        return payload
+    try:
+        return ConsistencyCheckModeRequest.model_validate(payload)
+    except ValidationError as exc:
+        return _consistency_check_error_response(
+            request,
+            {"error": "invalid request body", "detail": exc.errors()},
+            status_code=400,
+        )
+
+
+async def _request_payload(request: Request) -> dict[str, Any] | JSONResponse:
+    content_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].lower()
+    try:
+        if content_type == "application/json":
+            payload: Any = await request.json()
+        else:
+            payload = dict(await request.form())
+    except ValueError:
+        return _consistency_check_error_response(
+            request,
+            {"error": "request body must be valid JSON"},
+            status_code=400,
+        )
+    if not isinstance(payload, dict):
+        return _consistency_check_error_response(
+            request,
+            {"error": "request body must be an object"},
+            status_code=400,
+        )
+    return payload
+
+
+async def _query_live_consistency_check(*, settings: Settings) -> ConsistencyCheckStatus:
+    show_payload = await run_storcli(
+        build_consistency_check_show_command(),
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    progress_payload = await run_storcli(
+        build_consistency_check_show_progress_command(),
+        use_sudo=settings.storcli_use_sudo,
+        binary_path=settings.storcli_path,
+    )
+    return parse_consistency_check_status(show_payload, progress_payload)
+
+
+def _consistency_check_response_body(status: ConsistencyCheckStatus) -> dict[str, Any]:
+    return {
+        "mode": status.mode,
+        "state": status.state,
+        "progress_percent": status.progress_percent,
+        "last_run_timestamp": status.last_run_timestamp,
+        "inconsistency_count": status.inconsistency_count,
+        "inconsistency_detail": status.inconsistency_detail,
+    }
+
+
+def _consistency_check_error_response(
+    request: Request, body: dict[str, Any], *, status_code: int
+) -> JSONResponse:
+    return JSONResponse(
+        body,
+        status_code=_patrol_read_rejection_status(request, status_code),
+    )
+
+
+async def _fail_consistency_check_precheck(
+    *,
+    request: Request,
+    action: Literal["start", "stop"],
+    audit_message: str,
+    error_message: str,
+    exc: StorcliError,
+) -> JSONResponse:
+    outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+    try:
+        await run_in_threadpool(
+            _record_consistency_check_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "storcli_error": str(exc),
+            },
+            status_code=500,
+        )
+    return _consistency_check_error_response(
+        request,
+        {
+            "error": error_message,
+            "action": action,
+            "detail": str(exc),
+        },
+        status_code=502,
+    )
+
+
+async def _run_consistency_check_mutation(
+    *,
+    request: Request,
+    settings: Settings,
+    action: Literal["start", "stop", "mode"],
+    argv: list[str],
+    audit_message: str,
+) -> JSONResponse:
+    if not settings.maintenance_mode:
+        return await _reject_consistency_check_maintenance_required(
+            request=request,
+            action=action,
+            audit_message=audit_message,
+            settings=settings,
+        )
+
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        ensure_command_succeeded(result)
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_consistency_check_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        audit_failure_body: dict[str, Any] = {
+            "error": "audit persistence failed",
+            "action": action,
+            "argv": argv,
+        }
+        if result is not None:
+            audit_failure_body["result"] = result
+        if storcli_error is not None:
+            audit_failure_body["storcli_error"] = str(storcli_error)
+        return JSONResponse(audit_failure_body, status_code=500)
+
+    if storcli_error is not None:
+        return _consistency_check_error_response(
+            request,
+            {
+                "error": "storcli command failed",
+                "action": action,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+
+    try:
+        status = await _query_live_consistency_check(settings=settings)
+        await _record_consistency_check_inconsistency_if_needed(request=request, status=status)
+    except StorcliParseError as exc:
+        return _consistency_check_error_response(
+            request,
+            {
+                "error": "storcli refresh parse failed",
+                "action": action,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+    except StorcliError as exc:
+        return _consistency_check_error_response(
+            request,
+            {
+                "error": "storcli refresh failed",
+                "action": action,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(_consistency_check_response_body(status))
+
+
+async def _reject_consistency_check_mutation(
+    *,
+    request: Request,
+    action: Literal["start", "stop", "mode"],
+    audit_message: str,
+    reason: str,
+    rejection_body: dict[str, Any],
+    status_code: int,
+) -> JSONResponse:
+    outcome = f"rejected: {reason}"
+    try:
+        await run_in_threadpool(
+            _record_consistency_check_operator_action_sync,
+            request=request,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        return JSONResponse(
+            {
+                "error": "audit persistence failed",
+                "action": action,
+                "rejection_reason": reason,
+            },
+            status_code=500,
+        )
+    return JSONResponse(
+        rejection_body, status_code=_patrol_read_rejection_status(request, status_code)
+    )
+
+
+async def _reject_consistency_check_maintenance_required(
+    *,
+    request: Request,
+    action: Literal["start", "stop", "mode"],
+    audit_message: str,
+    settings: Settings,
+) -> JSONResponse:
+    return await _reject_consistency_check_mutation(
+        request=request,
+        action=action,
+        audit_message=audit_message,
+        reason="maintenance_mode required",
+        rejection_body={
+            "error": "consistency check changes require maintenance_mode",
+            "maintenance_mode": settings.maintenance_mode,
+        },
+        status_code=403,
+    )
+
+
+def _record_consistency_check_operator_action_sync(
+    *,
+    request: Request,
+    message: str,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                message=f"{message} {outcome}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action="consistency_check",
+            outcome=outcome,
+        )
+        raise
+
+
+async def _record_consistency_check_inconsistency_if_needed(
+    *,
+    request: Request,
+    status: ConsistencyCheckStatus,
+) -> None:
+    if not status.has_inconsistency:
+        return
+    await run_in_threadpool(
+        _record_consistency_check_inconsistency_once_sync,
+        request=request,
+        status=status,
+    )
+
+
+def _record_consistency_check_inconsistency_once_sync(
+    *,
+    request: Request,
+    status: ConsistencyCheckStatus,
+) -> None:
+    summary = "consistency check inconsistency detected"
+    try:
+        with _session(request) as session, session.begin():
+            existing = session.scalars(
+                select(Event)
+                .where(Event.category == "consistency_check_inconsistency")
+                .where(Event.summary == summary)
+                .order_by(Event.occurred_at.desc(), Event.id.desc())
+                .limit(1)
+            ).one_or_none()
+            if existing is not None:
+                return
+            record_event(
+                session,
+                severity="warning",
+                category="consistency_check_inconsistency",
+                subject="Controller",
+                summary=summary,
+                after=_consistency_check_response_body(status),
+            )
+    except SQLAlchemyError:
+        LOGGER.exception("consistency_check_inconsistency_event_failed")
         raise
 
 
