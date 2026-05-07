@@ -137,6 +137,22 @@ server {
         proxy_set_header X-Forwarded-Prefix /raid;
         proxy_read_timeout 30s;
     }
+
+    # Rate-limit the auth challenge surface.
+    # Adjust the location pattern when the actual auth endpoint settles.
+    location ~ ^/raid/(login|auth) {
+        limit_req zone=raid_login burst=2 nodelay;
+        limit_req_status 429;
+
+        rewrite ^/raid/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:8090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Prefix /raid;
+        proxy_read_timeout 30s;
+    }
 }
 
 server {
@@ -164,7 +180,8 @@ location = /raid {
 }
 ```
 
-The initial dashboard entry point is the only path that gets nginx edge rate limiting:
+The exact dashboard entry point can trigger the browser's HTTP Basic auth challenge, so it is
+rate-limited at the edge:
 
 ```nginx
 location = /raid/ {
@@ -181,8 +198,7 @@ location = /raid/ {
 }
 ```
 
-The broader dashboard location is intentionally not rate-limited, because normal pages use
-polling endpoints under `/raid/partials/` and can be opened in multiple tabs:
+The broader dashboard path namespace uses a stripped-prefix proxy without rate limiting:
 
 ```nginx
 location /raid/ {
@@ -200,13 +216,34 @@ The trailing slash on `proxy_pass http://127.0.0.1:8090/` matters. With the slas
 strips the matching `/raid/` prefix and forwards the remaining path to FastAPI. For example:
 
 ```text
-/raid/                 -> /
-/raid/events           -> /events
+/raid/                   -> /
+/raid/events             -> /events
 /raid/static/css/app.css -> /static/css/app.css
 ```
 
 Without the trailing slash, nginx would forward the prefix verbatim and the app would receive
 paths such as `/raid/events`, which are not the app's local routes.
+
+The named auth surface also uses a regex location because the exact URL may settle as
+`/raid/login`, `/raid/auth`, or another auth challenge path. Regex locations do not support
+the same `proxy_pass .../` URI replacement pattern as the simple `/raid/` prefix location, so
+the sample rewrites the path before proxying:
+
+```nginx
+location ~ ^/raid/(login|auth) {
+    limit_req zone=raid_login burst=2 nodelay;
+    limit_req_status 429;
+
+    rewrite ^/raid/(.*)$ /$1 break;
+    proxy_pass http://127.0.0.1:8090;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Prefix /raid;
+    proxy_read_timeout 30s;
+}
+```
 
 The proxy then re-injects the public prefix with:
 
@@ -245,9 +282,10 @@ set of scripts, styles, and HTMX behavior is stable enough to avoid accidental b
 
 ## Rate Limit Zone
 
-The edge rate limit is intentionally scoped to the initial dashboard entry point that can
-trigger the browser's HTTP Basic auth challenge. It does not rate-limit health checks,
-static assets, normal dashboard navigation, or polling partials.
+The edge rate limit is intentionally scoped to the auth challenge surface. It covers the
+exact `/raid/` entry point, where Basic auth may challenge, and the likely named auth paths.
+It does not rate-limit health checks, static assets, normal dashboard navigation, or polling
+partials.
 
 Define the shared zone once:
 
@@ -255,13 +293,9 @@ Define the shared zone once:
 limit_req_zone $binary_remote_addr zone=raid_login:10m rate=5r/m;
 ```
 
-Apply it only to the exact `/raid/` entry point:
+Apply it to the exact entry point and likely auth endpoint paths:
 
 ```nginx
-location = /raid {
-    return 301 /raid/;
-}
-
 location = /raid/ {
     limit_req zone=raid_login burst=2 nodelay;
     limit_req_status 429;
@@ -274,7 +308,26 @@ location = /raid/ {
     proxy_set_header X-Forwarded-Prefix /raid;
     proxy_read_timeout 30s;
 }
+
+location ~ ^/raid/(login|auth) {
+    limit_req zone=raid_login burst=2 nodelay;
+    limit_req_status 429;
+
+    rewrite ^/raid/(.*)$ /$1 break;
+    proxy_pass http://127.0.0.1:8090;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Prefix /raid;
+    proxy_read_timeout 30s;
+}
 ```
+
+The regex currently covers `/raid/login` and `/raid/auth`. Until the auth URL surface is
+pinned down, keep the pattern intentionally narrow but easy to adjust. If auth remains only
+as a 401 challenge on `/raid/`, the exact entry-point location still provides edge throttling
+while health, static assets, and polling partials stay outside that limit.
 
 The catch-all `location /raid/` deliberately omits `limit_req`; otherwise routine HTMX
 polling from overview and events pages could exhaust the shared five-request window during
@@ -325,15 +378,7 @@ Run these commands from a workstation that resolves `server.alexbomber.com` to t
 
    Expected: HTTP 301 with `Location: https://server.alexbomber.com/raid/`.
 
-3. Confirm the bare dashboard prefix redirects to the canonical trailing-slash URL:
-
-   ```bash
-   curl -I https://server.alexbomber.com/raid
-   ```
-
-   Expected: HTTP 301 with `Location: /raid/`.
-
-4. Confirm the dashboard is auth-protected:
+3. Confirm the dashboard is auth-protected:
 
    ```bash
    curl -i https://server.alexbomber.com/raid/
@@ -341,15 +386,15 @@ Run these commands from a workstation that resolves `server.alexbomber.com` to t
 
    Expected: HTTP 401 with `WWW-Authenticate: Basic realm="megaraid-dashboard"`.
 
-5. Confirm the auth-required dashboard rate limit triggers:
+4. Confirm the auth endpoint rate limit triggers:
 
    ```bash
-   for i in {1..10}; do curl -o /dev/null -s -w "%{http_code}\n" https://server.alexbomber.com/raid/; done
+   for i in {1..10}; do curl -o /dev/null -s -w "%{http_code}\n" https://server.alexbomber.com/raid/login; done
    ```
 
    Expected: several `429` responses after the first five to seven requests within a minute.
 
-6. Confirm prefix injection works for authenticated HTML:
+5. Confirm prefix injection works for authenticated HTML:
 
    ```bash
    curl -i -u admin:test-password https://server.alexbomber.com/raid/
