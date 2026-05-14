@@ -39,11 +39,11 @@ class Settings(BaseSettings):
     git_sha: str = "unknown"
     store_raw_snapshot_payload: bool = False
     collector_enabled: bool = True
-    collector_lock_path: str = "/tmp/megaraid-dashboard-collector.lock"
+    collector_lock_path: str = "/var/lib/megaraid-dashboard/collector.lock"
     metrics_enabled: bool = True
     metrics_listen_address: str = "127.0.0.1"
     metrics_port: int = 8091
-    metrics_lock_path: str = "/tmp/megaraid-dashboard-metrics.lock"
+    metrics_lock_path: str = "/var/lib/megaraid-dashboard/metrics.lock"
     temp_warning_celsius: int = 55
     temp_critical_celsius: int = 60
     temp_hysteresis_celsius: int = 5

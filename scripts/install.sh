@@ -564,6 +564,11 @@ phase_journald() {
 phase_finalize() {
   log_info "Phase 11: start + smoke"
 
+  if [[ -f "${DATA_DIR}/megaraid.db" ]]; then
+    chmod 0600 "${DATA_DIR}/megaraid.db"
+    chown "${INSTALL_USER}:${INSTALL_USER}" "${DATA_DIR}/megaraid.db"
+  fi
+
   systemctl restart megaraid-dashboard.service
 
   for ((attempt = 1; attempt <= 30; attempt++)); do

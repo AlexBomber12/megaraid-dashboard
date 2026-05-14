@@ -39,6 +39,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         "METRICS_INTERVAL_SECONDS": "300",
         "COLLECTOR_ENABLED": "false",
         "COLLECTOR_LOCK_PATH": str(tmp_path / "collector.lock"),
+        "METRICS_LOCK_PATH": str(tmp_path / "metrics.lock"),
         "DATABASE_URL": "sqlite:///:memory:",
         "LOG_LEVEL": "INFO",
     }

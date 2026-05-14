@@ -48,7 +48,7 @@ sudo systemd-run --wait --pipe --collect --uid=raid-monitor --property=WorkingDi
 ```bash
 sudo install -d -m 0750 -o raid-monitor -g raid-monitor /var/lib/megaraid-dashboard
 sudo chown raid-monitor:raid-monitor /var/lib/megaraid-dashboard/megaraid.db
-sudo chmod 0640 /var/lib/megaraid-dashboard/megaraid.db
+sudo chmod 0600 /var/lib/megaraid-dashboard/megaraid.db
 sudo systemctl restart megaraid-dashboard.service
 ```
 

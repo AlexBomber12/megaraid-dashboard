@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
+    _tighten_sqlite_db_permissions(settings.database_url)
     engine = get_engine(settings.database_url)
     health_engine = get_engine(
         settings.database_url,
@@ -424,6 +425,42 @@ def _alembic_paths() -> tuple[Path, Path]:
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _resolve_sqlite_db_path(database_url: str) -> Path | None:
+    try:
+        parsed = make_url(database_url)
+    except ArgumentError:
+        return None
+    if parsed.get_backend_name() != "sqlite":
+        return None
+    database = parsed.database
+    if database is None or database in {"", ":memory:"}:
+        return None
+    return Path(database)
+
+
+def _tighten_sqlite_db_permissions(database_url: str) -> None:
+    db_path = _resolve_sqlite_db_path(database_url)
+    if db_path is None or not db_path.exists():
+        return
+    try:
+        current_mode = stat.S_IMODE(db_path.stat().st_mode)
+    except OSError as exc:
+        LOGGER.warning("db_chmod_stat_failed", error=str(exc))
+        return
+    if current_mode <= 0o600:
+        return
+    try:
+        db_path.chmod(0o600)
+    except OSError as exc:
+        LOGGER.warning("db_chmod_failed", error=str(exc))
+        return
+    LOGGER.info(
+        "db_chmod_tightened",
+        from_mode=oct(current_mode),
+        to_mode=oct(0o600),
+    )
 
 
 def _redacted_database_url(database_url: str) -> str:

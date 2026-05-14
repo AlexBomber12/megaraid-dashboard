@@ -497,6 +497,21 @@ Expected output:
 root:raid-monitor 600
 ```
 
+### 7a. Database file permissions
+
+```bash
+stat -c '%U:%G %a' /var/lib/megaraid-dashboard/megaraid.db
+```
+
+Expected output:
+
+```text
+raid-monitor:raid-monitor 600
+```
+
+The installer enforces `0600` after the database is created; the app also self-heals
+the permission bits at startup if it finds a wider mode.
+
 ### 8. Local overview requires auth
 
 ```bash
