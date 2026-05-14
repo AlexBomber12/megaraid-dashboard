@@ -221,10 +221,12 @@ and service entry point used by systemd.
 `/opt/megaraid-dashboard/src`
 : Installed source checkout used by the editable package install.
 
-`/var/lib/megaraid-dashboard/collector.lock`
-: Process-wide collector lock unless `COLLECTOR_LOCK_PATH` overrides it. Located inside
-the data directory (mode `0750`, owned by the service user) so that no other local user
-can pre-create the lock file and deny the service its acquisition.
+`/tmp/megaraid-dashboard-collector.lock`
+: Process-wide collector lock unless `COLLECTOR_LOCK_PATH` overrides it. The default keeps
+non-installed runs (e.g. README quick start) working without privileged setup. The
+production installer overrides the value to `/var/lib/megaraid-dashboard/collector.lock`
+inside the data directory (mode `0750`, owned by the service user) so that no other local
+user can pre-create the lock file and deny the service its acquisition.
 
 `/tmp/megaraid-dashboard-notifier.lock`
 : Notifier lock path used to prevent overlapping notifier cycles.
