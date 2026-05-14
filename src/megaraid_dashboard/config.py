@@ -9,6 +9,13 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _STORCLI_PATH_VALIDATION_BYPASS_ENV = "MEGARAID_SKIP_STORCLI_PATH_VALIDATION"
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _env_flag_is_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 class Settings(BaseSettings):
@@ -64,7 +71,7 @@ class Settings(BaseSettings):
     @field_validator("storcli_path")
     @classmethod
     def _validate_storcli_path(cls, value: str) -> str:
-        if os.environ.get(_STORCLI_PATH_VALIDATION_BYPASS_ENV):
+        if _env_flag_is_truthy(os.environ.get(_STORCLI_PATH_VALIDATION_BYPASS_ENV)):
             return value
         path = Path(value)
         if not path.is_absolute():

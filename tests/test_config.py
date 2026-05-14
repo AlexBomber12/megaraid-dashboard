@@ -411,3 +411,34 @@ def test_storcli_path_validator_rejects_non_executable_file(
 
     with pytest.raises(ValidationError, match="storcli_path is not executable"):
         Settings()
+
+
+@pytest.mark.parametrize("bypass_value", ["0", "false", "False", "no", "off", " ", ""])
+def test_storcli_path_validator_runs_when_bypass_is_falsy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    bypass_value: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("MEGARAID_SKIP_STORCLI_PATH_VALIDATION", bypass_value)
+    missing = tmp_path / "does-not-exist" / "storcli64"
+    monkeypatch.setenv("STORCLI_PATH", str(missing))
+
+    with pytest.raises(ValidationError, match="storcli_path does not exist"):
+        Settings()
+
+
+@pytest.mark.parametrize("bypass_value", ["1", "true", "TRUE", "yes", "On", " 1 "])
+def test_storcli_path_validator_skipped_when_bypass_is_truthy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    bypass_value: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv("MEGARAID_SKIP_STORCLI_PATH_VALIDATION", bypass_value)
+    missing = tmp_path / "does-not-exist" / "storcli64"
+    monkeypatch.setenv("STORCLI_PATH", str(missing))
+
+    settings = Settings()
+
+    assert settings.storcli_path == str(missing)
