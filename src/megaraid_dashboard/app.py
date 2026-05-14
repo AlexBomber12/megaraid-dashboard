@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
+    _tighten_sqlite_db_permissions(settings.database_url)
     engine = get_engine(settings.database_url)
     health_engine = get_engine(
         settings.database_url,
@@ -84,6 +85,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     health_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="healthz-db")
     with engine.begin() as connection:
         _upgrade_database(settings.database_url, connection=connection)
+    _tighten_sqlite_db_permissions(settings.database_url)
     session_factory = get_sessionmaker(engine)
     collector_runtime = _CollectorRuntime()
     metrics_runtime = _MetricsRuntime()
@@ -345,6 +347,7 @@ def _current_database_heads(connection: Connection | None) -> set[str] | None:
 
 
 def _try_acquire_process_lock(lock_path: str, *, lock_name: str) -> int | None:
+    _ensure_lock_parent_directory(lock_path, lock_name=lock_name)
     flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
     try:
         lock_fd = os.open(lock_path, flags, 0o600)
@@ -366,6 +369,21 @@ def _try_acquire_process_lock(lock_path: str, *, lock_name: str) -> int | None:
     os.ftruncate(lock_fd, 0)
     os.write(lock_fd, str(os.getpid()).encode("ascii"))
     return lock_fd
+
+
+def _ensure_lock_parent_directory(lock_path: str, *, lock_name: str) -> None:
+    parent = os.path.dirname(lock_path)
+    if not parent or os.path.isdir(parent):
+        return
+    try:
+        os.makedirs(parent, mode=0o700, exist_ok=True)
+    except OSError as exc:
+        LOGGER.warning(
+            "lock_parent_directory_create_failed",
+            lock_name=lock_name,
+            parent=parent,
+            error=str(exc),
+        )
 
 
 def _validate_process_lock_file(lock_fd: int, lock_path: str, *, lock_name: str) -> None:
@@ -424,6 +442,52 @@ def _alembic_paths() -> tuple[Path, Path]:
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _resolve_sqlite_db_path(database_url: str) -> Path | None:
+    try:
+        parsed = make_url(database_url)
+    except ArgumentError:
+        return None
+    if parsed.get_backend_name() != "sqlite":
+        return None
+    database = parsed.database
+    if database is None or database in {"", ":memory:"}:
+        return None
+    return Path(database)
+
+
+def _tighten_sqlite_db_permissions(database_url: str) -> None:
+    db_path = _resolve_sqlite_db_path(database_url)
+    if db_path is None:
+        return
+    try:
+        file_stat = os.lstat(db_path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        LOGGER.warning("db_chmod_stat_failed", error=str(exc))
+        return
+    if not stat.S_ISREG(file_stat.st_mode):
+        LOGGER.warning(
+            "db_chmod_skipped_not_regular_file",
+            path=str(db_path),
+            mode=oct(file_stat.st_mode),
+        )
+        return
+    current_mode = stat.S_IMODE(file_stat.st_mode)
+    if current_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0:
+        return
+    try:
+        db_path.chmod(0o600)
+    except OSError as exc:
+        LOGGER.warning("db_chmod_failed", error=str(exc))
+        return
+    LOGGER.info(
+        "db_chmod_tightened",
+        from_mode=oct(current_mode),
+        to_mode=oct(0o600),
+    )
 
 
 def _redacted_database_url(database_url: str) -> str:

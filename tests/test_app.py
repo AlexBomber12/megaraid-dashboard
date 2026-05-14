@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
 import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect
+from structlog.testing import capture_logs
 
 from megaraid_dashboard import app
 from megaraid_dashboard.config import get_settings
@@ -141,6 +145,50 @@ def test_collector_lock_rejects_symlink(tmp_path: Path) -> None:
         app._try_acquire_collector_lock(str(lock_path))
 
     assert target.read_text(encoding="utf-8") == "preserve"
+
+
+def test_collector_lock_creates_missing_parent_directory(tmp_path: Path) -> None:
+    parent = tmp_path / "var-lib"
+    lock_path = parent / "collector.lock"
+    assert not parent.exists()
+
+    lock_fd = app._try_acquire_collector_lock(str(lock_path))
+    try:
+        assert lock_fd is not None
+        assert parent.is_dir()
+        assert stat.S_IMODE(parent.stat().st_mode) & (stat.S_IRWXG | stat.S_IRWXO) == 0
+    finally:
+        if lock_fd is not None:
+            app._release_collector_lock(lock_fd)
+
+
+def test_collector_lock_logs_when_parent_create_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "blocked"
+    lock_path = parent / "collector.lock"
+
+    def fail_makedirs(path: str, mode: int = 0o777, exist_ok: bool = False) -> None:
+        del path, mode, exist_ok
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(app.os, "makedirs", fail_makedirs)
+
+    with capture_logs() as logs, pytest.raises(FileNotFoundError):
+        app._try_acquire_collector_lock(str(lock_path))
+
+    assert any(entry["event"] == "lock_parent_directory_create_failed" for entry in logs)
+
+
+def test_ensure_lock_parent_directory_noop_when_directory_exists(tmp_path: Path) -> None:
+    parent = tmp_path / "existing"
+    parent.mkdir(mode=0o750)
+    before_mode = stat.S_IMODE(parent.stat().st_mode)
+
+    app._ensure_lock_parent_directory(str(parent / "collector.lock"), lock_name="collector")
+
+    assert stat.S_IMODE(parent.stat().st_mode) == before_mode
 
 
 def test_lifespan_skips_collector_when_lock_is_already_held(
@@ -322,4 +370,139 @@ async def test_start_collector_scheduler_releases_lock_on_start_cancellation(
         app._release_collector_lock(reacquired_lock)
     finally:
         engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_resolve_sqlite_db_path_for_absolute_url(tmp_path: Path) -> None:
+    db_file = tmp_path / "megaraid.db"
+    db_file.touch()
+
+    resolved = app._resolve_sqlite_db_path(f"sqlite:///{db_file}")
+
+    assert resolved == db_file
+
+
+def test_resolve_sqlite_db_path_returns_none_for_memory_url() -> None:
+    assert app._resolve_sqlite_db_path("sqlite:///:memory:") is None
+
+
+def test_resolve_sqlite_db_path_returns_none_for_non_sqlite_url() -> None:
+    assert app._resolve_sqlite_db_path("postgresql://user:pw@example.test/db") is None
+
+
+def test_tighten_sqlite_db_permissions_chmods_world_readable_file(tmp_path: Path) -> None:
+    db_file = tmp_path / "megaraid.db"
+    db_file.touch()
+    db_file.chmod(0o644)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_file}")
+
+    assert stat.S_IMODE(db_file.stat().st_mode) == 0o600
+    assert any(entry["event"] == "db_chmod_tightened" for entry in logs)
+
+
+def test_tighten_sqlite_db_permissions_noop_when_already_restrictive(tmp_path: Path) -> None:
+    db_file = tmp_path / "megaraid.db"
+    db_file.touch()
+    db_file.chmod(0o600)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_file}")
+
+    assert stat.S_IMODE(db_file.stat().st_mode) == 0o600
+    assert all(entry["event"] != "db_chmod_tightened" for entry in logs)
+
+
+def test_tighten_sqlite_db_permissions_chmods_group_other_readable_under_0o600(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "megaraid.db"
+    db_file.touch()
+    db_file.chmod(0o444)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_file}")
+
+    assert stat.S_IMODE(db_file.stat().st_mode) == 0o600
+    assert any(entry["event"] == "db_chmod_tightened" for entry in logs)
+
+
+def test_tighten_sqlite_db_permissions_logs_warning_on_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_file = tmp_path / "megaraid.db"
+    db_file.touch()
+    db_file.chmod(0o644)
+
+    def fail_chmod(self: Path, mode: int, **_kwargs: Any) -> None:
+        del self, mode
+        raise OSError("read-only filesystem")
+
+    monkeypatch.setattr(Path, "chmod", fail_chmod)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_file}")
+
+    assert any(entry["event"] == "db_chmod_failed" for entry in logs)
+
+
+def test_tighten_sqlite_db_permissions_skips_missing_file(tmp_path: Path) -> None:
+    missing = tmp_path / "absent.db"
+
+    app._tighten_sqlite_db_permissions(f"sqlite:///{missing}")
+
+    assert not missing.exists()
+
+
+def test_tighten_sqlite_db_permissions_skips_directory(tmp_path: Path) -> None:
+    db_dir = tmp_path / "megaraid-dashboard"
+    db_dir.mkdir(mode=0o755)
+    original_mode = stat.S_IMODE(db_dir.stat().st_mode)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_dir}")
+
+    assert stat.S_IMODE(db_dir.stat().st_mode) == original_mode
+    assert any(entry["event"] == "db_chmod_skipped_not_regular_file" for entry in logs)
+    assert all(entry["event"] != "db_chmod_tightened" for entry in logs)
+
+
+def test_tighten_sqlite_db_permissions_skips_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target.db"
+    target.touch()
+    target.chmod(0o644)
+    link = tmp_path / "megaraid.db"
+    link.symlink_to(target)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{link}")
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    assert any(entry["event"] == "db_chmod_skipped_not_regular_file" for entry in logs)
+    assert all(entry["event"] != "db_chmod_tightened" for entry in logs)
+
+
+def test_lifespan_tightens_db_after_first_creation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "megaraid.db"
+    assert not db_file.exists()
+    _set_required_app_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
+    monkeypatch.setenv("COLLECTOR_ENABLED", "false")
+    get_settings.cache_clear()
+
+    previous_umask = os.umask(0o022)
+    try:
+        test_app = app.create_app()
+        with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+            response = client.get("/health")
+        assert response.status_code == 200
+        assert db_file.exists()
+        assert stat.S_IMODE(db_file.stat().st_mode) == 0o600
+    finally:
+        os.umask(previous_umask)
         get_settings.cache_clear()

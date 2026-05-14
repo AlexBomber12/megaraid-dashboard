@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
 @pytest.fixture(autouse=True)
-def app_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("ALERT_SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("ALERT_SMTP_PORT", "587")
     monkeypatch.setenv("ALERT_SMTP_USER", "alert@example.test")
@@ -24,6 +25,8 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
+    monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
+    monkeypatch.setenv("METRICS_LOCK_PATH", str(tmp_path / "metrics.lock"))
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     get_settings.cache_clear()

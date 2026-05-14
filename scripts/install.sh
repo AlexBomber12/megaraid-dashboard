@@ -371,6 +371,8 @@ STORCLI_USE_SUDO
 LOG_LEVEL
 METRICS_INTERVAL_SECONDS
 DATABASE_URL
+COLLECTOR_LOCK_PATH
+METRICS_LOCK_PATH
 GIT_SHA
 EOF
 }
@@ -462,6 +464,8 @@ STORCLI_USE_SUDO=true
 LOG_LEVEL=${LOG_LEVEL}
 METRICS_INTERVAL_SECONDS=${METRICS_INTERVAL_SECONDS}
 DATABASE_URL=sqlite:///${DATA_DIR}/megaraid.db
+COLLECTOR_LOCK_PATH=${DATA_DIR}/collector.lock
+METRICS_LOCK_PATH=${DATA_DIR}/metrics.lock
 GIT_SHA=${GIT_SHA}
 EOF
   chmod 0600 "${ENV_FILE}.tmp"
@@ -563,6 +567,21 @@ phase_journald() {
 
 phase_finalize() {
   log_info "Phase 11: start + smoke"
+
+  local db_path="${DATA_DIR}/megaraid.db"
+  if [[ -e "${db_path}" || -L "${db_path}" ]]; then
+    if [[ -L "${db_path}" ]]; then
+      log_fail "refusing to harden ${db_path}: it is a symlink"
+    fi
+    local db_file_type
+    db_file_type="$(stat -c '%F' -- "${db_path}")" || \
+      log_fail "failed to stat ${db_path}"
+    if [[ "${db_file_type}" != "regular file" ]]; then
+      log_fail "refusing to harden ${db_path}: not a regular file (${db_file_type})"
+    fi
+    chmod 0600 "${db_path}"
+    chown "${INSTALL_USER}:${INSTALL_USER}" "${db_path}"
+  fi
 
   systemctl restart megaraid-dashboard.service
 
