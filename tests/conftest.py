@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import Any
 
 import bcrypt
 import pytest
+
+os.environ.setdefault("MEGARAID_SKIP_STORCLI_PATH_VALIDATION", "1")
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session

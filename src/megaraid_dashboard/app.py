@@ -32,6 +32,7 @@ from megaraid_dashboard.web.metrics import create_metrics_app
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
 from megaraid_dashboard.web.routes import router
+from megaraid_dashboard.web.security_headers import SecurityHeadersMiddleware
 from megaraid_dashboard.web.static import CacheControlStaticFiles
 
 LOGGER = structlog.get_logger(__name__)
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.add_middleware(BasicAuthMiddleware, settings=app.state.settings)
     app.add_middleware(AuthRateLimitMiddleware, settings=app.state.settings)
     app.add_middleware(ForwardedPrefixMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.mount(
         "/static",
         CacheControlStaticFiles(directory=_STATIC_DIR),

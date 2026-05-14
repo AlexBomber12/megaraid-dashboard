@@ -65,7 +65,7 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
 
 # Communication
 
-If a change touches the security model, the `storcli` wrapper contract, or the database schema, the PR description must explicitly call this out under a Risk heading.
+If a change touches the security model, the `storcli` wrapper contract, or the database schema, the PR description must explicitly call this out under a Risk heading. Task generators MUST include a Risk-heading-required check for changes touching auth, CSRF, rate-limit, the `storcli` wrapper, or DB schema, so that task files for those perimeters carry an explicit Risk heading reminder.
 
 # Note about pipeline-orchestrator daemon-managed sections
 

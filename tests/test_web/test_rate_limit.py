@@ -17,6 +17,7 @@ from megaraid_dashboard.web.auth import BasicAuthMiddleware
 from megaraid_dashboard.web.csrf import CsrfMiddleware
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
+from megaraid_dashboard.web.security_headers import SecurityHeadersMiddleware
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH
 
 _TEST_PASSWORD = "test-password"
@@ -305,7 +306,8 @@ def test_create_app_middleware_order(
         get_settings.cache_clear()
 
     middleware_classes = [middleware.cls for middleware in test_app.user_middleware]
-    assert middleware_classes[:4] == [
+    assert middleware_classes[:5] == [
+        SecurityHeadersMiddleware,
         ForwardedPrefixMiddleware,
         AuthRateLimitMiddleware,
         BasicAuthMiddleware,

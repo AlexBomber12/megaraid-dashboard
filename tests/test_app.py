@@ -84,7 +84,8 @@ def test_create_app_orders_security_middleware(
     try:
         test_app = app.create_app()
 
-        assert [middleware.cls.__name__ for middleware in test_app.user_middleware[:4]] == [
+        assert [middleware.cls.__name__ for middleware in test_app.user_middleware[:5]] == [
+            "SecurityHeadersMiddleware",
             "ForwardedPrefixMiddleware",
             "AuthRateLimitMiddleware",
             "BasicAuthMiddleware",
