@@ -111,6 +111,21 @@ def test_htmx_shim_injects_csrf_header() -> None:
     assert 'evt.detail.headers["X-CSRF-Token"] = token;' in script
 
 
+def test_csrf_middleware_uses_shared_whitelist_module() -> None:
+    # Regression for PR-069: csrf must defer to web._whitelist so the three
+    # middlewares (auth, rate_limit, csrf) share one source of truth for
+    # exempt paths. A new entry added to ``web/_whitelist`` must take effect
+    # in csrf without a second edit.
+    from megaraid_dashboard.web import _whitelist, csrf
+
+    source = Path(csrf.__file__).read_text(encoding="utf-8")
+
+    assert "from megaraid_dashboard.web._whitelist import is_whitelisted" in source
+    assert "_WHITELIST_EXACT" not in source
+    assert "_WHITELIST_PREFIX" not in source
+    assert csrf.is_whitelisted is _whitelist.is_whitelisted
+
+
 def _csrf_client() -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=CsrfMiddleware(_ok_app))
     return httpx.AsyncClient(transport=transport, base_url="https://testserver")

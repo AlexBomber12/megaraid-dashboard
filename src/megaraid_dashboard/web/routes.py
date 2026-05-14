@@ -140,6 +140,22 @@ CollectorHealth = Literal["ok", "idle", "lock_held"]
 router = APIRouter()
 
 
+def _audit_persistence_failure_response(**extras: Any) -> JSONResponse:
+    """Return the standard 500 response for an operator-action audit write failure.
+
+    The operator-facing contract is: a 200 from a mutating endpoint means the
+    action was recorded in the audit log. If the events-row write fails we
+    MUST surface a 500 rather than swallow it, otherwise the operator may
+    act on a successful HTTP response without a corresponding audit trail.
+
+    ``extras`` carries endpoint-specific forensic context (action, argv,
+    enclosure/slot, storcli result, etc.) so the missing audit row is at
+    least partially reconstructable from the response.
+    """
+    body: dict[str, Any] = {"error": "audit persistence failed", **extras}
+    return JSONResponse(body, status_code=500)
+
+
 @dataclass(frozen=True)
 class DriveAttribute:
     label: str
@@ -436,6 +452,13 @@ async def _run_locate(
     action: LocateAction,
     request: Request,
 ) -> JSONResponse:
+    """Drive the locate LED for one slot.
+
+    Contract: a 200 response implies the operator action was recorded in the
+    audit log. If the audit write fails we return a 500 via
+    ``_audit_persistence_failure_response`` rather than swallow the error,
+    matching the destructive endpoints in this module.
+    """
     try:
         enclosure_id = int(enclosure)
         slot_id = int(slot)
@@ -449,13 +472,21 @@ async def _run_locate(
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
-    await run_in_threadpool(
-        _record_locate_operator_action_sync,
-        request=request,
-        action=action,
-        enclosure_id=enclosure_id,
-        slot_id=slot_id,
-    )
+    try:
+        await run_in_threadpool(
+            _record_locate_operator_action_sync,
+            request=request,
+            action=action,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+        )
+    except SQLAlchemyError:
+        return _audit_persistence_failure_response(
+            action=action,
+            enclosure=enclosure_id,
+            slot=slot_id,
+            result=result,
+        )
     return JSONResponse(
         {
             "action": action,
@@ -487,6 +518,7 @@ def _record_locate_operator_action_sync(
             enclosure_id=enclosure_id,
             slot_id=slot_id,
         )
+        raise
 
 
 class ReplaceRequest(BaseModel):
@@ -655,8 +687,7 @@ async def _run_replace_step(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        audit_failure_body: dict[str, Any] = {
-            "error": "audit persistence failed",
+        extras: dict[str, Any] = {
             "step": step,
             "enclosure": enclosure_id,
             "slot": slot_id,
@@ -664,10 +695,10 @@ async def _run_replace_step(
             "argv": argv,
         }
         if result is not None:
-            audit_failure_body["result"] = result
+            extras["result"] = result
         if storcli_error is not None:
-            audit_failure_body["storcli_error"] = str(storcli_error)
-        return JSONResponse(audit_failure_body, status_code=500)
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
         return JSONResponse(
@@ -1132,8 +1163,7 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             outcome=outcome,
         )
     except SQLAlchemyError:
-        audit_failure_body: dict[str, Any] = {
-            "error": "audit persistence failed",
+        extras: dict[str, Any] = {
             "step": "insert",
             "enclosure": enclosure_id,
             "slot": slot_id,
@@ -1141,10 +1171,10 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             "argv": argv,
         }
         if result is not None:
-            audit_failure_body["result"] = result
+            extras["result"] = result
         if storcli_error is not None:
-            audit_failure_body["storcli_error"] = str(storcli_error)
-        return JSONResponse(audit_failure_body, status_code=500)
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
         return JSONResponse(
@@ -1767,13 +1797,9 @@ async def _fail_patrol_read_precheck(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        return JSONResponse(
-            {
-                "error": "audit persistence failed",
-                "action": action,
-                "storcli_error": str(exc),
-            },
-            status_code=500,
+        return _audit_persistence_failure_response(
+            action=action,
+            storcli_error=str(exc),
         )
     return _patrol_read_error_response(
         request,
@@ -1824,16 +1850,12 @@ async def _run_patrol_read_mutation(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        audit_failure_body: dict[str, Any] = {
-            "error": "audit persistence failed",
-            "action": action,
-            "argv": argv,
-        }
+        extras: dict[str, Any] = {"action": action, "argv": argv}
         if result is not None:
-            audit_failure_body["result"] = result
+            extras["result"] = result
         if storcli_error is not None:
-            audit_failure_body["storcli_error"] = str(storcli_error)
-        return JSONResponse(audit_failure_body, status_code=500)
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
         return _patrol_read_error_response(
@@ -1891,13 +1913,9 @@ async def _reject_patrol_read_mutation(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        return JSONResponse(
-            {
-                "error": "audit persistence failed",
-                "action": action,
-                "rejection_reason": reason,
-            },
-            status_code=500,
+        return _audit_persistence_failure_response(
+            action=action,
+            rejection_reason=reason,
         )
     return JSONResponse(
         rejection_body, status_code=_patrol_read_rejection_status(request, status_code)
@@ -2211,13 +2229,9 @@ async def _fail_consistency_check_precheck(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        return JSONResponse(
-            {
-                "error": "audit persistence failed",
-                "action": action,
-                "storcli_error": str(exc),
-            },
-            status_code=500,
+        return _audit_persistence_failure_response(
+            action=action,
+            storcli_error=str(exc),
         )
     return _consistency_check_error_response(
         request,
@@ -2268,16 +2282,12 @@ async def _run_consistency_check_mutation(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        audit_failure_body: dict[str, Any] = {
-            "error": "audit persistence failed",
-            "action": action,
-            "argv": argv,
-        }
+        extras: dict[str, Any] = {"action": action, "argv": argv}
         if result is not None:
-            audit_failure_body["result"] = result
+            extras["result"] = result
         if storcli_error is not None:
-            audit_failure_body["storcli_error"] = str(storcli_error)
-        return JSONResponse(audit_failure_body, status_code=500)
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
         return _consistency_check_error_response(
@@ -2336,13 +2346,9 @@ async def _reject_consistency_check_mutation(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        return JSONResponse(
-            {
-                "error": "audit persistence failed",
-                "action": action,
-                "rejection_reason": reason,
-            },
-            status_code=500,
+        return _audit_persistence_failure_response(
+            action=action,
+            rejection_reason=reason,
         )
     return JSONResponse(
         rejection_body, status_code=_patrol_read_rejection_status(request, status_code)
@@ -2773,13 +2779,9 @@ async def _reject_foreign_config_destructive(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        return JSONResponse(
-            {
-                "error": "audit persistence failed",
-                "action": action,
-                "rejection_reason": reason,
-            },
-            status_code=500,
+        return _audit_persistence_failure_response(
+            action=action,
+            rejection_reason=reason,
         )
     return JSONResponse(rejection_body, status_code=status_code)
 
@@ -2815,16 +2817,12 @@ async def _run_foreign_config_destructive(
             outcome=outcome,
         )
     except SQLAlchemyError:
-        audit_failure_body: dict[str, Any] = {
-            "error": "audit persistence failed",
-            "action": action,
-            "argv": argv,
-        }
+        extras: dict[str, Any] = {"action": action, "argv": argv}
         if result is not None:
-            audit_failure_body["result"] = result
+            extras["result"] = result
         if storcli_error is not None:
-            audit_failure_body["storcli_error"] = str(storcli_error)
-        return JSONResponse(audit_failure_body, status_code=500)
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
         return JSONResponse(

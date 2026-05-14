@@ -117,10 +117,13 @@ def test_drive_locate_records_operator_action(
             assert event.operator_username == "admin"
 
 
-def test_drive_locate_returns_success_when_operator_action_audit_fails(
+def test_drive_locate_returns_500_when_operator_action_audit_fails(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
+    # Regression for PR-069: locate endpoints previously returned 200 and
+    # silently swallowed the SQLAlchemyError, violating the operator-facing
+    # contract that a 200 implies the action was recorded.
     calls: list[list[str]] = []
 
     async def fake_run_storcli(
@@ -146,13 +149,13 @@ def test_drive_locate_returns_success_when_operator_action_audit_fails(
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post("/drives/2:0/locate/start", headers=headers)
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "action": "start",
-        "enclosure": 2,
-        "slot": 0,
-        "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
-    }
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"] == "audit persistence failed"
+    assert body["action"] == "start"
+    assert body["enclosure"] == 2
+    assert body["slot"] == 0
+    assert body["result"] == {"Controllers": [{"Command Status": {"Status": "Success"}}]}
     assert calls == [["/c0/e2/s0", "start", "locate", "J"]]
 
 
