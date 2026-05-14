@@ -456,6 +456,34 @@ def test_tighten_sqlite_db_permissions_skips_missing_file(tmp_path: Path) -> Non
     assert not missing.exists()
 
 
+def test_tighten_sqlite_db_permissions_skips_directory(tmp_path: Path) -> None:
+    db_dir = tmp_path / "megaraid-dashboard"
+    db_dir.mkdir(mode=0o755)
+    original_mode = stat.S_IMODE(db_dir.stat().st_mode)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_dir}")
+
+    assert stat.S_IMODE(db_dir.stat().st_mode) == original_mode
+    assert any(entry["event"] == "db_chmod_skipped_not_regular_file" for entry in logs)
+    assert all(entry["event"] != "db_chmod_tightened" for entry in logs)
+
+
+def test_tighten_sqlite_db_permissions_skips_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target.db"
+    target.touch()
+    target.chmod(0o644)
+    link = tmp_path / "megaraid.db"
+    link.symlink_to(target)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{link}")
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    assert any(entry["event"] == "db_chmod_skipped_not_regular_file" for entry in logs)
+    assert all(entry["event"] != "db_chmod_tightened" for entry in logs)
+
+
 def test_lifespan_tightens_db_after_first_creation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

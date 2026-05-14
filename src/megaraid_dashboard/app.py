@@ -459,13 +459,23 @@ def _resolve_sqlite_db_path(database_url: str) -> Path | None:
 
 def _tighten_sqlite_db_permissions(database_url: str) -> None:
     db_path = _resolve_sqlite_db_path(database_url)
-    if db_path is None or not db_path.exists():
+    if db_path is None:
         return
     try:
-        current_mode = stat.S_IMODE(db_path.stat().st_mode)
+        file_stat = os.lstat(db_path)
+    except FileNotFoundError:
+        return
     except OSError as exc:
         LOGGER.warning("db_chmod_stat_failed", error=str(exc))
         return
+    if not stat.S_ISREG(file_stat.st_mode):
+        LOGGER.warning(
+            "db_chmod_skipped_not_regular_file",
+            path=str(db_path),
+            mode=oct(file_stat.st_mode),
+        )
+        return
+    current_mode = stat.S_IMODE(file_stat.st_mode)
     if current_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0:
         return
     try:
