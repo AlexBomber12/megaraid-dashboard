@@ -45,6 +45,8 @@ def test_phase_config_non_interactive_writes_complete_env_file(tmp_path: Path) -
         "LOG_LEVEL": "info",
         "METRICS_INTERVAL_SECONDS": "300",
         "DATABASE_URL": f"sqlite:///{tmp_path}/data/megaraid.db",
+        "COLLECTOR_LOCK_PATH": f"{tmp_path}/data/collector.lock",
+        "METRICS_LOCK_PATH": f"{tmp_path}/data/metrics.lock",
         "GIT_SHA": git_sha,
     }
     assert values["ADMIN_PASSWORD_HASH"].startswith("$2b$")
