@@ -318,7 +318,7 @@ def _load_controller_tile(
         value = {
             "optimal": "Optimal",
             "warning": "Degraded",
-            "critical": "Alarm",
+            "critical": "Critical",
         }[status]
 
     return StripTileViewModel(
@@ -781,9 +781,9 @@ def derive_controller_health(
     *,
     physical_drive_severity: str | None = None,
 ) -> Literal["optimal", "warning", "critical"]:
-    if snapshot.alarm_state.casefold() not in {"none", "off"}:
-        return "critical"
-
+    # ``snapshot.alarm_state`` reflects the HwCfg buzzer-enabled flag, not an
+    # active alarm condition, so it must not influence controller health.
+    del snapshot
     severity: Literal["optimal", "warning", "critical"] = "optimal"
     resolved_physical_drive_severity = physical_drive_severity
     if resolved_physical_drive_severity is None:

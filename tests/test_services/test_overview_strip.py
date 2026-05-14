@@ -40,17 +40,21 @@ def overview_strip_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
 
 
-def test_controller_tile_reports_alarm_as_critical(
+def test_controller_tile_ignores_buzzer_enabled_flag(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     snapshot = _latest(session, _snapshot(sample_snapshot, alarm_state="On"))
 
-    tile = _load_controller_tile(snapshot)
+    tile = _load_controller_tile(
+        snapshot,
+        physical_drives=snapshot.physical_drives,
+        virtual_drives=snapshot.virtual_drives,
+    )
 
     assert tile.label == "Controller"
-    assert tile.value == "Alarm"
-    assert tile.status == "critical"
+    assert tile.value == "Optimal"
+    assert tile.status == "optimal"
     assert tile.icon == "cpu"
 
 
@@ -64,7 +68,7 @@ def test_controller_tile_is_critical_for_partially_degraded_drive(
 
     tile = _load_controller_tile(snapshot, virtual_drives=snapshot.virtual_drives)
 
-    assert tile.value == "Alarm"
+    assert tile.value == "Critical"
     assert tile.status == "critical"
 
 

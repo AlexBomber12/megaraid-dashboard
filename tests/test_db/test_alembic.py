@@ -199,6 +199,105 @@ def test_alembic_operator_username_downgrade_and_upgrade_round_trip() -> None:
         engine.dispose()
 
 
+def test_alembic_0008_cleanup_false_controller_alarm_events_round_trip() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+
+            command.upgrade(config, "head")
+            command.downgrade(config, "0007_system_state")
+            command.upgrade(config, "0008_cleanup_false_controller_alarm_events")
+            assert "events" in inspect(connection).get_table_names()
+    finally:
+        engine.dispose()
+
+
+def test_alembic_0008_deletes_false_positive_controller_alarm_events() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+
+            command.upgrade(config, "0007_system_state")
+            for summary in (
+                "Alarm state is On",
+                "Alarm state is Sounding",
+            ):
+                connection.execute(
+                    sa.text(
+                        """
+                        INSERT INTO events (
+                            occurred_at, severity, category, subject, summary
+                        )
+                        VALUES (
+                            :occurred_at, :severity, :category, :subject, :summary
+                        )
+                        """
+                    ),
+                    {
+                        "occurred_at": "2026-05-10 12:00:00",
+                        "severity": "info",
+                        "category": "controller",
+                        "subject": "Controller",
+                        "summary": summary,
+                    },
+                )
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO events (
+                        occurred_at, severity, category, subject, summary
+                    )
+                    VALUES (
+                        :occurred_at, :severity, :category, :subject, :summary
+                    )
+                    """
+                ),
+                {
+                    "occurred_at": "2026-05-10 12:05:00",
+                    "severity": "info",
+                    "category": "controller_alarm_setting_changed",
+                    "subject": "Controller",
+                    "summary": "Controller buzzer setting changed from On to Off",
+                },
+            )
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO events (
+                        occurred_at, severity, category, subject, summary
+                    )
+                    VALUES (
+                        :occurred_at, :severity, :category, :subject, :summary
+                    )
+                    """
+                ),
+                {
+                    "occurred_at": "2026-05-10 12:10:00",
+                    "severity": "warning",
+                    "category": "vd_state",
+                    "subject": "VD 0",
+                    "summary": "VD 0 state is Degraded",
+                },
+            )
+
+            command.upgrade(config, "0008_cleanup_false_controller_alarm_events")
+
+            remaining = connection.execute(
+                sa.text("SELECT category, summary FROM events ORDER BY occurred_at")
+            ).all()
+            assert [(row.category, row.summary) for row in remaining] == [
+                (
+                    "controller_alarm_setting_changed",
+                    "Controller buzzer setting changed from On to Off",
+                ),
+                ("vd_state", "VD 0 state is Degraded"),
+            ]
+    finally:
+        engine.dispose()
+
+
 def test_alembic_uses_database_url_without_full_runtime_settings(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

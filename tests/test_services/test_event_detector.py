@@ -24,15 +24,44 @@ from megaraid_dashboard.storcli import (
 )
 
 
-def test_alarm_state_change_emits_controller_event() -> None:
+def test_alarm_state_change_emits_info_setting_changed_event() -> None:
     events = _detector().detect(
         _previous(alarm_state="Off"),
         _current(controller_alarm_state="On"),
     )
 
     assert [(event.severity, event.category, event.summary) for event in events] == [
-        ("info", "controller", "Alarm state changed from Off to On")
+        (
+            "info",
+            "controller_alarm_setting_changed",
+            "Controller buzzer setting changed from Off to On",
+        )
     ]
+
+
+def test_alarm_state_change_on_to_off_emits_single_info_event() -> None:
+    events = _detector().detect(
+        _previous(alarm_state="On"),
+        _current(controller_alarm_state="Off"),
+    )
+
+    assert [(event.severity, event.category, event.summary) for event in events] == [
+        (
+            "info",
+            "controller_alarm_setting_changed",
+            "Controller buzzer setting changed from On to Off",
+        )
+    ]
+
+
+def test_stable_alarm_state_emits_no_event_between_snapshots() -> None:
+    assert (
+        _detector().detect(
+            _previous(alarm_state="On"),
+            _current(controller_alarm_state="On"),
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -165,7 +194,6 @@ def test_baseline_snapshot_emits_existing_fault_events() -> None:
     )
 
     assert [(event.severity, event.category, event.summary) for event in events] == [
-        ("info", "controller", "Alarm state is On"),
         ("warning", "vd_state", "VD 0 state is Degraded"),
         ("critical", "pd_state", "PD e252:s4 state is Failed"),
         ("critical", "media_errors", "Media error count is 5"),
@@ -177,6 +205,12 @@ def test_baseline_snapshot_emits_existing_fault_events() -> None:
         ("warning", "cv_state", "CacheVault capacitance below 70%: 65%"),
     ]
     assert all(event.before is None for event in events)
+
+
+def test_baseline_snapshot_with_buzzer_enabled_emits_no_alarm_event() -> None:
+    events = _detector().detect(None, _current(controller_alarm_state="On"))
+
+    assert events == []
 
 
 @pytest.mark.parametrize(

@@ -73,7 +73,11 @@ async def test_run_once_persists_snapshot_and_events(
         events = list(session.scalars(select(Event).order_by(Event.id)))
 
     assert [(event.severity, event.category, event.summary) for event in events] == [
-        ("info", "controller", "Alarm state changed from Off to On")
+        (
+            "info",
+            "controller_alarm_setting_changed",
+            "Controller buzzer setting changed from Off to On",
+        )
     ]
 
 
