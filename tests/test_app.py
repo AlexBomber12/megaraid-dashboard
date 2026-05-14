@@ -147,6 +147,50 @@ def test_collector_lock_rejects_symlink(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "preserve"
 
 
+def test_collector_lock_creates_missing_parent_directory(tmp_path: Path) -> None:
+    parent = tmp_path / "var-lib"
+    lock_path = parent / "collector.lock"
+    assert not parent.exists()
+
+    lock_fd = app._try_acquire_collector_lock(str(lock_path))
+    try:
+        assert lock_fd is not None
+        assert parent.is_dir()
+        assert stat.S_IMODE(parent.stat().st_mode) & (stat.S_IRWXG | stat.S_IRWXO) == 0
+    finally:
+        if lock_fd is not None:
+            app._release_collector_lock(lock_fd)
+
+
+def test_collector_lock_logs_when_parent_create_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "blocked"
+    lock_path = parent / "collector.lock"
+
+    def fail_makedirs(path: str, mode: int = 0o777, exist_ok: bool = False) -> None:
+        del path, mode, exist_ok
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(app.os, "makedirs", fail_makedirs)
+
+    with capture_logs() as logs, pytest.raises(FileNotFoundError):
+        app._try_acquire_collector_lock(str(lock_path))
+
+    assert any(entry["event"] == "lock_parent_directory_create_failed" for entry in logs)
+
+
+def test_ensure_lock_parent_directory_noop_when_directory_exists(tmp_path: Path) -> None:
+    parent = tmp_path / "existing"
+    parent.mkdir(mode=0o750)
+    before_mode = stat.S_IMODE(parent.stat().st_mode)
+
+    app._ensure_lock_parent_directory(str(parent / "collector.lock"), lock_name="collector")
+
+    assert stat.S_IMODE(parent.stat().st_mode) == before_mode
+
+
 def test_lifespan_skips_collector_when_lock_is_already_held(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

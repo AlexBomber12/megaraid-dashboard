@@ -347,6 +347,7 @@ def _current_database_heads(connection: Connection | None) -> set[str] | None:
 
 
 def _try_acquire_process_lock(lock_path: str, *, lock_name: str) -> int | None:
+    _ensure_lock_parent_directory(lock_path, lock_name=lock_name)
     flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
     try:
         lock_fd = os.open(lock_path, flags, 0o600)
@@ -368,6 +369,21 @@ def _try_acquire_process_lock(lock_path: str, *, lock_name: str) -> int | None:
     os.ftruncate(lock_fd, 0)
     os.write(lock_fd, str(os.getpid()).encode("ascii"))
     return lock_fd
+
+
+def _ensure_lock_parent_directory(lock_path: str, *, lock_name: str) -> None:
+    parent = os.path.dirname(lock_path)
+    if not parent or os.path.isdir(parent):
+        return
+    try:
+        os.makedirs(parent, mode=0o700, exist_ok=True)
+    except OSError as exc:
+        LOGGER.warning(
+            "lock_parent_directory_create_failed",
+            lock_name=lock_name,
+            parent=parent,
+            error=str(exc),
+        )
 
 
 def _validate_process_lock_file(lock_fd: int, lock_path: str, *, lock_name: str) -> None:
