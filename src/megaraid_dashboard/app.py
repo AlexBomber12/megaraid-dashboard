@@ -449,7 +449,7 @@ def _tighten_sqlite_db_permissions(database_url: str) -> None:
     except OSError as exc:
         LOGGER.warning("db_chmod_stat_failed", error=str(exc))
         return
-    if current_mode <= 0o600:
+    if current_mode & (stat.S_IRWXG | stat.S_IRWXO) == 0:
         return
     try:
         db_path.chmod(0o600)

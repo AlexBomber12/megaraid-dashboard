@@ -369,6 +369,20 @@ def test_tighten_sqlite_db_permissions_noop_when_already_restrictive(tmp_path: P
     assert all(entry["event"] != "db_chmod_tightened" for entry in logs)
 
 
+def test_tighten_sqlite_db_permissions_chmods_group_other_readable_under_0o600(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "megaraid.db"
+    db_file.touch()
+    db_file.chmod(0o444)
+
+    with capture_logs() as logs:
+        app._tighten_sqlite_db_permissions(f"sqlite:///{db_file}")
+
+    assert stat.S_IMODE(db_file.stat().st_mode) == 0o600
+    assert any(entry["event"] == "db_chmod_tightened" for entry in logs)
+
+
 def test_tighten_sqlite_db_permissions_logs_warning_on_oserror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
