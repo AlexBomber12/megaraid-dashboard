@@ -85,6 +85,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     health_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="healthz-db")
     with engine.begin() as connection:
         _upgrade_database(settings.database_url, connection=connection)
+    _tighten_sqlite_db_permissions(settings.database_url)
     session_factory = get_sessionmaker(engine)
     collector_runtime = _CollectorRuntime()
     metrics_runtime = _MetricsRuntime()

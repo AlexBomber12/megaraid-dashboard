@@ -299,6 +299,50 @@ def test_phase_systemd_renders_unit_with_installed_paths_and_app_port(tmp_path: 
     assert "systemctl daemon-reload" in log.read_text()
 
 
+def test_phase_finalize_refuses_symlink_database_file(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    target = tmp_path / "outside_target"
+    target.write_text("sensitive", encoding="utf-8")
+    target.chmod(0o600)
+    db_path = data_dir / "megaraid.db"
+    db_path.symlink_to(target)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_executable(
+        bin_dir / "systemctl",
+        "#!/bin/sh\nprintf 'systemctl must not run on refusal\\n' >&2\nexit 99\n",
+    )
+    _write_executable(
+        bin_dir / "chown",
+        "#!/bin/sh\nprintf 'chown must not run on refusal\\n' >&2\nexit 99\n",
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {INSTALL_SCRIPT}; phase_finalize"],
+        check=False,
+        env={
+            **os.environ,
+            "APP_PORT": "18123",
+            "DATA_DIR": str(data_dir),
+            "ENV_FILE": str(tmp_path / "env"),
+            "INSTALL_PREFIX": str(tmp_path / "prefix"),
+            "INSTALL_USER": "raid-monitor",
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "refusing to harden" in result.stderr
+    assert "is a symlink" in result.stderr
+    target_mode = stat.S_IMODE(target.stat().st_mode)
+    assert target_mode == 0o600
+    assert target.read_text(encoding="utf-8") == "sensitive"
+
+
 def test_phase_finalize_points_uninstall_to_root_owned_script_copy(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

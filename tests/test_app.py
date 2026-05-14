@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import stat
 import threading
 from pathlib import Path
@@ -409,3 +410,27 @@ def test_tighten_sqlite_db_permissions_skips_missing_file(tmp_path: Path) -> Non
     app._tighten_sqlite_db_permissions(f"sqlite:///{missing}")
 
     assert not missing.exists()
+
+
+def test_lifespan_tightens_db_after_first_creation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "megaraid.db"
+    assert not db_file.exists()
+    _set_required_app_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
+    monkeypatch.setenv("COLLECTOR_ENABLED", "false")
+    get_settings.cache_clear()
+
+    previous_umask = os.umask(0o022)
+    try:
+        test_app = app.create_app()
+        with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+            response = client.get("/health")
+        assert response.status_code == 200
+        assert db_file.exists()
+        assert stat.S_IMODE(db_file.stat().st_mode) == 0o600
+    finally:
+        os.umask(previous_umask)
+        get_settings.cache_clear()
