@@ -286,6 +286,7 @@ def test_events_category_filter_chips_use_persisted_category_keys() -> None:
     test_app = create_app()
     expected_categories = (
         "controller",
+        "controller_alarm_setting_changed",
         "pd_state",
         "vd_state",
         "cv_state",

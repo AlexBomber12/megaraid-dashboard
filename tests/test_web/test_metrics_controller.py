@@ -39,14 +39,14 @@ def test_controller_health_metric_is_optimal_for_seeded_healthy_snapshot(
     assert _controller_metric("megaraid_controller_health", 0.0) in response_text
 
 
-def test_controller_health_metric_is_critical_when_alarm_is_on(
+def test_controller_health_metric_is_optimal_when_only_buzzer_enabled(
     session_factory: sessionmaker[Session],
 ) -> None:
     _insert(session_factory, _snapshot(alarm_state="On"))
 
     response_text = _scrape_metrics(session_factory)
 
-    assert _controller_metric("megaraid_controller_health", 2.0) in response_text
+    assert _controller_metric("megaraid_controller_health", 0.0) in response_text
 
 
 def test_controller_health_metric_is_warning_with_degraded_virtual_drive(

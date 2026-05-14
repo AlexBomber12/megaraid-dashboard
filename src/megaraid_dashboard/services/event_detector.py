@@ -185,17 +185,6 @@ class EventDetector:
 
     def _detect_baseline(self, current: StorcliSnapshot) -> list[DetectedEvent]:
         events: list[DetectedEvent] = []
-        if current.controller.alarm_state != "Off":
-            events.append(
-                DetectedEvent(
-                    severity="info",
-                    category="controller",
-                    subject="Controller",
-                    summary=f"Alarm state is {current.controller.alarm_state}",
-                    before=None,
-                    after={"alarm_state": current.controller.alarm_state},
-                )
-            )
         for virtual_drive in current.virtual_drives:
             new_drive_event = _new_virtual_drive_event(virtual_drive)
             if new_drive_event is not None:
@@ -217,9 +206,12 @@ class EventDetector:
         return [
             DetectedEvent(
                 severity="info",
-                category="controller",
+                category="controller_alarm_setting_changed",
                 subject="Controller",
-                summary=f"Alarm state changed from {previous.alarm_state} to {current_alarm}",
+                summary=(
+                    f"Controller buzzer setting changed from {previous.alarm_state} "
+                    f"to {current_alarm}"
+                ),
                 before={"alarm_state": previous.alarm_state},
                 after={"alarm_state": current_alarm},
             )

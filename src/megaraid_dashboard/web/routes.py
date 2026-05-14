@@ -116,6 +116,7 @@ _ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
 _EVENT_SEVERITY_FILTERS = ("info", "warning", "critical")
 _EVENT_CATEGORY_FILTERS = (
     "controller",
+    "controller_alarm_setting_changed",
     "pd_state",
     "vd_state",
     "cv_state",
