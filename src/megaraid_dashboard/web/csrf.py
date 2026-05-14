@@ -9,12 +9,12 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from megaraid_dashboard.web._whitelist import is_whitelisted
+
 _COOKIE_NAME = "__Host-csrf"
 _HEADER_NAME = "X-CSRF-Token"
 _TOKEN_BYTES = 32
 _PROTECTED_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
-_WHITELIST_EXACT = frozenset({"/healthz", "/favicon.ico"})
-_WHITELIST_PREFIX = ("/static/",)
 _COOKIE_VALUE_LENGTH = 43
 
 
@@ -23,7 +23,7 @@ class CsrfMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or _is_whitelisted(str(scope.get("path", ""))):
+        if scope["type"] != "http" or is_whitelisted(str(scope.get("path", ""))):
             await self.app(scope, receive, send)
             return
 
@@ -77,10 +77,6 @@ def _extract_cookie(headers: Headers, name: str) -> str | None:
     if morsel is None:
         return None
     return morsel.value
-
-
-def _is_whitelisted(path: str) -> bool:
-    return path in _WHITELIST_EXACT or path.startswith(_WHITELIST_PREFIX)
 
 
 def _has_csrf_set_cookie(message: Message) -> bool:
