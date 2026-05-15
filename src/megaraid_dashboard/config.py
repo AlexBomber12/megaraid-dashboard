@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_STORCLI_PATH_VALIDATION_BYPASS_ENV = "MEGARAID_SKIP_STORCLI_PATH_VALIDATION"
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _env_flag_is_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 class Settings(BaseSettings):
@@ -56,6 +67,26 @@ class Settings(BaseSettings):
     disk_check_interval_minutes: int = 60
     database_url: str = "sqlite:///./megaraid.db"
     log_level: str = Field(...)
+
+    @field_validator("storcli_path")
+    @classmethod
+    def _validate_storcli_path(cls, value: str) -> str:
+        if _env_flag_is_truthy(os.environ.get(_STORCLI_PATH_VALIDATION_BYPASS_ENV)):
+            return value
+        path = Path(value)
+        if not path.is_absolute():
+            msg = f"storcli_path must be absolute, got: {value!r}"
+            raise ValueError(msg)
+        if not path.exists():
+            msg = f"storcli_path does not exist: {value!r}"
+            raise ValueError(msg)
+        if not path.is_file():
+            msg = f"storcli_path is not a regular file: {value!r}"
+            raise ValueError(msg)
+        if not os.access(path, os.X_OK):
+            msg = f"storcli_path is not executable: {value!r}"
+            raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def validate_runtime_values(self) -> Settings:

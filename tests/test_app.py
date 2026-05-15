@@ -90,6 +90,11 @@ def test_create_app_orders_security_middleware(
             "BasicAuthMiddleware",
             "CsrfMiddleware",
         ]
+        assert "SecurityHeadersMiddleware" not in [
+            middleware.cls.__name__ for middleware in test_app.user_middleware
+        ]
+        stack = test_app.build_middleware_stack()
+        assert type(stack).__name__ == "SecurityHeadersMiddleware"
     finally:
         get_settings.cache_clear()
 

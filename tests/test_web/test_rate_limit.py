@@ -17,6 +17,7 @@ from megaraid_dashboard.web.auth import BasicAuthMiddleware
 from megaraid_dashboard.web.csrf import CsrfMiddleware
 from megaraid_dashboard.web.middleware import ForwardedPrefixMiddleware
 from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
+from megaraid_dashboard.web.security_headers import SecurityHeadersMiddleware
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH
 
 _TEST_PASSWORD = "test-password"
@@ -311,6 +312,9 @@ def test_create_app_middleware_order(
         BasicAuthMiddleware,
         CsrfMiddleware,
     ]
+    assert SecurityHeadersMiddleware not in middleware_classes
+    stack = test_app.build_middleware_stack()
+    assert isinstance(stack, SecurityHeadersMiddleware)
 
 
 def _basic_header(username: str, password: str) -> str:
