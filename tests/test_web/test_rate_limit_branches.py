@@ -166,7 +166,7 @@ async def test_release_slot_on_500_response_without_notify(settings: Settings) -
         await send({"type": "http.response.body", "body": b""})
 
     limiter = AuthRateLimitMiddleware(server_error_app, settings=settings)
-    messages, send = _collect_send()
+    _messages, send = _collect_send()
     await limiter(_build_scope(), _empty_receive, send)
 
     assert dict(limiter._attempts) == {}
@@ -179,7 +179,7 @@ async def test_401_response_without_notify_retains_slot(settings: Settings) -> N
         await send({"type": "http.response.body", "body": b""})
 
     limiter = AuthRateLimitMiddleware(unauthorized_app, settings=settings)
-    messages, send = _collect_send()
+    _messages, send = _collect_send()
     await limiter(_build_scope(), _empty_receive, send)
 
     attempts = limiter._attempts
@@ -197,7 +197,7 @@ async def test_notify_with_invalid_credentials_keeps_slot(settings: Settings) ->
         await send({"type": "http.response.body", "body": b""})
 
     limiter = AuthRateLimitMiddleware(notify_app, settings=settings)
-    messages, send = _collect_send()
+    _messages, send = _collect_send()
     await limiter(_build_scope(), _empty_receive, send)
 
     attempts = limiter._attempts
