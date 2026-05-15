@@ -306,13 +306,15 @@ def test_create_app_middleware_order(
         get_settings.cache_clear()
 
     middleware_classes = [middleware.cls for middleware in test_app.user_middleware]
-    assert middleware_classes[:5] == [
-        SecurityHeadersMiddleware,
+    assert middleware_classes[:4] == [
         ForwardedPrefixMiddleware,
         AuthRateLimitMiddleware,
         BasicAuthMiddleware,
         CsrfMiddleware,
     ]
+    assert SecurityHeadersMiddleware not in middleware_classes
+    stack = test_app.build_middleware_stack()
+    assert isinstance(stack, SecurityHeadersMiddleware)
 
 
 def _basic_header(username: str, password: str) -> str:

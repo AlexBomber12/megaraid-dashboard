@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.types import ASGIApp
 
 from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db import get_engine, get_sessionmaker
@@ -43,6 +44,16 @@ _PACKAGE_ROOT = Path(__file__).resolve().parent
 _STATIC_DIR = _PACKAGE_ROOT / "static"
 
 
+class _OuterSecurityHeadersFastAPI(FastAPI):
+    # SecurityHeadersMiddleware must wrap the entire Starlette stack, including
+    # ServerErrorMiddleware, so the synthetic 500 response generated for
+    # unhandled exceptions still carries the configured security headers.
+    # Middleware registered via add_middleware() lives inside
+    # ServerErrorMiddleware and is bypassed when it produces that 500.
+    def build_middleware_stack(self) -> ASGIApp:
+        return SecurityHeadersMiddleware(super().build_middleware_stack())
+
+
 @dataclass
 class _CollectorRuntime:
     collector: CollectorService | None = None
@@ -59,13 +70,12 @@ class _MetricsRuntime:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="MegaRAID Dashboard", lifespan=_lifespan)
+    app = _OuterSecurityHeadersFastAPI(title="MegaRAID Dashboard", lifespan=_lifespan)
     app.state.settings = get_settings()
     app.add_middleware(CsrfMiddleware)
     app.add_middleware(BasicAuthMiddleware, settings=app.state.settings)
     app.add_middleware(AuthRateLimitMiddleware, settings=app.state.settings)
     app.add_middleware(ForwardedPrefixMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
     app.mount(
         "/static",
         CacheControlStaticFiles(directory=_STATIC_DIR),

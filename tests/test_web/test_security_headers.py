@@ -103,3 +103,26 @@ def test_error_response_includes_security_headers() -> None:
 
     assert response.status_code == 500
     _assert_security_headers(response.headers)
+
+
+def test_unhandled_exception_response_includes_security_headers() -> None:
+    # Unhandled exceptions (not HTTPException) are caught by Starlette's
+    # ServerErrorMiddleware, which sits outside the user middleware stack.
+    # SecurityHeadersMiddleware must wrap that layer too, otherwise the
+    # synthetic 500 it produces has no security headers.
+    test_app = create_app()
+
+    crash_router = APIRouter()
+
+    @crash_router.get("/_crash")
+    def _crash() -> None:
+        msg = "intentional crash"
+        raise RuntimeError(msg)
+
+    test_app.include_router(crash_router)
+
+    with TestClient(test_app, raise_server_exceptions=False) as client:
+        response = client.get("/_crash", headers=TEST_AUTH_HEADER)
+
+    assert response.status_code == 500
+    _assert_security_headers(response.headers)
