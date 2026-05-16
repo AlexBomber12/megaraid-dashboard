@@ -2495,10 +2495,7 @@ async def controller_foreign_config(request: Request) -> Response:
         )
 
     if error is not None:
-        body: dict[str, Any] = {"error": error}
-        if detail is not None:
-            body["detail"] = detail
-        return JSONResponse(body, status_code=status_code)
+        return JSONResponse({"error": error, "detail": detail}, status_code=status_code)
     assert foreign_config is not None
     return JSONResponse(_foreign_config_response_body(foreign_config))
 
