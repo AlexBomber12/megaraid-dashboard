@@ -126,6 +126,25 @@ When changing database behavior, include the SQLAlchemy model change, Alembic mi
 focused tests. When changing the security model, include coverage for the safety control and
 call out the risk in the pull request.
 
+### E2E test policy
+
+PRs that modify any of:
+
+- `src/megaraid_dashboard/web/`
+- `src/megaraid_dashboard/templates/`
+
+must keep the e2e suite passing. Run locally before push:
+
+```bash
+pytest -o "addopts=" tests/e2e/ --browser chromium --no-cov
+```
+
+The `-o "addopts="` flag clears the project-level `addopts` from
+`pyproject.toml` (which contains `--ignore=tests/e2e` for the default
+unit-test run) so the e2e invocation always collects the suite.
+
+The e2e job in CI is required for these PRs.
+
 ### Coverage policy
 
 All production code under `src/megaraid_dashboard/` must maintain 100% line
