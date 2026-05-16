@@ -41,9 +41,20 @@ def test_login_succeeds_with_correct_credentials(
         context.close()
 
 
-def test_wrong_password_rejected(live_server: str, browser: Browser) -> None:
+def test_wrong_password_rejected(
+    live_server: str,
+    browser: Browser,
+    test_admin_creds: dict[str, str],
+) -> None:
+    # Use the configured admin username so this exercises the wrong-password
+    # branch of auth, not the unknown-user branch (which would 401 before any
+    # password verification runs and would not catch a regression that
+    # accepts bad passwords for the real admin account).
     context = browser.new_context(
-        http_credentials={"username": "admin", "password": "wrong-password"}
+        http_credentials={
+            "username": test_admin_creds["username"],
+            "password": "wrong-password",
+        }
     )
     try:
         page = context.new_page()
