@@ -49,6 +49,21 @@ Coverage policy: 100% line + 100% branch on `src/megaraid_dashboard/`. CI fails 
 Pre-commit is optional: `pip install pre-commit && pre-commit install`. Hooks run on
 `git commit`; CI remains the canonical validation gate.
 
+### End-to-end tests (Playwright)
+
+E2E tests live under `tests/e2e/`. They run the app in-process and exercise
+real HTTP requests via Playwright. The default `pytest` invocation skips them
+(`--ignore=tests/e2e`) so contributors do not need a browser installed for the
+unit-test loop. To run them locally:
+
+```
+pip install -e ".[dev]"
+playwright install --with-deps chromium
+pytest tests/e2e/ --browser chromium
+```
+
+E2E tests are excluded from the unit-test coverage gate.
+
 ## Documentation
 
 - Install - production installer notes; forthcoming.
