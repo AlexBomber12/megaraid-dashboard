@@ -64,11 +64,19 @@ def test_wrong_password_rejected(
         context.close()
 
 
-def test_rate_limit_triggers_after_fifth_failure(live_server: str, page: Page) -> None:
+def test_rate_limit_triggers_after_fifth_failure(
+    live_server: str,
+    page: Page,
+    test_admin_creds: dict[str, str],
+) -> None:
     # With AUTH_RATE_LIMIT_PER_MINUTE=5 and AUTH_RATE_LIMIT_BURST=0 (set by the
     # e2e env in conftest.py), 5 failed attempts are allowed; the 6th is
     # rate-limited. The autouse reset fixture guarantees an empty bucket.
-    token = base64.b64encode(b"admin:wrong-password").decode("ascii")
+    # Use the configured admin username so this exercises the brute-force
+    # path against the real admin account (wrong-password branch), not the
+    # unknown-user branch.
+    credentials = f"{test_admin_creds['username']}:wrong-password".encode()
+    token = base64.b64encode(credentials).decode("ascii")
     auth_header = {"Authorization": f"Basic {token}"}
     statuses: list[int] = []
     for _ in range(6):
