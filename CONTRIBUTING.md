@@ -136,8 +136,12 @@ PRs that modify any of:
 must keep the e2e suite passing. Run locally before push:
 
 ```bash
-pytest tests/e2e/ --browser chromium --no-cov
+pytest -o "addopts=" tests/e2e/ --browser chromium --no-cov
 ```
+
+The `-o "addopts="` flag clears the project-level `addopts` from
+`pyproject.toml` (which contains `--ignore=tests/e2e` for the default
+unit-test run) so the e2e invocation always collects the suite.
 
 The e2e job in CI is required for these PRs.
 

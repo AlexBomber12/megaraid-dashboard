@@ -59,13 +59,17 @@ unit-test loop. To run them locally:
 ```
 pip install -e ".[dev]"
 playwright install --with-deps chromium
-pytest tests/e2e/ --browser chromium --no-cov
+pytest -o "addopts=" tests/e2e/ --browser chromium --no-cov
 ```
 
 E2E tests are excluded from the unit-test coverage gate. The `--no-cov` flag
 disables coverage collection for the e2e-only run so the global
 `--cov-fail-under=100` gate (which only measures `src/megaraid_dashboard/`)
 does not fail when the e2e suite does not exercise the full source tree.
+The `-o "addopts="` flag clears the `addopts` from `pyproject.toml` (which
+contains `--ignore=tests/e2e` to keep e2e out of the default unit-test run)
+so the explicit e2e invocation collects the suite regardless of pytest's
+path-vs-`--ignore` precedence rules.
 
 The e2e suite also runs in CI as a separate job after the main test suite
 passes. PRs that touch the web layer or templates must pass both gates.

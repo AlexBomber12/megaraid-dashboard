@@ -68,4 +68,4 @@ jobs:
         run: playwright install-deps chromium
 
       - name: Run e2e tests
-        run: pytest tests/e2e/ --browser chromium --no-cov -v
+        run: pytest -o "addopts=" tests/e2e/ --browser chromium --no-cov -v
