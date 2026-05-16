@@ -312,3 +312,66 @@ def authenticated_page(
         yield page
     finally:
         context.close()
+
+
+@pytest.fixture
+def snapshot_with_drives(fresh_db: str) -> str:
+    """Seed the per-test DB with a controller snapshot and two physical drives.
+
+    Inserts drives in enclosure 252 slots 0 and 1 so the locate-flow tests have
+    addressable rows. Writes directly to the fresh-per-test database, bypassing
+    the storcli collector path while still exercising the route handlers end to
+    end via the live server.
+    """
+    from datetime import UTC, datetime
+
+    from megaraid_dashboard.db import (
+        ControllerSnapshot,
+        PhysicalDriveSnapshot,
+        get_engine,
+        get_sessionmaker,
+    )
+
+    engine = get_engine(fresh_db)
+    try:
+        session_factory = get_sessionmaker(engine)
+        with session_factory() as session, session.begin():
+            snapshot = ControllerSnapshot(
+                captured_at=datetime.now(UTC),
+                model_name="LSI MegaRAID SAS 9270CV-8i",
+                serial_number="TEST123",
+                firmware_version="4.230.40-3739",
+                bios_version="6.30.03.0",
+                driver_version="06.811.02.00",
+                alarm_state="Off",
+                cv_present=False,
+                bbu_present=False,
+                roc_temperature_celsius=70,
+            )
+            session.add(snapshot)
+            session.flush()
+            for slot_id in (0, 1):
+                session.add(
+                    PhysicalDriveSnapshot(
+                        snapshot_id=snapshot.id,
+                        enclosure_id=252,
+                        slot_id=slot_id,
+                        device_id=slot_id,
+                        model="WDC WD30EFRX-68EUZN0",
+                        serial_number=f"WCA275678{slot_id:03d}",
+                        firmware_version="MF8OA8B0",
+                        size_bytes=3_000_000_000_000,
+                        interface="SATA",
+                        media_type="HDD",
+                        state="Onln",
+                        temperature_celsius=35,
+                        media_errors=0,
+                        other_errors=0,
+                        predictive_failures=0,
+                        smart_alert=False,
+                        sas_address=f"0x5000c5000000{slot_id:04d}",
+                    )
+                )
+    finally:
+        engine.dispose()
+    return fresh_db
