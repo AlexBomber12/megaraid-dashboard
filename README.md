@@ -67,6 +67,9 @@ disables coverage collection for the e2e-only run so the global
 `--cov-fail-under=100` gate (which only measures `src/megaraid_dashboard/`)
 does not fail when the e2e suite does not exercise the full source tree.
 
+The e2e suite also runs in CI as a separate job after the main test suite
+passes. PRs that touch the web layer or templates must pass both gates.
+
 ## Documentation
 
 - Install - production installer notes; forthcoming.
