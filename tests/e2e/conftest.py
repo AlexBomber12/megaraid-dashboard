@@ -13,6 +13,9 @@ Fixtures:
 * ``test_admin_creds`` (function-scoped): admin credentials plus an env file for
   tests that need to drive auth flows. The credentials are stable across the
   session so they also match what ``live_server`` was started with.
+* ``authenticated_page`` (function-scoped): Playwright ``Page`` bound to a fresh
+  browser context with valid admin ``http_credentials`` pre-set, ready to drive
+  authenticated UI flows.
 """
 
 from __future__ import annotations
@@ -25,11 +28,13 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import bcrypt
 import pytest
 import uvicorn
 from fastapi import FastAPI
+from playwright.sync_api import Browser, Page
 from sqlalchemy.engine import Engine
 
 E2E_ADMIN_USERNAME = "e2e-admin"
@@ -95,6 +100,8 @@ def _build_env(
         "LOG_LEVEL": "WARNING",
         "COLLECTOR_ENABLED": "false",
         "METRICS_ENABLED": "false",
+        "AUTH_RATE_LIMIT_PER_MINUTE": "5",
+        "AUTH_RATE_LIMIT_BURST": "0",
     }
 
 
@@ -262,3 +269,46 @@ def test_admin_creds(tmp_path: Path, fresh_db: str) -> dict[str, str]:
         "storcli_path": str(storcli_stub),
         "env_file": str(env_file),
     }
+
+
+def _find_rate_limit_middleware(app: FastAPI) -> Any:
+    from megaraid_dashboard.web.rate_limit import AuthRateLimitMiddleware
+
+    current: Any = app.middleware_stack
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, AuthRateLimitMiddleware):
+            return current
+        current = getattr(current, "app", None)
+    return None
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_rate_limit_attempts(
+    _live_server_handle: _LiveServerHandle,
+) -> Iterator[None]:
+    # The session-scoped live_server keeps one in-memory attempts bucket across
+    # tests; clear it so each test starts from a known state.
+    middleware = _find_rate_limit_middleware(_live_server_handle.app)
+    if middleware is not None:
+        middleware._attempts.clear()
+    yield
+
+
+@pytest.fixture
+def authenticated_page(
+    browser: Browser,
+    test_admin_creds: dict[str, str],
+) -> Iterator[Page]:
+    context = browser.new_context(
+        http_credentials={
+            "username": test_admin_creds["username"],
+            "password": test_admin_creds["password"],
+        }
+    )
+    page = context.new_page()
+    try:
+        yield page
+    finally:
+        context.close()
