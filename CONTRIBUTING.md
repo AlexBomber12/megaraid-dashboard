@@ -126,6 +126,16 @@ When changing database behavior, include the SQLAlchemy model change, Alembic mi
 focused tests. When changing the security model, include coverage for the safety control and
 call out the risk in the pull request.
 
+### Coverage policy
+
+All production code under `src/megaraid_dashboard/` must maintain 100% line
+and 100% branch coverage. The CI gate enforces this via
+`--cov-fail-under=100 --cov-branch` in `pyproject.toml`. PRs that drop
+coverage below the threshold will fail CI and cannot merge.
+
+Use of `# pragma: no cover` is forbidden. Use of `# type: ignore` without
+a bracketed error code is forbidden (enforced by ruff PGH003).
+
 ## Submitting a PR
 
 All changes go through pull requests targeting `main`. Do not commit directly to `main`.

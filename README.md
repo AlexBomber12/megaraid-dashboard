@@ -44,6 +44,8 @@ mypy src
 pytest
 ```
 
+Coverage policy: 100% line + 100% branch on `src/megaraid_dashboard/`. CI fails below.
+
 Pre-commit is optional: `pip install pre-commit && pre-commit install`. Hooks run on
 `git commit`; CI remains the canonical validation gate.
 
