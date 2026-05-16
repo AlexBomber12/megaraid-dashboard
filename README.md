@@ -59,10 +59,13 @@ unit-test loop. To run them locally:
 ```
 pip install -e ".[dev]"
 playwright install --with-deps chromium
-pytest tests/e2e/ --browser chromium
+pytest tests/e2e/ --browser chromium --no-cov
 ```
 
-E2E tests are excluded from the unit-test coverage gate.
+E2E tests are excluded from the unit-test coverage gate. The `--no-cov` flag
+disables coverage collection for the e2e-only run so the global
+`--cov-fail-under=100` gate (which only measures `src/megaraid_dashboard/`)
+does not fail when the e2e suite does not exercise the full source tree.
 
 ## Documentation
 
