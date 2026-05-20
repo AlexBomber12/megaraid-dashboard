@@ -34,6 +34,7 @@ _PER_CATEGORY_SUPPRESS_MINUTES: dict[str, int] = {
     "controller_temperature": 1440,
     "foreign_config_detected": 1440,
 }
+_NOTIFIER_HEALTH = True
 
 
 @dataclass(frozen=True)
@@ -140,13 +141,24 @@ def run_notifier_cycle(
         )
 
     session.commit()
-    return NotifierCycleResult(
+    result = NotifierCycleResult(
         attempted=attempted,
         sent=sent,
         deduplicated=deduplicated,
         failed=failed,
         throttle_warning=throttle_warning,
     )
+    _record_notifier_health(result.failed == 0)
+    return result
+
+
+def get_notifier_health() -> bool:
+    return _NOTIFIER_HEALTH
+
+
+def _record_notifier_health(ok: bool) -> None:
+    global _NOTIFIER_HEALTH
+    _NOTIFIER_HEALTH = ok
 
 
 def _suppress_window_minutes(event: Event, settings: Settings) -> int:

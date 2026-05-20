@@ -36,7 +36,11 @@ from megaraid_dashboard.db.retention import (
 from megaraid_dashboard.services.collector import collect_storcli_snapshot
 from megaraid_dashboard.services.disk_monitor import check_data_partition_free_space
 from megaraid_dashboard.services.event_detector import DetectedEvent, EventDetector
-from megaraid_dashboard.services.notifier import _LOCK_PATH_DEFAULT, run_notifier_cycle
+from megaraid_dashboard.services.notifier import (
+    _LOCK_PATH_DEFAULT,
+    _record_notifier_health,
+    run_notifier_cycle,
+)
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 from megaraid_dashboard.web.metrics import (
     COLLECTOR_CYCLE_DURATION,
@@ -44,10 +48,15 @@ from megaraid_dashboard.web.metrics import (
 )
 
 LOGGER = structlog.get_logger(__name__)
+_LAST_COLLECTOR_RUN_AT: datetime | None = None
 
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def get_last_collector_run_at() -> datetime | None:
+    return _LAST_COLLECTOR_RUN_AT
 
 
 class CollectorService:
@@ -252,6 +261,7 @@ class CollectorService:
             COLLECTOR_CYCLE_DURATION.set(elapsed)
             if successful:
                 COLLECTOR_LAST_RUN_TIMESTAMP.set(time())
+                _record_last_collector_run_at(datetime.now(UTC))
             LOGGER.info(
                 "collector_cycle_metrics_recorded",
                 duration_seconds=elapsed,
@@ -304,6 +314,7 @@ class CollectorService:
                         now=self.clock(),
                     )
                 except Exception:
+                    _record_notifier_health(False)
                     LOGGER.exception("notifier_cycle_failed")
         finally:
             _release_notifier_lock(lock_fd)
@@ -381,6 +392,11 @@ def _require_aware_utc(value: datetime) -> datetime:
         msg = "naive datetimes are not allowed; use timezone-aware UTC datetimes"
         raise ValueError(msg)
     return value.astimezone(UTC)
+
+
+def _record_last_collector_run_at(value: datetime) -> None:
+    global _LAST_COLLECTOR_RUN_AT
+    _LAST_COLLECTOR_RUN_AT = _require_aware_utc(value)
 
 
 def _try_acquire_notifier_lock(lock_path: str) -> int | None:

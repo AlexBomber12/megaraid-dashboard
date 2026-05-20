@@ -1,5 +1,8 @@
+"""Legacy overview and redesigned main-page view models."""
+
 from __future__ import annotations
 
+import os
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -7,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol
 
 from sqlalchemy import func, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, selectinload
 
 from megaraid_dashboard.config import Settings, get_settings
@@ -27,15 +31,20 @@ from megaraid_dashboard.services.event_detector import (
     virtual_drive_state_severity,
 )
 from megaraid_dashboard.services.events import list_recent_events
+from megaraid_dashboard.services.notifier import get_notifier_health
 
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
 _VD_OPTIMAL_STATES = {"Optl", "Optimal"}
 _PD_OPTIMAL_STATES = {"Onln"}
+_PD_WARNING_STATES = {"UBad", "Rbld", "Rebld", "Rebuild", "Rebuilding"}
+_PD_CRITICAL_STATES = {"Failed", "Missing"}
 _CACHEVAULT_OPTIMAL_STATES = {"Optl", "Optimal"}
 _VD_DEGRADED_STATES = {"Dgrd", "Degraded"}
 _VD_PARTIALLY_DEGRADED_STATES = {"Pdgd", "Partially Degraded"}
 _VD_CRITICAL_STATES = {"Failed", "Offln", "Offline"}
 _SEVERITY_RANK = ("critical", "warning", "info", "optimal", "neutral", "unknown")
+_MAIN_PAGE_RECENT_ACTIVITY_LIMIT = 10
+_DEFAULT_MAIN_PAGE_REFRESH_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -161,12 +170,84 @@ class DriveListViewModel:
     empty_next_run: str
 
 
+@dataclass(frozen=True)
+class ActiveOperation:
+    name: str
+    progress_percent: int | None
+    tooltip: str
+
+
+@dataclass(frozen=True)
+class ControllerSummaryViewModel:
+    state: str
+    model: str
+    serial: str
+    raid_summary: str
+    roc_temperature_celsius: int | None
+    cv_capacitance_percent: int | None
+    bbu_status: str
+    errors_24h: int
+    active_operations: list[ActiveOperation]
+    last_patrol_read_completed_at: datetime | None
+    last_patrol_read_duration_text: str | None
+    next_patrol_read_in_text: str | None
+
+
+@dataclass(frozen=True)
+class DriveGridTileViewModel:
+    slot_label: str
+    enclosure_id: int
+    slot_id: int
+    temperature_celsius: int | None
+    temperature_state: str
+    state_text: str
+    state_severity: str
+    tile_severity: str
+    error_badge_count: int | None
+    detail_url: str
+
+
+@dataclass(frozen=True)
+class DriveGridViewModel:
+    tiles: list[DriveGridTileViewModel]
+    worst_severity: str
+
+
+@dataclass(frozen=True)
+class SystemHealthViewModel:
+    notifier_ok: bool
+    collector_last_run_at: datetime | None
+    collector_last_run_text: str
+    db_size_human: str
+    app_version: str
+
+
+@dataclass(frozen=True)
+class MainPageViewModel:
+    controller: ControllerSummaryViewModel
+    drive_grid: DriveGridViewModel
+    recent_activity: list[RecentActivityItem]
+    system_health: SystemHealthViewModel
+    updated_at: datetime
+    auto_refresh_seconds: int
+
+
 class _SchedulerJob(Protocol):
     next_run_time: datetime | None
 
 
 class _Scheduler(Protocol):
     def get_job(self, job_id: str) -> _SchedulerJob | None: ...
+
+
+class _CollectorStateProvider(Protocol):
+    def get_last_collector_run_at(self) -> datetime | None: ...
+
+
+class _OperationState(Protocol):
+    is_running: bool
+    progress_percent: int | None
+    last_run_timestamp: str | None
 
 
 @dataclass(frozen=True)
@@ -177,6 +258,323 @@ class _DriveSummary:
     critical_drive_count: int
     worst_state_severity: str
     hottest_drive_url: str | None
+
+
+def load_main_page_view_model(
+    session: Session,
+    *,
+    settings: Settings,
+    scheduler: _CollectorStateProvider | None,
+    collector_enabled: bool,
+    app_version: str,
+) -> MainPageViewModel:
+    now = datetime.now(UTC)
+    snapshot = _get_latest_overview_snapshot(session)
+    return MainPageViewModel(
+        controller=_load_controller_summary(session, settings=settings, snapshot=snapshot, now=now),
+        drive_grid=_load_drive_grid(settings=settings, snapshot=snapshot),
+        recent_activity=_load_recent_activity(session, limit=_MAIN_PAGE_RECENT_ACTIVITY_LIMIT),
+        system_health=_load_system_health(
+            settings=settings,
+            scheduler=scheduler,
+            collector_enabled=collector_enabled,
+            app_version=app_version,
+            now=now,
+        ),
+        updated_at=now,
+        auto_refresh_seconds=getattr(
+            settings,
+            "auto_refresh_seconds",
+            _DEFAULT_MAIN_PAGE_REFRESH_SECONDS,
+        ),
+    )
+
+
+def _load_controller_summary(
+    session: Session,
+    *,
+    settings: Settings,
+    snapshot: ControllerSnapshot | None,
+    now: datetime,
+) -> ControllerSummaryViewModel:
+    del settings
+    if snapshot is None:
+        return ControllerSummaryViewModel(
+            state="UNKNOWN",
+            model="Unknown",
+            serial="Unknown",
+            raid_summary="Unknown",
+            roc_temperature_celsius=None,
+            cv_capacitance_percent=None,
+            bbu_status="Unknown",
+            errors_24h=_count_recent_warning_and_critical_events(session, now=now),
+            active_operations=[],
+            last_patrol_read_completed_at=None,
+            last_patrol_read_duration_text=None,
+            next_patrol_read_in_text=None,
+        )
+
+    cachevault = snapshot.cachevault
+    patrol_read_state = _load_patrol_read_state(snapshot)
+    return ControllerSummaryViewModel(
+        state=derive_controller_health(
+            snapshot,
+            snapshot.physical_drives,
+            snapshot.virtual_drives,
+        ).upper(),
+        model=snapshot.model_name,
+        serial=snapshot.serial_number,
+        raid_summary=_main_page_raid_summary(snapshot.virtual_drives, snapshot.physical_drives),
+        roc_temperature_celsius=snapshot.roc_temperature_celsius,
+        cv_capacitance_percent=None if cachevault is None else cachevault.capacitance_percent,
+        bbu_status=_main_page_bbu_status(snapshot),
+        errors_24h=_count_recent_warning_and_critical_events(session, now=now),
+        active_operations=_load_active_operations(snapshot),
+        last_patrol_read_completed_at=_parse_operation_timestamp(
+            None if patrol_read_state is None else patrol_read_state.last_run_timestamp
+        ),
+        last_patrol_read_duration_text=None,
+        next_patrol_read_in_text=None,
+    )
+
+
+def _load_drive_grid(
+    *,
+    settings: Settings,
+    snapshot: ControllerSnapshot | None,
+) -> DriveGridViewModel:
+    if snapshot is None:
+        return DriveGridViewModel(tiles=[], worst_severity="optimal")
+
+    tiles = [
+        _drive_grid_tile(
+            drive,
+            temp_warning=settings.temp_warning_celsius,
+            temp_critical=settings.temp_critical_celsius,
+        )
+        for drive in sorted(
+            snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id)
+        )
+    ]
+    worst_severity = "optimal"
+    for tile in tiles:
+        worst_severity = _worst_severity(worst_severity, tile.tile_severity)
+    return DriveGridViewModel(tiles=tiles, worst_severity=worst_severity)
+
+
+def _load_system_health(
+    *,
+    settings: Settings,
+    scheduler: _CollectorStateProvider | None,
+    collector_enabled: bool,
+    app_version: str,
+    now: datetime,
+) -> SystemHealthViewModel:
+    collector_last_run_at = None if scheduler is None else scheduler.get_last_collector_run_at()
+    collector_last_run_at = (
+        None if collector_last_run_at is None else _require_aware_utc(collector_last_run_at)
+    )
+    return SystemHealthViewModel(
+        notifier_ok=get_notifier_health(),
+        collector_last_run_at=collector_last_run_at,
+        collector_last_run_text=(
+            "disabled"
+            if not collector_enabled and collector_last_run_at is None
+            else _format_relative_time(collector_last_run_at, now=now)
+        ),
+        db_size_human=_format_db_size(_database_size_bytes(settings.database_url)),
+        app_version=app_version,
+    )
+
+
+def _drive_grid_tile(
+    drive: PhysicalDriveSnapshot,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+) -> DriveGridTileViewModel:
+    temperature_state = temperature_severity(
+        drive.temperature_celsius,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
+    if temperature_state == "unknown":
+        temperature_state = "optimal"
+    state_severity = _drive_grid_state_severity(drive.state)
+    tile_severity = _worst_severity(temperature_state, state_severity)
+    error_count = (
+        drive.media_errors
+        + drive.other_errors
+        + getattr(drive, "bbm_errors", 0)
+        + drive.predictive_failures
+    )
+    return DriveGridTileViewModel(
+        slot_label=f"S{drive.slot_id}",
+        enclosure_id=drive.enclosure_id,
+        slot_id=drive.slot_id,
+        temperature_celsius=drive.temperature_celsius,
+        temperature_state=temperature_state,
+        state_text=drive.state,
+        state_severity=state_severity,
+        tile_severity=tile_severity,
+        error_badge_count=None if error_count == 0 else error_count,
+        detail_url=f"/drives/{drive.enclosure_id}:{drive.slot_id}",
+    )
+
+
+def _drive_grid_state_severity(state: str) -> str:
+    if state in _PD_OPTIMAL_STATES or state == "UGood":
+        return "optimal"
+    if state in _PD_CRITICAL_STATES:
+        return "critical"
+    if state in _PD_WARNING_STATES:
+        return "warning"
+    severity = _event_severity_to_status(physical_drive_state_severity("Onln", state))
+    return "warning" if severity in {"unknown", "optimal"} else severity
+
+
+def _load_active_operations(snapshot: ControllerSnapshot) -> list[ActiveOperation]:
+    candidates: list[tuple[int, ActiveOperation]] = []
+    rebuild_operation = _load_rebuild_operation(snapshot)
+    if rebuild_operation is not None:
+        candidates.append((0, rebuild_operation))
+    consistency_check_state = _load_consistency_check_state(snapshot)
+    if consistency_check_state is not None and consistency_check_state.is_running:
+        candidates.append(
+            (1, _active_operation("Consistency check", consistency_check_state, "VD 0"))
+        )
+    patrol_read_state = _load_patrol_read_state(snapshot)
+    if patrol_read_state is not None and patrol_read_state.is_running:
+        candidates.append((2, _active_operation("Patrol read", patrol_read_state, "Controller")))
+    foreign_import_operation = _load_foreign_config_import_operation(snapshot)
+    if foreign_import_operation is not None:
+        candidates.append((3, foreign_import_operation))
+    return [operation for _, operation in sorted(candidates, key=lambda item: item[0])]
+
+
+def _active_operation(name: str, state: _OperationState, subject: str) -> ActiveOperation:
+    tooltip = f"{subject}, ETA unknown"
+    started_at = _parse_operation_timestamp(state.last_run_timestamp)
+    if started_at is not None:
+        tooltip = f"{subject}, started {started_at.strftime('%H:%M')} - ETA unknown"
+    return ActiveOperation(
+        name=name,
+        progress_percent=state.progress_percent,
+        tooltip=tooltip,
+    )
+
+
+def _load_rebuild_operation(snapshot: ControllerSnapshot) -> ActiveOperation | None:
+    for drive in snapshot.physical_drives:
+        if drive.state in {"Rbld", "Rebld", "Rebuild", "Rebuilding"}:
+            return ActiveOperation(
+                name="Rebuild",
+                progress_percent=None,
+                tooltip=f"Drive {drive.enclosure_id}:{drive.slot_id}, ETA unknown",
+            )
+    return None
+
+
+def _load_foreign_config_import_operation(snapshot: ControllerSnapshot) -> ActiveOperation | None:
+    del snapshot
+    return None
+
+
+def _load_patrol_read_state(snapshot: ControllerSnapshot) -> _OperationState | None:
+    del snapshot
+    return None
+
+
+def _load_consistency_check_state(snapshot: ControllerSnapshot) -> _OperationState | None:
+    del snapshot
+    return None
+
+
+def _count_recent_warning_and_critical_events(session: Session, *, now: datetime) -> int:
+    return (
+        session.scalar(
+            select(func.count(Event.id)).where(
+                Event.severity.in_(("warning", "critical")),
+                Event.occurred_at > _require_aware_utc(now) - timedelta(hours=24),
+            )
+        )
+        or 0
+    )
+
+
+def _main_page_raid_summary(
+    virtual_drives: Sequence[VirtualDriveSnapshot],
+    physical_drives: Sequence[PhysicalDriveSnapshot],
+) -> str:
+    return (
+        f"{_dominant_raid_level(virtual_drives)} "
+        f"({len(virtual_drives)} VD, {len(physical_drives)} PD)"
+    )
+
+
+def _main_page_bbu_status(snapshot: ControllerSnapshot) -> str:
+    if snapshot.cachevault is not None and snapshot.cv_present and not snapshot.bbu_present:
+        return "N/A"
+    if snapshot.cachevault is not None:
+        return _virtual_drive_state_label(snapshot.cachevault.state)
+    if not snapshot.bbu_present:
+        return "N/A"
+    return "Unknown"
+
+
+def _format_relative_time(value: datetime | None, *, now: datetime | None = None) -> str:
+    if value is None:
+        return "never"
+    resolved_now = datetime.now(UTC) if now is None else _require_aware_utc(now)
+    elapsed = max(timedelta(), resolved_now - _require_aware_utc(value))
+    seconds = int(elapsed.total_seconds())
+    if seconds < 60:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} {_pluralize(minutes, 'min', 'min')} ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} {_pluralize(hours, 'hour', 'hours')} ago"
+    days = hours // 24
+    return f"{days} {_pluralize(days, 'day', 'days')} ago"
+
+
+def _format_db_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    value = float(size_bytes)
+    for unit in ("KB", "MB", "GB"):
+        value /= 1024
+        if value < 1024 or unit == "GB":
+            return f"{int(value * 10) / 10:.1f} {unit}"
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _database_size_bytes(database_url: str) -> int:
+    try:
+        parsed = make_url(database_url)
+    except Exception:
+        return 0
+    database = parsed.database
+    if parsed.get_backend_name() != "sqlite" or database in {None, "", ":memory:"}:
+        return 0
+    assert database is not None
+    return os.path.getsize(database) if os.path.exists(database) else 0
+
+
+def _parse_operation_timestamp(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    for format_string in ("%Y-%m-%d %H:%M:%S", "%m/%d/%Y, %H:%M:%S"):
+        try:
+            return datetime.strptime(text, format_string).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
 
 
 def load_overview_view_model(
