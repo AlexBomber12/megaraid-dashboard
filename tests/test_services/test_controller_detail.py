@@ -251,6 +251,23 @@ def test_foreign_config_state_absent_and_present() -> None:
     assert present.description_text == "4 foreign drives detected."
     assert present.can_import is True
     assert present.can_clear is True
+    assert present.import_url == "/controller/foreign-config/import"
+    assert present.clear_url == "/controller/foreign-config/clear"
+
+
+def test_foreign_config_state_reads_persisted_collector_wrapper() -> None:
+    state = detail_module._build_foreign_config_state(
+        {
+            "controller": _load_fixture("c0_show_all.json"),
+            "virtual_drives": _load_fixture("vall_show_all.json"),
+            "foreign_config": _load_fixture("c0_fall_show_all_present.json"),
+        }
+    )
+
+    assert state.present is True
+    assert state.drive_count == 4
+    assert state.can_import is True
+    assert state.import_url == "/controller/foreign-config/import"
 
 
 @pytest.mark.parametrize(

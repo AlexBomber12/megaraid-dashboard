@@ -548,7 +548,7 @@ def _build_buzzer_control_state(alarm_state: str | None) -> BuzzerControlState:
 
 
 def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigState:
-    response_data = _first_response_data(raw_json)
+    response_data = _first_response_data(_foreign_config_payload(raw_json))
     drive_count = _parse_int(_find_raw_value(response_data, "Total foreign drive Count"))
     if drive_count is None:
         foreign_drives = _find_raw_value(response_data, "FOREIGN PD LIST")
@@ -569,9 +569,16 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
         description_text=description,
         can_import=present,
         can_clear=present,
-        import_url="/foreign-config/import",
-        clear_url="/foreign-config/clear",
+        import_url="/controller/foreign-config/import",
+        clear_url="/controller/foreign-config/clear",
     )
+
+
+def _foreign_config_payload(raw_json: Mapping[str, Any]) -> Mapping[str, Any]:
+    if "foreign_config" not in raw_json:
+        return raw_json
+    payload = raw_json.get("foreign_config")
+    return payload if isinstance(payload, Mapping) else {}
 
 
 def _page_subtitle(snapshot: ControllerSnapshot | None, now: datetime) -> str:
