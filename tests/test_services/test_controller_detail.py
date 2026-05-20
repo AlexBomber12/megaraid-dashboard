@@ -214,6 +214,86 @@ def test_scheduled_tasks_include_patrol_read_next_run(
     assert task.configure_url == "/controller/patrol-read/mode"
 
 
+def test_controller_detail_loads_persisted_patrol_read_state(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+) -> None:
+    _insert(
+        session,
+        _snapshot(sample_snapshot),
+        raw_payload={
+            "operations": {
+                "patrol_read": {"payload": _patrol_payload(mode="Disable", state="Not in progress")}
+            }
+        },
+    )
+
+    view_model = _load(session, tmp_path)
+    card = view_model.live_operations[2]
+    task = view_model.scheduled_tasks[0]
+
+    assert card.name == "Patrol read"
+    assert card.mode_text == "Disabled mode. Interval 168h."
+    assert card.status_text == "Idle. Last completed May 4, 2026 01:00 UTC."
+    assert card.can_start is True
+    assert card.can_stop is False
+    assert task.is_enabled is False
+    assert task.schedule_text == "Every 168h (7 days). Next May 11, 01:00."
+
+
+def test_controller_detail_loads_persisted_consistency_check_state(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+) -> None:
+    _insert(
+        session,
+        _snapshot(sample_snapshot),
+        raw_payload={
+            "consistency_check": {
+                "show": _cc_show_payload(mode="Manual"),
+                "progress": _cc_progress_payload(
+                    state="Active 25%",
+                    extra_props=[("CC Inconsistencies", "0")],
+                ),
+            }
+        },
+    )
+
+    card = _load(session, tmp_path).live_operations[1]
+
+    assert card.name == "Consistency check"
+    assert card.mode_text == "Manual mode."
+    assert card.status_text == "Running. 25%."
+    assert card.progress_percent == 25
+    assert card.progress_eta_text == "ETA unknown"
+    assert card.can_start is False
+    assert card.can_stop is True
+
+
+def test_controller_detail_loads_top_level_consistency_check_state(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+) -> None:
+    _insert(
+        session,
+        _snapshot(sample_snapshot),
+        raw_payload={
+            "consistency_check_show": _cc_show_payload(mode="Auto"),
+            "consistency_check_progress": _cc_progress_payload(state="Stopped"),
+        },
+    )
+
+    card = _load(session, tmp_path).live_operations[1]
+
+    assert card.mode_text == "Auto mode."
+    assert card.status_text == "Idle. Last completed May 4, 2026 02:00 UTC."
+    assert card.can_start is True
+    assert card.can_stop is False
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -432,6 +512,7 @@ def test_raw_helper_edge_cases() -> None:
     assert detail_module._first_response_data({"Controllers": ["bad"]}) == {}
     assert detail_module._first_response_data({"Controllers": [{"Response Data": []}]}) == {}
     assert detail_module._first_present(None, "") == "N/A"
+    assert detail_module._storcli_payload({"payload": {}}) is None
     assert detail_module._parse_int(True) is None
     assert detail_module._parse_int(None) is None
     assert detail_module._parse_int("n/a") is None
@@ -531,3 +612,62 @@ def _load_fixture(name: str) -> dict[str, Any]:
     payload = json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
+
+
+def _patrol_payload(
+    *,
+    mode: str,
+    state: str,
+    extra_props: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    controller_properties = [
+        {"Ctrl_Prop": "PR Mode", "Value": mode},
+        {"Ctrl_Prop": "PR Current State", "Value": state},
+        {"Ctrl_Prop": "PR Last Run", "Value": "2026-05-04 01:00:00"},
+    ]
+    controller_properties.extend(
+        {"Ctrl_Prop": key, "Value": value} for key, value in (extra_props or [])
+    )
+    return {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {"Controller Properties": controller_properties},
+            }
+        ]
+    }
+
+
+def _cc_show_payload(*, mode: str) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {
+                    "Controller Properties": [
+                        {"Ctrl_Prop": "CC Mode", "Value": mode},
+                        {"Ctrl_Prop": "CC Last Run", "Value": "2026-05-04 02:00:00"},
+                    ]
+                },
+            }
+        ]
+    }
+
+
+def _cc_progress_payload(
+    *,
+    state: str,
+    extra_props: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    controller_properties = [{"Ctrl_Prop": "CC Current State", "Value": state}]
+    controller_properties.extend(
+        {"Ctrl_Prop": key, "Value": value} for key, value in (extra_props or [])
+    )
+    return {
+        "Controllers": [
+            {
+                "Command Status": {"Status": "Success"},
+                "Response Data": {"VD Operation Status": controller_properties},
+            }
+        ]
+    }

@@ -23,6 +23,8 @@ from megaraid_dashboard.services.drive_actions import (
     PatrolReadStatus,
     consistency_check_can_start,
     consistency_check_can_stop,
+    parse_consistency_check_status,
+    parse_patrol_read_status,
     patrol_read_can_start,
     patrol_read_can_stop,
 )
@@ -755,12 +757,74 @@ def _require_aware_utc(value: datetime) -> datetime:
 
 
 def _load_patrol_read_state(snapshot: ControllerSnapshot | None) -> PatrolReadStatus | None:
-    del snapshot
-    return None
+    raw_json = _snapshot_raw_json(snapshot)
+    payload = _operation_payload(raw_json, "patrol_read", "patrolread")
+    if payload is None:
+        return None
+    return parse_patrol_read_status(payload)
 
 
 def _load_consistency_check_state(
     snapshot: ControllerSnapshot | None,
 ) -> ConsistencyCheckStatus | None:
-    del snapshot
+    raw_json = _snapshot_raw_json(snapshot)
+    show_payload = _operation_payload(raw_json, "consistency_check_show", "cc_show")
+    if show_payload is None:
+        show_payload = _nested_operation_payload(raw_json, "consistency_check", "show")
+    if show_payload is None:
+        return None
+    progress_payload = _operation_payload(
+        raw_json,
+        "consistency_check_progress",
+        "consistency_check_show_progress",
+        "cc_progress",
+    )
+    if progress_payload is None:
+        progress_payload = _nested_operation_payload(raw_json, "consistency_check", "progress")
+    return parse_consistency_check_status(show_payload, progress_payload or show_payload)
+
+
+def _snapshot_raw_json(snapshot: ControllerSnapshot | None) -> Mapping[str, Any]:
+    if snapshot is None or snapshot.raw_json is None:
+        return {}
+    return snapshot.raw_json
+
+
+def _operation_payload(raw_json: Mapping[str, Any], *keys: str) -> dict[str, Any] | None:
+    payload = _operation_payload_from_container(raw_json, *keys)
+    if payload is not None:
+        return payload
+    return _nested_operation_payload(raw_json, "operations", *keys)
+
+
+def _nested_operation_payload(
+    raw_json: Mapping[str, Any],
+    container_key: str,
+    *keys: str,
+) -> dict[str, Any] | None:
+    container = raw_json.get(container_key)
+    if not isinstance(container, Mapping):
+        return None
+    return _operation_payload_from_container(container, *keys)
+
+
+def _operation_payload_from_container(
+    container: Mapping[str, Any],
+    *keys: str,
+) -> dict[str, Any] | None:
+    for key in keys:
+        payload = _storcli_payload(container.get(key))
+        if payload is not None:
+            return payload
+    return None
+
+
+def _storcli_payload(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    if "Controllers" in value:
+        return dict(value)
+    payload = value.get("payload")
+    if isinstance(payload, Mapping) and "Controllers" in payload:
+        return dict(payload)
     return None
