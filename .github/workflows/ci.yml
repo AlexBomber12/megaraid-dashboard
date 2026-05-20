@@ -61,11 +61,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: playwright install --with-deps chromium
-
-      - name: Install Playwright system deps
-        run: playwright install-deps chromium
 
       - name: Run e2e tests
         run: pytest -o "addopts=" tests/e2e/ --browser chromium --no-cov -v
