@@ -4,6 +4,7 @@ import asyncio
 import os
 import stat
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,24 @@ def test_create_app_orders_security_middleware(
         ]
         stack = test_app.build_middleware_stack()
         assert type(stack).__name__ == "SecurityHeadersMiddleware"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_lifespan_records_app_start_time(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_app_env(monkeypatch, tmp_path)
+    get_settings.cache_clear()
+    test_app = app.create_app()
+
+    try:
+        with TestClient(test_app, headers=TEST_AUTH_HEADER):
+            start_time = test_app.state.start_time
+
+        assert isinstance(start_time, datetime)
+        assert start_time.tzinfo is UTC
     finally:
         get_settings.cache_clear()
 

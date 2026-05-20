@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -110,6 +111,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.collector_lock_fd = None
     app.state.collector_retry_task = None
     app.state.scheduler = None
+    app.state.start_time = datetime.now(UTC)
     app.state.metrics_server = None
     app.state.metrics_task = None
     app.state.metrics_lock_fd = None
