@@ -51,6 +51,22 @@ def test_controller_detail_smoke_optimal_controller(
     assert view_model.auto_refresh_seconds == 30
 
 
+def test_page_subtitle_uses_snapshot_captured_at(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+) -> None:
+    captured_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _insert(
+        session,
+        _snapshot(sample_snapshot).model_copy(update={"captured_at": captured_at}),
+    )
+
+    view_model = _load(session, tmp_path)
+
+    assert view_model.page_subtitle == "SN SV00000001. Updated Apr 25, 2026 12:00 UTC."
+
+
 def test_live_operations_sorted_by_priority(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
@@ -152,14 +168,23 @@ def test_raid_config_one_row_per_vd_sorted_by_vd_id(
     _insert(
         session,
         _snapshot(sample_snapshot).model_copy(update={"virtual_drives": [later_vd, earlier_vd]}),
-        raw_payload=_load_fixture("vall_show_all.json"),
+        raw_payload={
+            "Controllers": [
+                {
+                    "Response Data": {
+                        "VD1 Properties": {"Strip Size": "64 KB"},
+                        "VD3 Properties": {"Strip Size": "256 KB"},
+                    }
+                }
+            ]
+        },
     )
 
     rows = _load(session, tmp_path).raid_config
 
     assert [row.vd_id for row in rows] == [1, 3]
     assert [row.name for row in rows] == ["earlier", "later"]
-    assert {row.strip_size_text for row in rows} == {"256 KB"}
+    assert [row.strip_size_text for row in rows] == ["64 KB", "256 KB"]
 
 
 def test_scheduled_tasks_include_patrol_read_next_run(

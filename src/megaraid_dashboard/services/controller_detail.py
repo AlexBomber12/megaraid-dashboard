@@ -440,7 +440,7 @@ def _build_raid_config(snapshot: ControllerSnapshot | None) -> list[RaidConfigRo
             access=virtual_drive.access,
             cache_policy=virtual_drive.cache,
             strip_size_text=_first_present(
-                _find_raw_value(raw_json, "Strip Size"),
+                _find_virtual_drive_raw_value(raw_json, virtual_drive.vd_id, "Strip Size"),
                 "N/A",
             ),
         )
@@ -576,7 +576,8 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
 
 def _page_subtitle(snapshot: ControllerSnapshot | None, now: datetime) -> str:
     serial = "Unknown" if snapshot is None else snapshot.serial_number
-    return f"SN {serial}. Updated {now.strftime('%b %-d, %Y %H:%M UTC')}."
+    updated_at = now if snapshot is None else _require_aware_utc(snapshot.captured_at)
+    return f"SN {serial}. Updated {updated_at.strftime('%b %-d, %Y %H:%M UTC')}."
 
 
 def _count_recent_warning_and_critical_events(session: Session, *, now: datetime) -> int:
@@ -678,6 +679,13 @@ def _find_raw_value(value: Any, *keys: str) -> Any:
     for key, candidate in _walk_raw_values(value):
         if key in keys:
             return candidate
+    return None
+
+
+def _find_virtual_drive_raw_value(raw_json: Mapping[str, Any], vd_id: int, *keys: str) -> Any:
+    value = _find_raw_value(raw_json, f"VD{vd_id} Properties")
+    if isinstance(value, Mapping):
+        return _find_raw_value(value, *keys)
     return None
 
 
