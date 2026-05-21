@@ -34,6 +34,7 @@ from megaraid_dashboard.services.overview import (
     derive_controller_health,
     temperature_severity,
 )
+from megaraid_dashboard.storcli import StorcliError, parse_foreign_config
 
 _DEFAULT_AUTO_REFRESH_SECONDS = 30
 _ROC_HISTORY_CHART_URL = "/controller/roc-temperature/history"
@@ -411,8 +412,18 @@ def _build_buzzer_control_state(alarm_state: str | None) -> BuzzerControlState:
 def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigState:
     foreign = raw_json.get("foreign_config")
     foreign_mapping = foreign if isinstance(foreign, Mapping) else {}
-    present = _truthy(foreign_mapping.get("present"))
-    drive_count = _int_or_zero(foreign_mapping.get("drive_count"))
+    parsed = None
+    if "present" not in foreign_mapping and foreign_mapping:
+        try:
+            parsed = parse_foreign_config(dict(foreign_mapping))
+        except StorcliError:
+            parsed = None
+    present = parsed.present if parsed is not None else _truthy(foreign_mapping.get("present"))
+    drive_count = (
+        parsed.drive_count
+        if parsed is not None
+        else _int_or_zero(foreign_mapping.get("drive_count"))
+    )
     source_serial = _optional_text(
         foreign_mapping.get("source_controller_serial")
         or foreign_mapping.get("source_serial")
@@ -567,10 +578,15 @@ def _schedule_text(
 
 
 def _strip_size_text(raw_json: Mapping[str, Any], vd_id: int) -> str:
+    properties = _find_raw_value(raw_json, f"VD{vd_id} Properties")
+    if isinstance(properties, Mapping):
+        value = _first_raw_text(properties, "Strip Size")
+        if value is not None:
+            return _format_size_text(value, default_unit="KB")
     specific = _first_raw_text(raw_json, f"VD{vd_id} Strip Size")
     if specific is not None:
         return _format_size_text(specific, default_unit="KB")
-    value = _first_raw_text(raw_json, "Strip Size")
+    value = _optional_text(raw_json.get("Strip Size"))
     return _format_size_text(value, default_unit="KB")
 
 

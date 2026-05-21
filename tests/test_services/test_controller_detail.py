@@ -219,6 +219,86 @@ def test_foreign_config_state_absent_and_present() -> None:
     assert present.can_clear
 
 
+def test_foreign_config_state_parses_stored_storcli_payload() -> None:
+    raw_json = _raw_controller_payload()
+    raw_json["foreign_config"] = _load_redacted_fixture("c0_fall_show_all_present.json")
+
+    present = controller_detail_module._build_foreign_config_state(raw_json)
+
+    assert present.present
+    assert present.drive_count == 4
+    assert present.description_text == "Foreign configuration detected on 4 drive(s)."
+    assert present.can_import
+    assert present.can_clear
+
+
+def test_foreign_config_state_treats_unparseable_stored_payload_as_absent() -> None:
+    raw_json = {
+        "foreign_config": {
+            "Controllers": [
+                {
+                    "Command Status": {
+                        "Status": "Failure",
+                        "Detailed Status": [
+                            {"Status": "Failure", "ErrCd": 99, "ErrMsg": "adapter offline"}
+                        ],
+                    }
+                }
+            ]
+        }
+    }
+
+    absent = controller_detail_module._build_foreign_config_state(raw_json)
+
+    assert not absent.present
+    assert absent.drive_count == 0
+    assert not absent.can_import
+    assert not absent.can_clear
+
+
+def test_strip_size_resolves_nested_virtual_drive_properties() -> None:
+    raw_json = {
+        "controller": {
+            "Controllers": [
+                {
+                    "Response Data": {
+                        "Defaults": {"Strip Size": "64 KB"},
+                    }
+                }
+            ]
+        },
+        "virtual_drives": {
+            "Controllers": [
+                {
+                    "Response Data": {
+                        "VD0 Properties": {"Strip Size": "256 KB"},
+                        "VD1 Properties": {"Strip Size": "512 KB"},
+                    }
+                }
+            ]
+        },
+    }
+
+    assert controller_detail_module._strip_size_text(raw_json, 0) == "256 KB"
+    assert controller_detail_module._strip_size_text(raw_json, 1) == "512 KB"
+
+
+def test_strip_size_does_not_use_controller_default_for_missing_vd_properties() -> None:
+    raw_json = {
+        "controller": {
+            "Controllers": [
+                {
+                    "Response Data": {
+                        "Defaults": {"Strip Size": "64 KB"},
+                    }
+                }
+            ]
+        }
+    }
+
+    assert controller_detail_module._strip_size_text(raw_json, 1) == "N/A"
+
+
 @pytest.mark.parametrize(
     ("delta", "expected"),
     [
@@ -383,6 +463,13 @@ def test_operation_and_schedule_helper_fallbacks() -> None:
     )
     assert controller_detail_module._mode_text("manual", interval_hours=None) == "Manual mode."
     assert controller_detail_module._strip_size_text({"VD1 Strip Size": "512"}, 1) == "512 KB"
+    assert (
+        controller_detail_module._strip_size_text(
+            {"VD1 Properties": {"Other": "value"}, "VD1 Strip Size": "128"},
+            1,
+        )
+        == "128 KB"
+    )
     assert controller_detail_module._vd_state_severity("Failed") == "critical"
     assert controller_detail_module._vd_state_severity("Dgrd") == "warning"
 
@@ -461,15 +548,19 @@ class _Scheduler:
 
 
 def _raw_controller_payload() -> dict[str, Any]:
-    payload = json.loads(
-        (Path(__file__).parents[1] / "fixtures/storcli/redacted/c0_show_all.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    payload = _load_redacted_fixture("c0_show_all.json")
     assert isinstance(payload, dict)
     response_data = payload["Controllers"][0]["Response Data"]
     response_data["HwCfg"]["ChipRevision"] = "B0"
     response_data["HwCfg"]["Current Size of FW Cache (MB)"] = 875
     response_data["Scheduled Tasks"]["Patrol Read Reoccurrence"] = "168 hours"
     response_data["Scheduled Tasks"]["Next Patrol Read launch"] = "05/24/2026, 18:00:00"
+    return payload
+
+
+def _load_redacted_fixture(name: str) -> dict[str, Any]:
+    payload = json.loads(
+        (Path(__file__).parents[1] / "fixtures/storcli/redacted" / name).read_text(encoding="utf-8")
+    )
+    assert isinstance(payload, dict)
     return payload
