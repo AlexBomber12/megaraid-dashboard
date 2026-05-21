@@ -62,15 +62,14 @@ def test_drives_page_renders_mobile_data_labels(sample_snapshot: StorcliSnapshot
         assert f'data-label="{label}"' in response.text
 
 
-def test_header_nav_is_wrapped_in_details() -> None:
+def test_header_nav_renders_primary_navigation() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert '<details class="site-nav-details">' in response.text
-    assert 'class="site-nav-toggle"' in response.text
-    assert '<nav class="site-nav" aria-label="Primary navigation">' in response.text
+    assert '<header class="site-header-v2">' in response.text
+    assert '<nav class="site-nav-v2" aria-label="Primary navigation">' in response.text
 
 
 def test_mobile_layout_does_not_require_new_javascript() -> None:
