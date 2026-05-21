@@ -62,6 +62,7 @@ def load_roc_temperature_series(
             granularity="hour",
             sqlite_format="%Y-%m-%d %H",
             sqlite_parse_format="%Y-%m-%d %H",
+            max_points=range_hours,
         )
     else:
         points = _load_bucketed_points(
@@ -71,6 +72,7 @@ def load_roc_temperature_series(
             granularity="day",
             sqlite_format="%Y-%m-%d",
             sqlite_parse_format="%Y-%m-%d",
+            max_points=None,
         )
 
     return _series(
@@ -133,6 +135,7 @@ def _load_bucketed_points(
     granularity: _BucketGranularity,
     sqlite_format: str,
     sqlite_parse_format: str,
+    max_points: int | None,
 ) -> list[RocTemperaturePoint]:
     bucket = _bucket_expression(
         dialect_name=session.get_bind().dialect.name,
@@ -147,7 +150,7 @@ def _load_bucketed_points(
         .group_by(bucket)
         .order_by(bucket)
     )
-    return [
+    points = [
         RocTemperaturePoint(
             captured_at=_bucket_captured_at(bucket_value, sqlite_parse_format=sqlite_parse_format),
             temperature_celsius=round(temperature_avg),
@@ -155,6 +158,9 @@ def _load_bucketed_points(
         for bucket_value, temperature_avg in rows
         if bucket_value is not None and temperature_avg is not None
     ]
+    if max_points is not None and len(points) > max_points:
+        return points[-max_points:]
+    return points
 
 
 def _bucket_expression(

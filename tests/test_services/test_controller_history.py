@@ -48,6 +48,25 @@ def test_168h_range_yields_hourly_buckets(session: Session) -> None:
     assert series.points[-1].captured_at == latest
 
 
+def test_168h_range_trims_oldest_partial_hour_bucket(
+    session: Session,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    now = datetime(2026, 5, 20, 12, 5, tzinfo=UTC)
+    monkeypatch.setattr(controller_history, "_now_utc", lambda: now)
+    first = now - timedelta(hours=168) + timedelta(minutes=5)
+    for offset in range(168):
+        _insert_snapshot(session, first + timedelta(hours=offset), temperature=70)
+    _insert_snapshot(session, now - timedelta(minutes=1), temperature=75)
+    session.commit()
+
+    series = load_roc_temperature_series(session, range_hours=168, settings=_settings())
+
+    assert len(series.points) == 168
+    assert series.points[0].captured_at == datetime(2026, 5, 13, 13, 0, tzinfo=UTC)
+    assert series.points[-1].captured_at == datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+
+
 def test_720h_range_yields_daily_buckets(session: Session) -> None:
     latest = datetime(2026, 5, 20, 0, 0, tzinfo=UTC)
     _seed_regular_snapshots(session, latest=latest, count=30, step=timedelta(days=1))
