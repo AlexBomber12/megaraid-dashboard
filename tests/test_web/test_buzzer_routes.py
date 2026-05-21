@@ -46,19 +46,19 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         (
             "/controller/buzzer/silence",
             ["/c0", "set", "alarm=silence"],
-            "controller_buzzer_silence",
+            "operator_action",
             "Buzzer silenced by operator admin",
         ),
         (
             "/controller/buzzer/disable",
             ["/c0", "set", "alarm=off"],
-            "controller_buzzer_disable",
+            "operator_action",
             "Buzzer disabled by operator admin",
         ),
         (
             "/controller/buzzer/enable",
             ["/c0", "set", "alarm=on"],
-            "controller_buzzer_enable",
+            "operator_action",
             "Buzzer enabled by operator admin",
         ),
     ],
@@ -91,7 +91,7 @@ def test_buzzer_happy_paths(
         response = client.post(path, headers=headers, follow_redirects=False)
 
         assert response.status_code == 303
-        assert response.headers["location"] == "/controller"
+        assert response.headers["location"] == "/"
         assert calls == [expected_argv]
         event = _single_event(test_app)
         assert event.category == expected_category
@@ -165,7 +165,7 @@ def test_silence_storcli_failure_returns_502(
             "detail": "storcli exited with code 1: alarm command failed",
         }
         event = _single_event(test_app)
-        assert event.category == "controller_buzzer_silence"
+        assert event.category == "operator_action"
         assert event.summary.startswith("Buzzer silenced by operator admin")
         assert "failed: StorcliCommandFailed" in event.summary
 
@@ -199,7 +199,7 @@ def test_silence_without_maintenance_mode_returns_403_and_skips_storcli(
         }
         assert calls == []
         event = _single_event(test_app)
-        assert event.category == "controller_buzzer_silence"
+        assert event.category == "operator_action"
         assert event.summary.startswith("Buzzer silenced by operator admin")
         assert event.summary.endswith("rejected: maintenance_mode required")
 

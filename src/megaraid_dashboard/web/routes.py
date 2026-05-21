@@ -132,9 +132,6 @@ _EVENT_CATEGORY_FILTERS = (
     "disk_space",
     "system",
     "operator_action",
-    "controller_buzzer_silence",
-    "controller_buzzer_disable",
-    "controller_buzzer_enable",
     "foreign_config_detected",
     "consistency_check_inconsistency",
 )
@@ -2494,7 +2491,7 @@ async def _run_controller_buzzer_action(
             },
             status_code=502,
         )
-    return RedirectResponse("/controller", status_code=303)
+    return RedirectResponse("/", status_code=303)
 
 
 async def _reject_controller_buzzer_maintenance_required(
@@ -2556,7 +2553,6 @@ def _record_controller_buzzer_operator_action_sync(
             record_operator_action(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
-                category=category,
                 message=f"{message} {outcome}",
             )
     except SQLAlchemyError:
