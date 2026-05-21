@@ -33,7 +33,6 @@ from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
     PhysicalDriveSnapshot,
-    VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.audit import (
     AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
@@ -653,7 +652,7 @@ async def _run_advanced_drive_action(
         if dg_id is None:
             return JSONResponse({"error": "dg_id is required"}, status_code=422)
         has_requested_dg = await run_in_threadpool(
-            _latest_snapshot_has_virtual_drive,
+            _latest_snapshot_has_disk_group,
             request=request,
             dg_id=dg_id,
         )
@@ -1111,7 +1110,7 @@ def _load_latest_drive_for_slot(
         ).one_or_none()
 
 
-def _latest_snapshot_has_virtual_drive(
+def _latest_snapshot_has_disk_group(
     *,
     request: Request,
     dg_id: int,
@@ -1124,9 +1123,9 @@ def _latest_snapshot_has_virtual_drive(
             return False
         return (
             session.scalars(
-                select(VirtualDriveSnapshot.id)
-                .where(VirtualDriveSnapshot.snapshot_id == latest_snapshot_id)
-                .where(VirtualDriveSnapshot.vd_id == dg_id)
+                select(PhysicalDriveSnapshot.id)
+                .where(PhysicalDriveSnapshot.snapshot_id == latest_snapshot_id)
+                .where(PhysicalDriveSnapshot.disk_group_id == dg_id)
                 .limit(1)
             ).one_or_none()
             is not None

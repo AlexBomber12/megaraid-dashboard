@@ -115,7 +115,8 @@ def test_advanced_drive_happy_paths(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state=state)
         if json_body is not None:
-            _seed_virtual_drive(test_app, vd_id=json_body["dg_id"])
+            _seed_virtual_drive(test_app, vd_id=json_body["dg_id"] + 10)
+            _seed_disk_group_member(test_app, dg_id=json_body["dg_id"])
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
             path,
@@ -157,7 +158,7 @@ def test_advanced_drive_wrong_state_returns_409(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state=state)
-        _seed_virtual_drive(test_app, vd_id=0)
+        _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(path, headers=headers, json=json_body)
 
@@ -187,7 +188,7 @@ def test_advanced_drive_without_csrf_returns_403(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state=state)
-        _seed_virtual_drive(test_app, vd_id=0)
+        _seed_disk_group_member(test_app, dg_id=0)
         response = client.post(path, json=json_body)
 
     assert response.status_code == 403
@@ -216,7 +217,7 @@ def test_advanced_drive_without_auth_returns_401(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as authed_client:
         _seed_drive(test_app, state=state)
-        _seed_virtual_drive(test_app, vd_id=0)
+        _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(authed_client, csrf_headers)
 
     with TestClient(test_app) as client:
@@ -248,7 +249,7 @@ def test_advanced_drive_storcli_failure_returns_502(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state=state)
-        _seed_virtual_drive(test_app, vd_id=0)
+        _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(path, headers=headers, json=json_body)
 
@@ -287,7 +288,7 @@ def test_advanced_drive_audit_failure_returns_500(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state=state)
-        _seed_virtual_drive(test_app, vd_id=0)
+        _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(path, headers=headers, json=json_body)
 
@@ -449,12 +450,29 @@ def test_advanced_drive_private_helpers_reject_unknown_action() -> None:
         )
 
 
-def test_latest_snapshot_has_virtual_drive_returns_false_without_snapshot() -> None:
+def test_latest_snapshot_has_disk_group_returns_false_without_snapshot() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER):
         assert (
-            routes._latest_snapshot_has_virtual_drive(request=_request_for_app(test_app), dg_id=0)
+            routes._latest_snapshot_has_disk_group(request=_request_for_app(test_app), dg_id=0)
             is False
+        )
+
+
+def test_latest_snapshot_has_disk_group_uses_pd_disk_group_not_vd_id() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER):
+        _seed_drive(test_app, state="UGood")
+        _seed_virtual_drive(test_app, vd_id=7)
+        _seed_disk_group_member(test_app, dg_id=3)
+
+        assert routes._latest_snapshot_has_disk_group(
+            request=_request_for_app(test_app),
+            dg_id=3,
+        )
+        assert not routes._latest_snapshot_has_disk_group(
+            request=_request_for_app(test_app),
+            dg_id=7,
         )
 
 
@@ -536,6 +554,36 @@ def _seed_virtual_drive(test_app: FastAPI, *, vd_id: int) -> None:
                 state="Optl",
                 access="RW",
                 cache="NRWBD",
+            )
+        )
+        session.commit()
+
+
+def _seed_disk_group_member(test_app: FastAPI, *, dg_id: int) -> None:
+    session_factory = test_app.state.session_factory
+    assert isinstance(session_factory, sessionmaker)
+    with session_factory() as session:
+        assert isinstance(session, Session)
+        controller = session.scalars(select(ControllerSnapshot)).one()
+        controller.physical_drives.append(
+            PhysicalDriveSnapshot(
+                enclosure_id=2,
+                slot_id=1,
+                device_id=15,
+                model="WDC WD30EFRX-68EUZN0",
+                serial_number="WD-ADV-0002",
+                firmware_version="82.00A82",
+                size_bytes=3_000_000_000_000,
+                interface="SATA",
+                media_type="HDD",
+                state="Onln",
+                disk_group_id=dg_id,
+                temperature_celsius=39,
+                media_errors=0,
+                other_errors=0,
+                predictive_failures=0,
+                smart_alert=False,
+                sas_address="0x4433221100000001",
             )
         )
         session.commit()
