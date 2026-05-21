@@ -57,12 +57,45 @@
         });
       }
 
+      function errorContainerFor(form) {
+        return form.closest(".button-row")?.querySelector("[data-controller-action-error]");
+      }
+
+      function showFormError(form, message) {
+        const container = errorContainerFor(form);
+        if (!container) {
+          return;
+        }
+        container.textContent = message;
+        container.hidden = false;
+      }
+
+      function clearFormError(form) {
+        const container = errorContainerFor(form);
+        if (!container) {
+          return;
+        }
+        container.textContent = "";
+        container.hidden = true;
+      }
+
+      function responseErrorMessage(payload, fallback) {
+        if (payload && typeof payload === "object") {
+          return payload.detail || payload.error || fallback;
+        }
+        if (typeof payload === "string" && payload.trim()) {
+          return payload.trim();
+        }
+        return fallback;
+      }
+
       document.querySelectorAll("[data-csrf-form]").forEach((form) => {
         form.addEventListener("submit", function (event) {
           if (event.defaultPrevented) {
             return;
           }
           event.preventDefault();
+          clearFormError(form);
           const token = getCookie("__Host-csrf");
           const jsonPayload = payloadFor(form);
           fetch(form.action, {
@@ -77,7 +110,24 @@
               window.location.assign(response.url);
               return;
             }
-            window.location.reload();
+            if (response.ok) {
+              window.location.reload();
+              return;
+            }
+            response.text().then((body) => {
+              let payload = body;
+              try {
+                payload = JSON.parse(body);
+              } catch {
+                payload = body;
+              }
+              showFormError(
+                form,
+                responseErrorMessage(payload, "Controller action failed.")
+              );
+            });
+          }).catch(() => {
+            showFormError(form, "Controller action failed.");
           });
         });
       });

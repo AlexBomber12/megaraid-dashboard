@@ -10,9 +10,16 @@
         {% if view_model.foreign_config.source_controller_serial %}
           <p class="muted">Source controller SN {{ view_model.foreign_config.source_controller_serial }}</p>
         {% endif %}
+        {% if view_model.foreign_config.present %}
+          <dl class="foreign-config__digest">
+            <dt>Expected import digest</dt>
+            <dd>{{ view_model.foreign_config.digest or "Unavailable" }}</dd>
+          </dl>
+        {% endif %}
       </div>
       <div class="button-row">
         {% if view_model.foreign_config.present %}
+          <div class="form-error" data-controller-action-error hidden role="alert"></div>
           <form
             method="post"
             action="{{ view_model.foreign_config.import_url }}"

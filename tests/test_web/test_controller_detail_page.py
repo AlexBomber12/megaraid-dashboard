@@ -102,6 +102,7 @@ def test_foreign_config_present_state_renders_clear_action() -> None:
             foreign_config={
                 "present": True,
                 "drive_count": 2,
+                "digest": "FC-DG1-PD2-500GB",
                 "source_controller_serial": "SRC123",
             },
         )
@@ -112,6 +113,9 @@ def test_foreign_config_present_state_renders_clear_action() -> None:
     assert 'data-foreign-config-state="present"' in response.text
     assert "Foreign configuration detected on 2 drive(s)." in response.text
     assert "Source controller SN SRC123" in response.text
+    assert "Expected import digest" in response.text
+    assert "FC-DG1-PD2-500GB" in response.text
+    assert 'data-controller-action-error hidden role="alert"' in response.text
     assert 'action="/controller/foreign-config/import"' in response.text
     assert "Import foreign config?" in response.text
     assert ">Import</button>" in response.text
@@ -172,6 +176,16 @@ def test_controller_detail_submit_handler_serializes_operation_mode_payload() ->
 
     assert 'form.hasAttribute("data-operation-mode-form")' in template
     assert 'mode: formData.get("mode") || ""' in template
+
+
+def test_controller_detail_submit_handler_preserves_error_responses() -> None:
+    template = Path("src/megaraid_dashboard/templates/pages/controller_detail.html").read_text()
+
+    assert "if (response.ok)" in template
+    assert "window.location.reload();" in template
+    assert "response.text().then((body)" in template
+    assert "showFormError(" in template
+    assert "responseErrorMessage(payload" in template
 
 
 def test_buzzer_silence_form_posts_with_csrf(
