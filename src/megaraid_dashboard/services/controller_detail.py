@@ -37,7 +37,7 @@ from megaraid_dashboard.services.overview import (
 from megaraid_dashboard.storcli import StorcliError, parse_foreign_config
 
 _DEFAULT_AUTO_REFRESH_SECONDS = 30
-_ROC_HISTORY_CHART_URL = "/controller/roc-temperature/history"
+_ROC_HISTORY_CHART_URL = "/controller/roc-history"
 _BUZZER_EXPLAINER = (
     "The controller buzzer can be silenced for the current condition or disabled until it is "
     "enabled again."

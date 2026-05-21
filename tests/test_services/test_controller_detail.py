@@ -331,14 +331,14 @@ def test_errors_24h_aggregates_warning_and_critical_events(
     assert _load(session, tmp_path).health.errors_24h == 2
 
 
-def test_roc_history_chart_url_points_to_future_endpoint(
+def test_roc_history_chart_url_points_to_endpoint(
     session: Session,
     sample_snapshot: StorcliSnapshot,
     tmp_path: Path,
 ) -> None:
     _insert(session, _optimal_snapshot(sample_snapshot), raw_json=_raw_controller_payload())
 
-    assert _load(session, tmp_path).roc_history_chart_url == "/controller/roc-temperature/history"
+    assert _load(session, tmp_path).roc_history_chart_url == "/controller/roc-history"
 
 
 def test_empty_controller_detail_when_no_snapshot(session: Session, tmp_path: Path) -> None:
