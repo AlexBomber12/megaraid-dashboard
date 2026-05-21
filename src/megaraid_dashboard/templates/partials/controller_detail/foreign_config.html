@@ -15,6 +15,31 @@
         {% if view_model.foreign_config.present %}
           <form
             method="post"
+            action="{{ view_model.foreign_config.import_url }}"
+            class="inline-form"
+            data-csrf-form
+            onsubmit="return confirm('Import foreign config?');"
+          >
+            <input type="hidden" name="csrf_token" value="">
+            <label class="foreign-config__field">
+              <span>Confirmation digest</span>
+              <input
+                class="input"
+                type="text"
+                name="confirmation"
+                required
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </label>
+            <button
+              type="submit"
+              class="button button--warning"
+              {% if not view_model.foreign_config.can_import %}disabled{% endif %}
+            >Import</button>
+          </form>
+          <form
+            method="post"
             action="{{ view_model.foreign_config.clear_url }}"
             class="inline-form"
             data-csrf-form
@@ -23,6 +48,7 @@
             <input type="hidden" name="csrf_token" value="">
             <label class="foreign-config__field">
               <span>Confirmation phrase</span>
+              <span class="muted">Type CLEAR FOREIGN CONFIG to confirm.</span>
               <input
                 class="input"
                 type="text"
@@ -33,13 +59,16 @@
                 pattern="CLEAR FOREIGN CONFIG"
               >
             </label>
-            <button type="submit" class="button button--danger" {% if not view_model.foreign_config.can_clear %}disabled{% endif %}>Clear</button>
+            <button
+              type="submit"
+              class="button button--danger"
+              {% if not view_model.foreign_config.can_clear %}disabled{% endif %}
+            >Clear</button>
           </form>
         {% else %}
-          <form method="post" action="{{ view_model.foreign_config.import_url }}" class="inline-form" data-csrf-form>
-            <input type="hidden" name="csrf_token" value="">
-            <button type="submit" class="button button--danger" disabled>Import</button>
-          </form>
+          <p class="muted">
+            Import and clear actions are available when foreign metadata is present.
+          </p>
         {% endif %}
       </div>
     </div>

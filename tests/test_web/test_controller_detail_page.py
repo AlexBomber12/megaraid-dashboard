@@ -112,8 +112,12 @@ def test_foreign_config_present_state_renders_clear_action() -> None:
     assert 'data-foreign-config-state="present"' in response.text
     assert "Foreign configuration detected on 2 drive(s)." in response.text
     assert "Source controller SN SRC123" in response.text
+    assert 'action="/controller/foreign-config/import"' in response.text
+    assert "Import foreign config?" in response.text
+    assert ">Import</button>" in response.text
     assert 'action="/controller/foreign-config/clear"' in response.text
     assert "Clear foreign config?" in response.text
+    assert "Type CLEAR FOREIGN CONFIG to confirm." in response.text
     assert 'type="hidden" name="confirmation"' not in response.text
     assert 'type="text"\n                name="confirmation"' in response.text
     assert 'pattern="CLEAR FOREIGN CONFIG"' in response.text
