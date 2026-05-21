@@ -13,6 +13,7 @@ def record_operator_action(
     *,
     username: str,
     message: str,
+    category: str = "operator_action",
     occurred_at: datetime | None = None,
 ) -> Event:
     """Record an info-level operator event, below the default notifier threshold."""
@@ -21,7 +22,7 @@ def record_operator_action(
         msg = "occurred_at must be a timezone-aware UTC datetime"
         raise ValueError(msg)
     event = Event(
-        category="operator_action",
+        category=category,
         severity="info",
         subject="Operator action",
         summary=message,

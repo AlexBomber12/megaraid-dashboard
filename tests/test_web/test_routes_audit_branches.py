@@ -1,9 +1,7 @@
-"""Branch coverage for ``/audit`` redirect plus the operator-action filter.
+"""Branch coverage for ``/audit`` redirect plus the audit event filters.
 
-The redirect itself is happy-path-only, but the operator-action category
-filter must surface only ``operator_action`` events on the resulting events
-page; this also exercises the no-op ``operator_action_only=True`` branch
-of the category filter pipeline.
+The redirect itself is happy-path-only, but the audit category filters must
+surface operator actions while excluding unrelated events.
 """
 
 from __future__ import annotations
@@ -52,13 +50,18 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
 
 
 def test_audit_redirect_preserves_carry_forward_query_path() -> None:
-    """The redirect target points at /events with a single operator_action category."""
+    """The redirect target points at /events with all audit-log categories."""
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/audit", follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers["location"] == "/events?category=operator_action"
+    assert response.headers["location"] == (
+        "/events?category=operator_action"
+        "&category=controller_buzzer_silence"
+        "&category=controller_buzzer_disable"
+        "&category=controller_buzzer_enable"
+    )
 
 
 def test_audit_filter_excludes_non_operator_action_categories() -> None:
@@ -81,11 +84,19 @@ def test_audit_filter_excludes_non_operator_action_categories() -> None:
             subject="temp-warn",
             summary="Drive temperature warning",
         )
+        _insert_event(
+            test_app,
+            occurred_at=occurred_at + timedelta(minutes=3),
+            category="controller_buzzer_silence",
+            subject="Operator action",
+            summary="Buzzer silenced by operator admin",
+        )
 
         response = client.get("/audit", follow_redirects=True)
 
     assert response.status_code == 200
     assert "locate start drive" in response.text
+    assert "Buzzer silenced by operator admin" in response.text
     assert "PD state changed" not in response.text
     assert "Drive temperature warning" not in response.text
 
