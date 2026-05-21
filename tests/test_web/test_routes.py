@@ -131,14 +131,13 @@ def test_overview_navigation_and_assets_are_prefix_aware(
 
     assert response.status_code == 200
     assert "SERVER RAID Status" in response.text
-    assert response.text.count('class="status-tile status-tile--') == 6
-    for label in ("Controller", "VD", "RAID", "BBU", "MaxTemp", "RoC"):
+    assert 'class="controller-card-v2 controller-card-v2--optimal"' in response.text
+    assert response.text.count('class="drive-tile-v2 ') == 8
+    for label in ("Controller", "Drive backplane", "Recent activity", "RoC", "CacheVault"):
         assert label in response.text
-    assert "status-tile--optimal" in response.text
-    assert 'class="alert-status"' in response.text
-    assert response.text.count('class="alert-status__cell') == 4
-    assert "alert-status__cell--neutral" in response.text
-    assert "Notifier OK" in response.text
+    assert "drive-tile-v2--optimal" in response.text
+    assert 'class="status-bar-v2"' in response.text
+    assert "Notifier" in response.text
     assert "status-badge--optimal" in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
@@ -147,7 +146,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "/raid/static/vendor/chart.min.js" not in response.text
     assert "Physical Drives" not in response.text
     assert 'class="drive-table"' not in response.text
-    assert "8 drives, see Drives page for detail" in response.text
+    assert "8 drives" in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
@@ -155,14 +154,15 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert re.search(r"/raid/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/raid/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert 'data-local-time-clock aria-live="off" hidden' in response.text
-    assert "/raid/partials/overview" in response.text
-    assert {"/raid/", "/raid/drives", "/raid/events"}.issubset(_anchor_hrefs(response.text))
-    status_tile_hrefs = _status_tile_hrefs(response.text)
-    assert status_tile_hrefs
-    assert all(href.startswith("/raid/") for href in status_tile_hrefs)
-    assert "/raid/drives?sort=temperature-desc" not in status_tile_hrefs
-    assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
-    assert 'title="Current 110 C / Warning 95 C / Critical 105 C"' in response.text
+    assert {"/raid/", "/raid/drives", "/raid/events", "/raid/controller/foreign-config"}.issubset(
+        _anchor_hrefs(response.text)
+    )
+    drive_tile_hrefs = {
+        href
+        for href in _anchor_hrefs(response.text)
+        if re.fullmatch(r"/raid/drives/252:[0-7]", href)
+    }
+    assert len(drive_tile_hrefs) == 8
 
 
 def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
@@ -184,11 +184,11 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert re.search(r"/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
-    assert "/partials/overview" in response.text
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
-    assert "8 drives, see Drives page for detail" in response.text
+    assert "8 drives" in response.text
+    assert "/controller/foreign-config" in _anchor_hrefs(response.text)
     assert 'class="drive-table"' not in response.text
-    assert "/drives?sort=temperature-desc" not in _status_tile_hrefs(response.text)
+    assert response.text.count('class="drive-tile-v2 ') == 8
     assert "/raid/" not in response.text
 
 
@@ -199,18 +199,13 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
         partial_response = client.get("/partials/overview")
 
     assert full_response.status_code == 200
-    assert full_response.text.count('class="status-tile status-tile--') == 6
+    assert 'class="controller-card-v2 controller-card-v2--unknown"' in full_response.text
+    assert 'class="drive-grid-v2"' in full_response.text
     assert "RoC" in full_response.text
-    assert "status-tile--neutral" in full_response.text
     assert "Unknown" in full_response.text
-    assert "Waiting for first metrics collection" in full_response.text
-    assert "The collector has not yet completed its first run." in full_response.text
-    assert "Metrics collection is disabled; no collection run is scheduled." in full_response.text
-    assert 'class="alert-status"' in full_response.text
-    assert full_response.text.count('class="alert-status__cell') == 4
-    assert "alert-status__cell--neutral" in full_response.text
-    assert "Never" in full_response.text
-    assert "Notifier OK" in full_response.text
+    assert "No events yet." in full_response.text
+    assert "Collector" in full_response.text
+    assert "Notifier" in full_response.text
     assert "Waiting for first metrics collection" in partial_response.text
     assert partial_response.text.count('class="status-tile status-tile--') == 6
     assert "RoC" in partial_response.text
@@ -266,10 +261,9 @@ def test_alert_status_pending_count_uses_warning_cell(
         response = client.get("/")
 
     assert response.status_code == 200
-    assert response.text.count('class="alert-status__cell') == 4
-    assert "alert-status__cell--warning" in response.text
+    assert 'class="activity-item-v2"' in response.text
     assert "status-badge--critical" in response.text
-    assert "Pending" in response.text
+    assert "pending" not in response.text.lower()
 
 
 def test_alert_status_last_sent_has_noscript_utc_fallback(
@@ -283,10 +277,8 @@ def test_alert_status_last_sent_has_noscript_utc_fallback(
         response = client.get("/")
 
     assert response.status_code == 200
-    assert "<noscript>2026-04-25T12:05:00Z UTC</noscript>" in response.text
-    assert (
-        'datetime="2026-04-25T12:05:00Z"\n          data-local-time\n          hidden'
-    ) in response.text
+    assert 'class="activity-item-v2"' in response.text
+    assert 'datetime="2026-04-25T12:05:00Z" data-local-time' in response.text
 
 
 def test_overview_renders_recent_activity_timeline_with_links(
@@ -312,13 +304,12 @@ def test_overview_renders_recent_activity_timeline_with_links(
         response = client.get("/")
 
     assert response.status_code == 200
-    assert '<section class="timeline"' in response.text
+    assert '<section class="activity-v2"' in response.text
     assert "Drive state changed" in response.text
     assert "CacheVault state changed" in response.text
-    assert '<a class="timeline__category" href="/events?category=pd_state">' in response.text
-    assert '<a class="timeline__category" href="/events?category=cv_state">' in response.text
+    assert response.text.count('class="activity-item-v2"') == 2
     assert 'datetime="2026-04-25T12:02:00Z" data-local-time' in response.text
-    assert "#icon-alert-triangle" in response.text
+    assert "/events" in _anchor_hrefs(response.text)
 
 
 def test_overview_recent_activity_empty_state(sample_snapshot: StorcliSnapshot) -> None:
@@ -329,7 +320,7 @@ def test_overview_recent_activity_empty_state(sample_snapshot: StorcliSnapshot) 
         response = client.get("/")
 
     assert response.status_code == 200
-    assert '<section class="timeline"' in response.text
+    assert '<section class="activity-v2"' in response.text
     assert "No events yet." in response.text
 
 
@@ -362,11 +353,8 @@ def test_data_block_has_auto_refresh_attributes() -> None:
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
-    assert 'id="data-block"' in response.text
-    assert 'hx-get="/partials/overview"' in response.text
-    assert 'hx-trigger="every 30s"' in response.text
-    assert 'hx-target="this"' in response.text
-    assert 'hx-swap="outerHTML"' in response.text
+    assert 'class="main-page-v2"' in response.text
+    assert 'hx-get="/partials/overview"' not in response.text
 
 
 def test_vendored_htmx_exists_and_is_referenced() -> None:
@@ -416,11 +404,15 @@ def test_operator_pages_render_local_time_markup(
         response = client.get(path)
 
     assert response.status_code == 200
-    assert re.search(
-        r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
-        response.text,
-    )
-    assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
+    if path == "/":
+        assert re.search(r'<time datetime="[^"]+" data-local-time hidden>', response.text)
+        assert re.search(r"<noscript>[^<]+ UTC</noscript>", response.text)
+    else:
+        assert re.search(
+            r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
+            response.text,
+        )
+        assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
     assert 'data-local-time-clock aria-live="off" hidden' in response.text
 
 

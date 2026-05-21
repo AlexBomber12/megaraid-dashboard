@@ -1,0 +1,28 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}SERVER RAID Status - MegaRAID Dashboard{% endblock %}
+
+{% block content %}
+  <div class="main-page-v2">
+    <section class="page-title">
+      <h1>SERVER RAID Status</h1>
+      <p>
+        {{ view_model.controller.model }}
+        &middot; Updated:
+        <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
+        <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
+      </p>
+    </section>
+
+    {% include "partials/controller_summary_card.html" %}
+    {% include "partials/drive_grid.html" %}
+    {% include "partials/activity_timeline_v2.html" %}
+    {% if not maintenance_state.active %}
+      {% include "partials/maintenance_start_form.html" %}
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block status_bar %}
+  {% include "partials/system_health_bar.html" %}
+{% endblock %}

@@ -34,6 +34,7 @@ from megaraid_dashboard.db.models import (
     Event,
     PhysicalDriveSnapshot,
 )
+from megaraid_dashboard.services import scheduler as scheduler_state
 from megaraid_dashboard.services.audit import (
     AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     AUDIT_CATEGORY_DRIVE_MARK_UBAD,
@@ -110,9 +111,11 @@ from megaraid_dashboard.services.events import (
 )
 from megaraid_dashboard.services.overview import (
     DriveListViewModel,
+    MainPageViewModel,
     OverviewViewModel,
     format_tb,
     load_drive_list_view_model,
+    load_main_page_view_model,
     load_overview_view_model,
     temperature_severity,
 )
@@ -381,10 +384,10 @@ async def healthz(request: Request) -> JSONResponse:
 @router.get("/", name="overview")
 def overview(request: Request) -> Response:
     started_at = perf_counter()
-    view_model = _load_overview(request)
+    view_model = _load_main_page(request)
     response = TEMPLATES.TemplateResponse(
         request=request,
-        name="pages/overview.html",
+        name="pages/main.html",
         context={
             "active_nav": "overview",
             "current_utc_label": _current_utc_label(),
@@ -392,7 +395,10 @@ def overview(request: Request) -> Response:
             "view_model": view_model,
         },
     )
-    _log_overview_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=False)
+    _log_main_page_rendered(
+        view_model=view_model,
+        elapsed_ms=_elapsed_ms(started_at),
+    )
     return response
 
 
@@ -3798,6 +3804,18 @@ def _load_overview(request: Request) -> OverviewViewModel:
         )
 
 
+def _load_main_page(request: Request) -> MainPageViewModel:
+    settings = cast(Settings, request.app.state.settings)
+    with _session(request) as session:
+        return load_main_page_view_model(
+            session,
+            settings=settings,
+            scheduler=scheduler_state,
+            collector_enabled=settings.collector_enabled,
+            app_version=__version__,
+        )
+
+
 def _load_drive_list(request: Request) -> DriveListViewModel:
     scheduler = getattr(request.app.state, "scheduler", None)
 
@@ -4581,6 +4599,20 @@ def _log_overview_rendered(
         captured_at=captured_at,
         elapsed_ms=elapsed_ms,
         partial=partial,
+    )
+
+
+def _log_main_page_rendered(
+    *,
+    view_model: MainPageViewModel,
+    elapsed_ms: float,
+) -> None:
+    LOGGER.info(
+        "ui_main_page_rendered",
+        elapsed_ms=elapsed_ms,
+        drive_count=len(view_model.drive_grid.tiles),
+        controller_state=view_model.controller.state,
+        activity_count=len(view_model.recent_activity),
     )
 
 

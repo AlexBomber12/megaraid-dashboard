@@ -1,0 +1,68 @@
+{% set controller = view_model.controller %}
+{% set controller_severity = controller.state | lower %}
+<a
+  class="controller-card-v2 controller-card-v2--{{ controller_severity }}"
+  href="{{ request.url_for('controller_foreign_config').path }}"
+  aria-label="Controller details"
+>
+  <div class="controller-card-v2__header">
+    <div>
+      <span class="controller-card-v2__eyebrow">Controller</span>
+      <h2>{{ controller.model }}</h2>
+      <p>{{ controller.serial }} &middot; {{ controller.raid_summary }}</p>
+    </div>
+    <span class="status-badge status-badge--{{ controller_severity }}">{{ controller.state }}</span>
+  </div>
+
+  <dl class="controller-card-v2__metrics">
+    <div>
+      <dt>RoC</dt>
+      <dd>
+        {% if controller.roc_temperature_celsius is not none %}
+          {{ controller.roc_temperature_celsius }} C
+        {% else %}
+          Unknown
+        {% endif %}
+      </dd>
+    </div>
+    <div>
+      <dt>CacheVault</dt>
+      <dd>
+        {% if controller.cv_capacitance_percent is not none %}
+          {{ controller.cv_capacitance_percent }}%
+        {% else %}
+          {{ controller.bbu_status }}
+        {% endif %}
+      </dd>
+    </div>
+    <div>
+      <dt>Errors 24h</dt>
+      <dd>{{ controller.errors_24h }}</dd>
+    </div>
+  </dl>
+
+  <div class="controller-card-v2__operations">
+    {% if controller.active_operations %}
+      <span class="controller-card-v2__operations-label">Active operations</span>
+      <span class="controller-card-v2__operation-list">
+        {% for operation in controller.active_operations %}
+          <span class="tooltip-v2" data-tooltip="{{ operation.tooltip }}">
+            {{ operation.name | title }}{% if operation.progress_percent is not none %} {{ operation.progress_percent }}%{% endif %}
+          </span>{% if not loop.last %}<span aria-hidden="true"> &middot; </span>{% endif %}
+        {% endfor %}
+      </span>
+    {% else %}
+      <span class="controller-card-v2__operations-label">No active operations</span>
+      <span class="controller-card-v2__operation-list">
+        {% if controller.last_patrol_read_completed_at is not none %}
+          Last patrol read {{ controller.last_patrol_read_completed_at | iso_utc }} UTC
+        {% else %}
+          Last patrol read unknown
+        {% endif %}
+        {% if controller.next_patrol_read_in_text %}
+          &middot; Next {{ controller.next_patrol_read_in_text }}
+        {% endif %}
+      </span>
+    {% endif %}
+  </div>
+</a>

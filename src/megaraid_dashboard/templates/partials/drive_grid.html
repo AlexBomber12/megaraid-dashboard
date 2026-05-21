@@ -1,0 +1,34 @@
+<section class="drive-grid-section-v2" aria-label="Drive backplane">
+  {% set root_path = request.scope.get("root_path", "") if request is defined else "" %}
+  <div class="section-heading">
+    <h2>Drive backplane</h2>
+    <span class="status-text--{{ view_model.drive_grid.worst_severity }}">
+      {{ view_model.drive_grid.tiles | length }} drives
+    </span>
+  </div>
+
+  <div class="drive-grid-v2">
+    {% for tile in view_model.drive_grid.tiles %}
+      <a
+        class="drive-tile-v2 drive-tile-v2--{{ tile.tile_severity }}"
+        href="{{ root_path }}{{ tile.detail_url }}"
+        aria-label="Drive {{ tile.enclosure_id }}:{{ tile.slot_id }} details"
+      >
+        {% if tile.error_badge_count is not none %}
+          <span class="drive-error-badge-v2">{{ tile.error_badge_count }}</span>
+        {% endif %}
+        <span class="drive-tile-v2__slot">{{ tile.slot_label }}</span>
+        <span class="drive-tile-v2__state status-text--{{ tile.state_severity }}">
+          {{ tile.state_text }}
+        </span>
+        <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
+          {% if tile.temperature_celsius is not none %}
+            {{ tile.temperature_celsius }} C
+          {% else %}
+            Unknown
+          {% endif %}
+        </span>
+      </a>
+    {% endfor %}
+  </div>
+</section>

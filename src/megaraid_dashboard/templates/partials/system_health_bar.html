@@ -1,0 +1,12 @@
+{% set health = view_model.system_health %}
+<div class="status-bar-v2">
+  <span>
+    Notifier
+    <strong class="status-text--{% if health.notifier_ok %}optimal{% else %}critical{% endif %}">
+      {% if health.notifier_ok %}ok{% else %}error{% endif %}
+    </strong>
+  </span>
+  <span>Collector <strong>{{ health.collector_last_run_text }}</strong></span>
+  <span>DB <strong>{{ health.db_size_human }}</strong></span>
+  <span>Version <strong>{{ health.app_version }}</strong></span>
+</div>

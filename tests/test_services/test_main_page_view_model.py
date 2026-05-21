@@ -281,7 +281,7 @@ def test_main_page_system_health_db_size_format(
     assert view_model.system_health.db_size_human == "6.4 MB"
 
 
-def test_main_page_view_model_includes_updated_at_and_refresh_seconds(
+def test_main_page_view_model_uses_snapshot_capture_time_for_updated_at(
     session: Session,
     sample_snapshot: StorcliSnapshot,
     tmp_path: Path,
@@ -296,7 +296,7 @@ def test_main_page_view_model_includes_updated_at_and_refresh_seconds(
         app_version="0.1.0",
     )
 
-    assert view_model.updated_at.tzinfo is not None
+    assert view_model.updated_at == sample_snapshot.captured_at
     assert view_model.auto_refresh_seconds == 30
 
 
