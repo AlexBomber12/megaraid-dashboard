@@ -7,6 +7,11 @@ from sqlalchemy.orm import Session
 from megaraid_dashboard.db.event_metrics import stage_event_metric
 from megaraid_dashboard.db.models import Event
 
+AUDIT_CATEGORY_DRIVE_MARK_UBAD = "drive_mark_ubad"
+AUDIT_CATEGORY_DRIVE_MARK_UGOOD = "drive_mark_ugood"
+AUDIT_CATEGORY_DRIVE_SPIN_DOWN = "drive_spin_down"
+AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE = "drive_make_hot_spare"
+
 
 def record_operator_action(
     session: Session,
