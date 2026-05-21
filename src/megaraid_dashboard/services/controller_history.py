@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.models import ControllerSnapshot
+
+_BucketGranularity = Literal["hour", "day"]
 
 
 @dataclass(frozen=True)
@@ -55,16 +59,18 @@ def load_roc_temperature_series(
             session,
             cutoff=cutoff,
             until=until,
-            bucket_format="%Y-%m-%d %H",
-            bucket_parse_format="%Y-%m-%d %H",
+            granularity="hour",
+            sqlite_format="%Y-%m-%d %H",
+            sqlite_parse_format="%Y-%m-%d %H",
         )
     else:
         points = _load_bucketed_points(
             session,
             cutoff=cutoff,
             until=until,
-            bucket_format="%Y-%m-%d",
-            bucket_parse_format="%Y-%m-%d",
+            granularity="day",
+            sqlite_format="%Y-%m-%d",
+            sqlite_parse_format="%Y-%m-%d",
         )
 
     return _series(
@@ -124,10 +130,15 @@ def _load_bucketed_points(
     *,
     cutoff: datetime,
     until: datetime,
-    bucket_format: str,
-    bucket_parse_format: str,
+    granularity: _BucketGranularity,
+    sqlite_format: str,
+    sqlite_parse_format: str,
 ) -> list[RocTemperaturePoint]:
-    bucket = func.strftime(bucket_format, ControllerSnapshot.captured_at)
+    bucket = _bucket_expression(
+        dialect_name=session.get_bind().dialect.name,
+        granularity=granularity,
+        sqlite_format=sqlite_format,
+    )
     rows = session.execute(
         select(bucket.label("bucket"), func.avg(ControllerSnapshot.roc_temperature_celsius))
         .where(ControllerSnapshot.captured_at > cutoff)
@@ -138,12 +149,35 @@ def _load_bucketed_points(
     )
     return [
         RocTemperaturePoint(
-            captured_at=datetime.strptime(bucket_value, bucket_parse_format).replace(tzinfo=UTC),
+            captured_at=_bucket_captured_at(bucket_value, sqlite_parse_format=sqlite_parse_format),
             temperature_celsius=round(temperature_avg),
         )
         for bucket_value, temperature_avg in rows
         if bucket_value is not None and temperature_avg is not None
     ]
+
+
+def _bucket_expression(
+    *,
+    dialect_name: str,
+    granularity: _BucketGranularity,
+    sqlite_format: str,
+) -> ColumnElement[Any]:
+    if dialect_name == "sqlite":
+        return func.strftime(sqlite_format, ControllerSnapshot.captured_at)
+    if dialect_name == "postgresql":
+        return func.date_trunc(granularity, func.timezone("UTC", ControllerSnapshot.captured_at))
+    msg = f"unsupported database dialect for RoC temperature history aggregation: {dialect_name}"
+    raise RuntimeError(msg)
+
+
+def _bucket_captured_at(bucket_value: Any, *, sqlite_parse_format: str) -> datetime:
+    if isinstance(bucket_value, datetime):
+        return _require_aware_utc(bucket_value)
+    if isinstance(bucket_value, str):
+        return datetime.strptime(bucket_value, sqlite_parse_format).replace(tzinfo=UTC)
+    msg = f"unsupported RoC temperature history bucket value: {bucket_value!r}"
+    raise TypeError(msg)
 
 
 def _series(

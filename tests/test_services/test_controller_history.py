@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from pytest import MonkeyPatch
+from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import Settings
@@ -138,6 +140,57 @@ def test_recent_window_is_anchored_to_current_time(
 
     assert series.points == []
     assert series.current_celsius == 74
+
+
+def test_bucket_expression_uses_dialect_specific_sql() -> None:
+    sqlite_sql = str(
+        select(
+            controller_history._bucket_expression(
+                dialect_name="sqlite",
+                granularity="hour",
+                sqlite_format="%Y-%m-%d %H",
+            )
+        ).compile(dialect=sqlite.dialect())
+    )
+    postgresql_sql = str(
+        select(
+            controller_history._bucket_expression(
+                dialect_name="postgresql",
+                granularity="hour",
+                sqlite_format="%Y-%m-%d %H",
+            )
+        ).compile(dialect=postgresql.dialect())
+    )
+
+    assert "strftime" in sqlite_sql
+    assert "date_trunc" in postgresql_sql
+    assert "timezone" in postgresql_sql
+    assert "strftime" not in postgresql_sql
+
+
+def test_bucket_expression_rejects_unsupported_dialect() -> None:
+    with pytest.raises(RuntimeError, match="unsupported database dialect"):
+        controller_history._bucket_expression(
+            dialect_name="mysql",
+            granularity="hour",
+            sqlite_format="%Y-%m-%d %H",
+        )
+
+
+def test_bucket_captured_at_accepts_postgresql_datetime_bucket() -> None:
+    bucket = datetime(2026, 5, 20, 12, 0)
+
+    captured_at = controller_history._bucket_captured_at(
+        bucket,
+        sqlite_parse_format="%Y-%m-%d %H",
+    )
+
+    assert captured_at == datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+
+
+def test_bucket_captured_at_rejects_unexpected_bucket_type() -> None:
+    with pytest.raises(TypeError, match="unsupported RoC temperature history bucket value"):
+        controller_history._bucket_captured_at(1, sqlite_parse_format="%Y-%m-%d %H")
 
 
 def test_now_utc_returns_aware_utc_datetime(monkeypatch: MonkeyPatch) -> None:
