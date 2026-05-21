@@ -2445,6 +2445,15 @@ async def _run_controller_buzzer_action(
     audit_message: str,
 ) -> Response:
     settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return await _reject_controller_buzzer_maintenance_required(
+            request=request,
+            action=action,
+            category=category,
+            audit_message=audit_message,
+            settings=settings,
+        )
+
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     try:
@@ -2486,6 +2495,37 @@ async def _run_controller_buzzer_action(
             status_code=502,
         )
     return RedirectResponse("/controller", status_code=303)
+
+
+async def _reject_controller_buzzer_maintenance_required(
+    *,
+    request: Request,
+    action: Literal["silence", "disable", "enable"],
+    category: str,
+    audit_message: str,
+    settings: Settings,
+) -> JSONResponse:
+    reason = "maintenance_mode required"
+    try:
+        await run_in_threadpool(
+            _record_controller_buzzer_operator_action_sync,
+            request=request,
+            category=category,
+            message=audit_message,
+            outcome=f"rejected: {reason}",
+        )
+    except SQLAlchemyError:
+        return _audit_persistence_failure_response(
+            action=action,
+            rejection_reason=reason,
+        )
+    return JSONResponse(
+        {
+            "error": "controller buzzer changes require maintenance_mode",
+            "maintenance_mode": settings.maintenance_mode,
+        },
+        status_code=403,
+    )
 
 
 def _buzzer_audit_message(

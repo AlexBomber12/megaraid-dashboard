@@ -28,6 +28,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
+    monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
@@ -167,6 +168,74 @@ def test_silence_storcli_failure_returns_502(
         assert event.category == "controller_buzzer_silence"
         assert event.summary.startswith("Buzzer silenced by operator admin")
         assert "failed: StorcliCommandFailed" in event.summary
+
+
+def test_silence_without_maintenance_mode_returns_403_and_skips_storcli(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
+        calls.append(list(args))
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/buzzer/silence",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 403
+        assert response.json() == {
+            "error": "controller buzzer changes require maintenance_mode",
+            "maintenance_mode": False,
+        }
+        assert calls == []
+        event = _single_event(test_app)
+        assert event.category == "controller_buzzer_silence"
+        assert event.summary.startswith("Buzzer silenced by operator admin")
+        assert event.summary.endswith("rejected: maintenance_mode required")
+
+
+def test_silence_without_maintenance_mode_audit_failure_returns_500(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise AssertionError("storcli should not be called without maintenance_mode")
+
+    def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
+        raise SQLAlchemyError("database is locked")
+
+    monkeypatch.setenv("MAINTENANCE_MODE", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    monkeypatch.setattr(
+        "megaraid_dashboard.web.routes.record_operator_action",
+        fail_record_operator_action,
+    )
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/controller/buzzer/silence",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": "audit persistence failed",
+        "action": "silence",
+        "rejection_reason": "maintenance_mode required",
+    }
 
 
 def test_silence_audit_failure_returns_500(
