@@ -1,0 +1,39 @@
+{% set health_class = "crit" if view_model.health.state == "CRITICAL" else ("warn" if view_model.health.state == "WARNING" else "") %}
+<section class="section" data-controller-section="health-snapshot" aria-labelledby="controller-health-heading">
+  <div class="section-title">
+    <h2 id="controller-health-heading">Health snapshot</h2>
+  </div>
+  <div class="health-snapshot {{ health_class }}">
+    <div class="health-snapshot__summary">
+      <span class="text-label">Controller health</span>
+      <strong>{{ view_model.health.state }}</strong>
+      <p>{{ view_model.health.summary_text }}</p>
+    </div>
+    <dl class="health-snapshot__metrics">
+      <div>
+        <dt>RoC temperature</dt>
+        <dd>{% if view_model.health.roc_temperature_celsius is not none %}{{ view_model.health.roc_temperature_celsius }} C{% else %}N/A{% endif %}</dd>
+      </div>
+      <div>
+        <dt>CacheVault capacitance</dt>
+        <dd>{% if view_model.health.cv_capacitance_percent is not none %}{{ view_model.health.cv_capacitance_percent }}%{% else %}N/A{% endif %}</dd>
+      </div>
+      <div>
+        <dt>BBU status</dt>
+        <dd>{{ view_model.health.bbu_status }}</dd>
+      </div>
+      <div>
+        <dt>Memory ECC</dt>
+        <dd>{{ view_model.health.memory_ecc_errors_total }}</dd>
+      </div>
+      <div>
+        <dt>Errors in 24h</dt>
+        <dd>{{ view_model.health.errors_24h }}</dd>
+      </div>
+      <div>
+        <dt>App uptime</dt>
+        <dd>{{ view_model.health.uptime_text }}</dd>
+      </div>
+    </dl>
+  </div>
+</section>

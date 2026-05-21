@@ -1,0 +1,36 @@
+<section class="section" data-controller-section="foreign-config" aria-labelledby="foreign-config-heading">
+  <div class="section-title">
+    <h2 id="foreign-config-heading">Destructive operations</h2>
+  </div>
+  <div class="card destructive-card">
+    <div class="destructive-card__body" data-foreign-config-state="{% if view_model.foreign_config.present %}present{% else %}absent{% endif %}">
+      <div>
+        <h3>Foreign Config</h3>
+        <p>{{ view_model.foreign_config.description_text }}</p>
+        {% if view_model.foreign_config.source_controller_serial %}
+          <p class="muted">Source controller SN {{ view_model.foreign_config.source_controller_serial }}</p>
+        {% endif %}
+      </div>
+      <div class="button-row">
+        {% if view_model.foreign_config.present %}
+          <form
+            method="post"
+            action="{{ view_model.foreign_config.clear_url }}"
+            class="inline-form"
+            data-csrf-form
+            onsubmit="return confirm('Clear foreign config?');"
+          >
+            <input type="hidden" name="csrf_token" value="">
+            <input type="hidden" name="confirmation" value="CLEAR FOREIGN CONFIG">
+            <button type="submit" class="button button--danger" {% if not view_model.foreign_config.can_clear %}disabled{% endif %}>Clear</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ view_model.foreign_config.import_url }}" class="inline-form" data-csrf-form>
+            <input type="hidden" name="csrf_token" value="">
+            <button type="submit" class="button button--danger" disabled>Import</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>

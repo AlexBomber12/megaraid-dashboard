@@ -1,0 +1,20 @@
+<section class="section" data-controller-section="scheduled-tasks" aria-labelledby="scheduled-tasks-heading">
+  <div class="section-title">
+    <h2 id="scheduled-tasks-heading">Scheduled tasks</h2>
+  </div>
+  <div class="card">
+    <div class="schedule-list">
+      {% for task in view_model.scheduled_tasks %}
+        <div class="schedule-item">
+          <div>
+            <h3>{{ task.name }}</h3>
+            <p>{{ task.schedule_text }}</p>
+          </div>
+          <span class="status-pill {% if task.is_enabled %}status-pill--optimal{% else %}status-pill--unknown{% endif %}">
+            {% if task.is_enabled %}Enabled{% else %}Unknown{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,25 @@
+<section class="section" data-controller-section="hardware-identity" aria-labelledby="hardware-identity-heading">
+  <div class="section-title">
+    <h2 id="hardware-identity-heading">Hardware identity</h2>
+  </div>
+  <dl class="hw-grid">
+    <div><dt>Model</dt><dd>{{ view_model.hardware.model }}</dd></div>
+    <div><dt>Serial</dt><dd class="mono">{{ view_model.hardware.serial }}</dd></div>
+    <div><dt>Revision</dt><dd>{{ view_model.hardware.revision }}</dd></div>
+    <div><dt>Chip revision</dt><dd>{{ view_model.hardware.chip_revision }}</dd></div>
+    <div><dt>Manufactured</dt><dd>{{ view_model.hardware.manufactured_date_text }}</dd></div>
+    <div><dt>Rework date</dt><dd>{{ view_model.hardware.rework_date_text }}</dd></div>
+    <div><dt>Firmware</dt><dd>{{ view_model.hardware.firmware_version }}</dd></div>
+    <div><dt>BIOS</dt><dd>{{ view_model.hardware.bios_version }}</dd></div>
+    <div><dt>Driver</dt><dd>{{ view_model.hardware.driver_version }}</dd></div>
+    <div><dt>SAS address</dt><dd class="mono">{{ view_model.hardware.sas_address }}</dd></div>
+    <div><dt>PCI address</dt><dd class="mono">{{ view_model.hardware.pci_address }}</dd></div>
+    <div><dt>Backend ports</dt><dd>{{ view_model.hardware.backend_ports }}</dd></div>
+    <div><dt>NVRAM</dt><dd>{{ view_model.hardware.nvram_size_text }}</dd></div>
+    <div><dt>Flash</dt><dd>{{ view_model.hardware.flash_size_text }}</dd></div>
+    <div><dt>Memory</dt><dd>{{ view_model.hardware.memory_size_text }}</dd></div>
+    <div><dt>FW cache</dt><dd>{{ view_model.hardware.fw_cache_size_text }}</dd></div>
+    <div><dt>Pending images</dt><dd>{{ view_model.hardware.pending_images_count }}</dd></div>
+    <div><dt>Alarm buzzer</dt><dd>{{ view_model.hardware.alarm_buzzer_text }}</dd></div>
+  </dl>
+</section>

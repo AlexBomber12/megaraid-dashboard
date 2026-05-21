@@ -42,6 +42,10 @@ from megaraid_dashboard.services.audit import (
     AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
     record_operator_action,
 )
+from megaraid_dashboard.services.controller_detail import (
+    ControllerDetailViewModel,
+    load_controller_detail_view_model,
+)
 from megaraid_dashboard.services.controller_history import (
     RocTemperatureSeries,
     load_roc_temperature_series,
@@ -423,6 +427,21 @@ def drives(request: Request) -> Response:
         name="pages/drives.html",
         context={
             "active_nav": "drives",
+            "current_utc_label": _current_utc_label(),
+            "static_asset_version": _static_asset_version(),
+            "view_model": view_model,
+        },
+    )
+
+
+@router.get("/controller", name="controller_detail")
+def controller_detail(request: Request) -> Response:
+    view_model = _load_controller_detail(request)
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="pages/controller_detail.html",
+        context={
+            "active_nav": "controller",
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "view_model": view_model,
@@ -3832,6 +3851,22 @@ def _load_drive_list(request: Request) -> DriveListViewModel:
             session,
             scheduler=scheduler,
             slot_url_factory=slot_url,
+        )
+
+
+def _load_controller_detail(request: Request) -> ControllerDetailViewModel:
+    settings = cast(Settings, request.app.state.settings)
+    scheduler = getattr(request.app.state, "scheduler", None)
+    app_start_time = cast(datetime, getattr(request.app.state, "start_time", datetime.now(UTC)))
+    with _session(request) as session:
+        return load_controller_detail_view_model(
+            session,
+            settings=settings,
+            scheduler=scheduler,
+            collector_enabled=settings.collector_enabled,
+            app_start_time=app_start_time,
+            app_version=__version__,
+            roc_history_chart_url=str(request.url_for("controller_roc_history").path),
         )
 
 
