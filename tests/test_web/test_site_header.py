@@ -54,6 +54,16 @@ def test_overview_nav_link_is_marked_active() -> None:
     assert overview_link["aria-current"] == "page"
 
 
+def test_controller_nav_link_points_to_controller_detail() -> None:
+    response = _get_overview()
+    parser = _LinkParser()
+    parser.feed(response.text)
+
+    controller_link = parser.links["Controller"]
+
+    assert controller_link["href"] == "/controller"
+
+
 def test_audit_nav_link_is_marked_active_after_redirect() -> None:
     response = _get_path("/audit")
     parser = _LinkParser()
