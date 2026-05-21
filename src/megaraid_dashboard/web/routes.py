@@ -41,6 +41,10 @@ from megaraid_dashboard.services.audit import (
     AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
     record_operator_action,
 )
+from megaraid_dashboard.services.controller_history import (
+    RocTemperatureSeries,
+    load_roc_temperature_series,
+)
 from megaraid_dashboard.services.drive_actions import (
     ConsistencyCheckMode,
     ConsistencyCheckStatus,
@@ -130,6 +134,8 @@ TEMPLATES = create_templates(_PACKAGE_ROOT / "templates")
 STATIC_ASSET_VERSION = ""
 _DEFAULT_CHART_RANGE_DAYS = 7
 _ALLOWED_CHART_RANGE_DAYS = (7, 30, 365)
+_DEFAULT_ROC_HISTORY_RANGE_HOURS = 24
+_ALLOWED_ROC_HISTORY_RANGE_HOURS = frozenset({1, 24, 168, 720})
 _EVENT_SEVERITY_FILTERS = ("info", "warning", "critical")
 _EVENT_CATEGORY_FILTERS = (
     "controller",
@@ -3493,6 +3499,25 @@ def _record_foreign_config_operator_action_sync(
         raise
 
 
+@router.get("/controller/roc-history", name="controller_roc_history")
+def controller_roc_history(
+    request: Request,
+    range_hours: int = _DEFAULT_ROC_HISTORY_RANGE_HOURS,
+) -> JSONResponse:
+    if range_hours not in _ALLOWED_ROC_HISTORY_RANGE_HOURS:
+        raise HTTPException(status_code=422, detail="range_hours must be one of 1, 24, 168, 720")
+    settings = cast(Settings, request.app.state.settings)
+    with _session(request) as session:
+        series = load_roc_temperature_series(
+            session,
+            range_hours=range_hours,
+            settings=settings,
+        )
+    response = JSONResponse(_roc_temperature_series_payload(series))
+    response.headers["Cache-Control"] = "private, max-age=30"
+    return response
+
+
 @router.get("/drives/{enclosure_id}/{slot_id}/charts", name="drive_charts")
 def drive_charts(
     request: Request,
@@ -3693,6 +3718,25 @@ def _events_fragment_response(
     )
     _log_events_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=True)
     return response
+
+
+def _roc_temperature_series_payload(series: RocTemperatureSeries) -> dict[str, Any]:
+    return {
+        "points": [
+            {
+                "captured_at": point.captured_at.isoformat(),
+                "temperature_celsius": point.temperature_celsius,
+            }
+            for point in series.points
+        ],
+        "range_label": series.range_label,
+        "min_celsius": series.min_celsius,
+        "avg_celsius": series.avg_celsius,
+        "max_celsius": series.max_celsius,
+        "current_celsius": series.current_celsius,
+        "warning_threshold": series.warning_threshold,
+        "critical_threshold": series.critical_threshold,
+    }
 
 
 def _session(request: Request) -> Session:

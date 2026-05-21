@@ -37,6 +37,7 @@ def test_controller_detail_smoke_populates_all_sections(
         collector_enabled=True,
         app_start_time=datetime.now(UTC) - timedelta(minutes=7, seconds=23),
         app_version="0.1.0",
+        roc_history_chart_url="/controller/roc-history",
     )
 
     assert view_model.page_title == "Controller"
@@ -331,14 +332,30 @@ def test_errors_24h_aggregates_warning_and_critical_events(
     assert _load(session, tmp_path).health.errors_24h == 2
 
 
-def test_roc_history_chart_url_points_to_future_endpoint(
+def test_roc_history_chart_url_points_to_endpoint(
     session: Session,
     sample_snapshot: StorcliSnapshot,
     tmp_path: Path,
 ) -> None:
     _insert(session, _optimal_snapshot(sample_snapshot), raw_json=_raw_controller_payload())
 
-    assert _load(session, tmp_path).roc_history_chart_url == "/controller/roc-temperature/history"
+    assert _load(session, tmp_path).roc_history_chart_url == "/controller/roc-history"
+
+
+def test_roc_history_chart_url_can_include_forwarded_prefix(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+) -> None:
+    _insert(session, _optimal_snapshot(sample_snapshot), raw_json=_raw_controller_payload())
+
+    view_model = _load(
+        session,
+        tmp_path,
+        roc_history_chart_url="/raid/controller/roc-history",
+    )
+
+    assert view_model.roc_history_chart_url == "/raid/controller/roc-history"
 
 
 def test_empty_controller_detail_when_no_snapshot(session: Session, tmp_path: Path) -> None:
@@ -474,7 +491,12 @@ def test_operation_and_schedule_helper_fallbacks() -> None:
     assert controller_detail_module._vd_state_severity("Dgrd") == "warning"
 
 
-def _load(session: Session, tmp_path: Path):
+def _load(
+    session: Session,
+    tmp_path: Path,
+    *,
+    roc_history_chart_url: str = "/controller/roc-history",
+):
     return load_controller_detail_view_model(
         session,
         settings=_settings(tmp_path),
@@ -482,6 +504,7 @@ def _load(session: Session, tmp_path: Path):
         collector_enabled=True,
         app_start_time=datetime(2026, 5, 20, 18, 0, tzinfo=UTC),
         app_version="0.1.0",
+        roc_history_chart_url=roc_history_chart_url,
     )
 
 

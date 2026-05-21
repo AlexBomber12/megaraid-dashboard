@@ -37,7 +37,6 @@ from megaraid_dashboard.services.overview import (
 from megaraid_dashboard.storcli import StorcliError, parse_foreign_config
 
 _DEFAULT_AUTO_REFRESH_SECONDS = 30
-_ROC_HISTORY_CHART_URL = "/controller/roc-temperature/history"
 _BUZZER_EXPLAINER = (
     "The controller buzzer can be silenced for the current condition or disabled until it is "
     "enabled again."
@@ -199,6 +198,7 @@ def load_controller_detail_view_model(
     collector_enabled: bool,
     app_start_time: datetime,
     app_version: str,
+    roc_history_chart_url: str,
 ) -> ControllerDetailViewModel:
     now = datetime.now(UTC)
     start_time = _require_aware_utc(app_start_time)
@@ -218,7 +218,7 @@ def load_controller_detail_view_model(
         cachevault=None
         if snapshot is None
         else _build_cachevault_detail(snapshot.cachevault, raw_json, now=now),
-        roc_history_chart_url=_ROC_HISTORY_CHART_URL,
+        roc_history_chart_url=roc_history_chart_url,
         raid_config=[] if snapshot is None else _build_raid_config(snapshot, raw_json),
         scheduled_tasks=_build_scheduled_tasks(raw_json, now=now),
         hardware=_build_hardware_identity(snapshot, raw_json),
