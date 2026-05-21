@@ -281,7 +281,7 @@ def load_main_page_view_model(
             app_version=app_version,
             now=now,
         ),
-        updated_at=now,
+        updated_at=now if snapshot is None else snapshot.captured_at,
         auto_refresh_seconds=getattr(
             settings,
             "auto_refresh_seconds",

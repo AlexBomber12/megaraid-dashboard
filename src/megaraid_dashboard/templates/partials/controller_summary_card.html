@@ -1,9 +1,8 @@
 {% set controller = view_model.controller %}
 {% set controller_severity = controller.state | lower %}
-{% set root_path = request.scope.get("root_path", "") %}
 <a
   class="controller-card-v2 controller-card-v2--{{ controller_severity }}"
-  href="{{ root_path }}/controller"
+  href="{{ request.url_for('controller_foreign_config').path }}"
   aria-label="Controller details"
 >
   <div class="controller-card-v2__header">
