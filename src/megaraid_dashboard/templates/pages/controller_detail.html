@@ -57,12 +57,23 @@
         });
       }
 
-      function errorContainerFor(form) {
-        return form.closest(".button-row")?.querySelector("[data-controller-action-error]");
+      function errorContainerFor(form, createFallback) {
+        const scope = form.closest(".button-row") || form.parentElement;
+        const container = scope?.querySelector("[data-controller-action-error]");
+        if (container || !createFallback || !scope) {
+          return container;
+        }
+        const fallback = document.createElement("div");
+        fallback.className = "form-error";
+        fallback.dataset.controllerActionError = "";
+        fallback.hidden = true;
+        fallback.setAttribute("role", "alert");
+        scope.appendChild(fallback);
+        return fallback;
       }
 
       function showFormError(form, message) {
-        const container = errorContainerFor(form);
+        const container = errorContainerFor(form, true);
         if (!container) {
           return;
         }
@@ -71,7 +82,7 @@
       }
 
       function clearFormError(form) {
-        const container = errorContainerFor(form);
+        const container = errorContainerFor(form, false);
         if (!container) {
           return;
         }

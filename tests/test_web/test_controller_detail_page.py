@@ -188,6 +188,17 @@ def test_controller_detail_submit_handler_preserves_error_responses() -> None:
     assert "responseErrorMessage(payload" in template
 
 
+def test_controller_detail_submit_handler_creates_fallback_error_container() -> None:
+    template = Path("src/megaraid_dashboard/templates/pages/controller_detail.html").read_text()
+
+    assert "errorContainerFor(form, true)" in template
+    assert 'document.createElement("div")' in template
+    assert 'fallback.className = "form-error";' in template
+    assert 'fallback.dataset.controllerActionError = "";' in template
+    assert 'fallback.setAttribute("role", "alert");' in template
+    assert "scope.appendChild(fallback);" in template
+
+
 def test_buzzer_silence_form_posts_with_csrf(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
