@@ -37,6 +37,18 @@ def build_locate_command(enclosure: int, slot: int, action: LocateAction) -> lis
     return [f"/c0/e{enclosure}/s{slot}", verb, "locate", "J"]
 
 
+def build_alarm_silence_command() -> list[str]:
+    return ["/c0", "set", "alarm=silence"]
+
+
+def build_alarm_disable_command() -> list[str]:
+    return ["/c0", "set", "alarm=off"]
+
+
+def build_alarm_enable_command() -> list[str]:
+    return ["/c0", "set", "alarm=on"]
+
+
 def build_set_offline_command(enclosure: int, slot: int) -> list[str]:
     validate_enclosure_slot(enclosure, slot)
     return [f"/c0/e{enclosure}/s{slot}", "set", "offline", "J"]

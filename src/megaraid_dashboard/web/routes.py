@@ -42,6 +42,9 @@ from megaraid_dashboard.services.drive_actions import (
     PatrolReadMode,
     PatrolReadStatus,
     ReplaceStep,
+    build_alarm_disable_command,
+    build_alarm_enable_command,
+    build_alarm_silence_command,
     build_consistency_check_mode_command,
     build_consistency_check_show_command,
     build_consistency_check_show_progress_command,
@@ -129,6 +132,9 @@ _EVENT_CATEGORY_FILTERS = (
     "disk_space",
     "system",
     "operator_action",
+    "controller_buzzer_silence",
+    "controller_buzzer_disable",
+    "controller_buzzer_enable",
     "foreign_config_detected",
     "consistency_check_inconsistency",
 )
@@ -2392,6 +2398,131 @@ def _record_consistency_check_operator_action_sync(
         LOGGER.exception(
             "operator_action_audit_failed",
             action="consistency_check",
+            outcome=outcome,
+        )
+        raise
+
+
+@router.post("/controller/buzzer/silence", name="controller_buzzer_silence")
+async def controller_buzzer_silence(request: Request) -> Response:
+    return await _run_controller_buzzer_action(
+        request=request,
+        action="silence",
+        category="controller_buzzer_silence",
+        argv=build_alarm_silence_command(),
+        audit_message=_buzzer_audit_message(request, action="silence"),
+    )
+
+
+@router.post("/controller/buzzer/disable", name="controller_buzzer_disable")
+async def controller_buzzer_disable(request: Request) -> Response:
+    return await _run_controller_buzzer_action(
+        request=request,
+        action="disable",
+        category="controller_buzzer_disable",
+        argv=build_alarm_disable_command(),
+        audit_message=_buzzer_audit_message(request, action="disable"),
+    )
+
+
+@router.post("/controller/buzzer/enable", name="controller_buzzer_enable")
+async def controller_buzzer_enable(request: Request) -> Response:
+    return await _run_controller_buzzer_action(
+        request=request,
+        action="enable",
+        category="controller_buzzer_enable",
+        argv=build_alarm_enable_command(),
+        audit_message=_buzzer_audit_message(request, action="enable"),
+    )
+
+
+async def _run_controller_buzzer_action(
+    *,
+    request: Request,
+    action: Literal["silence", "disable", "enable"],
+    category: str,
+    argv: list[str],
+    audit_message: str,
+) -> Response:
+    settings: Settings = request.app.state.settings
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        ensure_command_succeeded(result)
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_controller_buzzer_operator_action_sync,
+            request=request,
+            category=category,
+            message=audit_message,
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        extras: dict[str, Any] = {"action": action, "argv": argv}
+        if result is not None:
+            extras["result"] = result
+        if storcli_error is not None:
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
+
+    if storcli_error is not None:
+        return JSONResponse(
+            {
+                "error": "storcli command failed",
+                "action": action,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+    return RedirectResponse("/controller", status_code=303)
+
+
+def _buzzer_audit_message(
+    request: Request,
+    *,
+    action: Literal["silence", "disable", "enable"],
+) -> str:
+    username = str(request.scope.get("user_username", "unknown"))
+    if action == "silence":
+        return (
+            f"Buzzer silenced by operator {username}; runtime alarm state changed without "
+            "changing persistent buzzer setting"
+        )
+    if action == "disable":
+        return f"Buzzer disabled by operator {username}; persistent buzzer setting changed to off"
+    return f"Buzzer enabled by operator {username}; persistent buzzer setting changed to on"
+
+
+def _record_controller_buzzer_operator_action_sync(
+    *,
+    request: Request,
+    category: str,
+    message: str,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                category=category,
+                message=f"{message} {outcome}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action=category,
             outcome=outcome,
         )
         raise

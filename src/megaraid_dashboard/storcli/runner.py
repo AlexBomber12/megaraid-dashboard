@@ -30,6 +30,7 @@ _ALLOWED_COMMAND_PATTERNS = (
     re.compile(r"^/c0/v(?:all|\d+) start cc J$"),
     re.compile(r"^/c0/vall stop cc J$"),
     re.compile(r"^/c0 set consistencycheck=on mode=(auto|manual) J$"),
+    re.compile(r"^/c0 set alarm=(silence|off|on) J$"),
     re.compile(r"^/c0/fall show all J$"),
     re.compile(r"^/c0/fall import J$"),
     re.compile(r"^/c0/fall delete J$"),
