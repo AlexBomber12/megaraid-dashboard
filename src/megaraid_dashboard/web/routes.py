@@ -35,6 +35,10 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
 )
 from megaraid_dashboard.services.audit import (
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
     record_operator_action,
 )
 from megaraid_dashboard.services.drive_actions import (
@@ -142,6 +146,10 @@ _EVENT_CATEGORY_FILTERS = (
     "disk_space",
     "system",
     "operator_action",
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     "controller_buzzer_silence",
     "controller_buzzer_disable",
     "controller_buzzer_enable",
@@ -150,6 +158,10 @@ _EVENT_CATEGORY_FILTERS = (
 )
 _AUDIT_LOG_CATEGORIES = (
     "operator_action",
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     "controller_buzzer_silence",
     "controller_buzzer_disable",
     "controller_buzzer_enable",
@@ -567,7 +579,7 @@ async def drive_replace_missing(enclosure: str, slot: str, request: Request) -> 
     return await _run_replace_step(enclosure, slot, "missing", request)
 
 
-@router.post("/drives/{enclosure}:{slot}/mark-ubad", name="drive_mark_ubad")
+@router.post("/drives/{enclosure}:{slot}/actions/mark-ubad", name="drive_mark_ubad")
 async def drive_mark_ubad(enclosure: str, slot: str, request: Request) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
@@ -578,7 +590,7 @@ async def drive_mark_ubad(enclosure: str, slot: str, request: Request) -> Respon
     )
 
 
-@router.post("/drives/{enclosure}:{slot}/mark-ugood", name="drive_mark_ugood")
+@router.post("/drives/{enclosure}:{slot}/actions/mark-ugood", name="drive_mark_ugood")
 async def drive_mark_ugood(enclosure: str, slot: str, request: Request) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
@@ -589,7 +601,7 @@ async def drive_mark_ugood(enclosure: str, slot: str, request: Request) -> Respo
     )
 
 
-@router.post("/drives/{enclosure}:{slot}/spin-down", name="drive_spin_down")
+@router.post("/drives/{enclosure}:{slot}/actions/spindown", name="drive_spin_down")
 async def drive_spin_down(enclosure: str, slot: str, request: Request) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
@@ -600,7 +612,7 @@ async def drive_spin_down(enclosure: str, slot: str, request: Request) -> Respon
     )
 
 
-@router.post("/drives/{enclosure}:{slot}/make-hot-spare", name="drive_make_hot_spare")
+@router.post("/drives/{enclosure}:{slot}/actions/hotspare", name="drive_make_hot_spare")
 async def drive_make_hot_spare(
     enclosure: str,
     slot: str,
@@ -819,8 +831,14 @@ def _advanced_drive_action_argv(
 
 
 def _advanced_drive_action_category(action: AdvancedDriveAction) -> str:
-    if action in {"mark_ubad", "mark_ugood", "spin_down", "make_hot_spare"}:
-        return "operator_action"
+    if action == "mark_ubad":
+        return AUDIT_CATEGORY_DRIVE_MARK_UBAD
+    if action == "mark_ugood":
+        return AUDIT_CATEGORY_DRIVE_MARK_UGOOD
+    if action == "spin_down":
+        return AUDIT_CATEGORY_DRIVE_SPIN_DOWN
+    if action == "make_hot_spare":
+        return AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE
     raise ValueError(f"unknown advanced drive action: {action!r}")
 
 

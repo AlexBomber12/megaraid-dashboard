@@ -20,6 +20,12 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
 )
+from megaraid_dashboard.services.audit import (
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
+)
 from megaraid_dashboard.storcli import StorcliCommandFailed
 from megaraid_dashboard.web import routes
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
@@ -54,35 +60,35 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     ("path", "state", "json_body", "expected_argv", "expected_category", "summary_fragment"),
     [
         (
-            "/drives/2:0/mark-ubad",
+            "/drives/2:0/actions/mark-ubad",
             "UGood",
             None,
             ["/c0/e2/s0", "set", "bad"],
-            "operator_action",
+            AUDIT_CATEGORY_DRIVE_MARK_UBAD,
             "mark UBad drive 2:0 from state UGood",
         ),
         (
-            "/drives/2:0/mark-ugood",
+            "/drives/2:0/actions/mark-ugood",
             "UBad",
             None,
             ["/c0/e2/s0", "set", "good"],
-            "operator_action",
+            AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
             "mark UGood drive 2:0 from state UBad",
         ),
         (
-            "/drives/2:0/spin-down",
+            "/drives/2:0/actions/spindown",
             "Onln",
             None,
             ["/c0/e2/s0", "spindown"],
-            "operator_action",
+            AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
             "remains spun down until reboot or explicit spinup",
         ),
         (
-            "/drives/2:0/make-hot-spare",
+            "/drives/2:0/actions/hotspare",
             "UGood",
             {"dg_id": 0},
             ["/c0/e2/s0", "add", "hotsparedrive", "dgs=0"],
-            "operator_action",
+            AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
             "reversible by setting the spare drive bad",
         ),
     ],
@@ -140,10 +146,10 @@ def test_advanced_drive_happy_paths(
 @pytest.mark.parametrize(
     ("path", "state", "json_body"),
     [
-        ("/drives/2:0/mark-ubad", "Onln", None),
-        ("/drives/2:0/mark-ugood", "UGood", None),
-        ("/drives/2:0/spin-down", "Failed", None),
-        ("/drives/2:0/make-hot-spare", "Onln", {"dg_id": 0}),
+        ("/drives/2:0/actions/mark-ubad", "Onln", None),
+        ("/drives/2:0/actions/mark-ugood", "UGood", None),
+        ("/drives/2:0/actions/spindown", "Failed", None),
+        ("/drives/2:0/actions/hotspare", "Onln", {"dg_id": 0}),
     ],
 )
 def test_advanced_drive_wrong_state_returns_409(
@@ -171,10 +177,10 @@ def test_advanced_drive_wrong_state_returns_409(
 @pytest.mark.parametrize(
     ("path", "state", "json_body"),
     [
-        ("/drives/2:0/mark-ubad", "UGood", None),
-        ("/drives/2:0/mark-ugood", "UBad", None),
-        ("/drives/2:0/spin-down", "Onln", None),
-        ("/drives/2:0/make-hot-spare", "UGood", {"dg_id": 0}),
+        ("/drives/2:0/actions/mark-ubad", "UGood", None),
+        ("/drives/2:0/actions/mark-ugood", "UBad", None),
+        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
 def test_advanced_drive_without_csrf_returns_403(
@@ -199,10 +205,10 @@ def test_advanced_drive_without_csrf_returns_403(
 @pytest.mark.parametrize(
     ("path", "state", "json_body"),
     [
-        ("/drives/2:0/mark-ubad", "UGood", None),
-        ("/drives/2:0/mark-ugood", "UBad", None),
-        ("/drives/2:0/spin-down", "Onln", None),
-        ("/drives/2:0/make-hot-spare", "UGood", {"dg_id": 0}),
+        ("/drives/2:0/actions/mark-ubad", "UGood", None),
+        ("/drives/2:0/actions/mark-ugood", "UBad", None),
+        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
 def test_advanced_drive_without_auth_returns_401(
@@ -231,10 +237,10 @@ def test_advanced_drive_without_auth_returns_401(
 @pytest.mark.parametrize(
     ("path", "state", "json_body"),
     [
-        ("/drives/2:0/mark-ubad", "UGood", None),
-        ("/drives/2:0/mark-ugood", "UBad", None),
-        ("/drives/2:0/spin-down", "Onln", None),
-        ("/drives/2:0/make-hot-spare", "UGood", {"dg_id": 0}),
+        ("/drives/2:0/actions/mark-ubad", "UGood", None),
+        ("/drives/2:0/actions/mark-ugood", "UBad", None),
+        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
 def test_advanced_drive_storcli_failure_returns_502(
@@ -279,7 +285,7 @@ def test_advanced_drive_revalidates_live_state_before_mutation(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 409
     assert response.json() == {
@@ -306,7 +312,7 @@ def test_advanced_drive_live_precheck_failure_returns_502(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 502
     assert response.json()["error"] == "storcli precheck failed"
@@ -315,10 +321,10 @@ def test_advanced_drive_live_precheck_failure_returns_502(
 @pytest.mark.parametrize(
     ("path", "state", "json_body"),
     [
-        ("/drives/2:0/mark-ubad", "UGood", None),
-        ("/drives/2:0/mark-ugood", "UBad", None),
-        ("/drives/2:0/spin-down", "Onln", None),
-        ("/drives/2:0/make-hot-spare", "UGood", {"dg_id": 0}),
+        ("/drives/2:0/actions/mark-ubad", "UGood", None),
+        ("/drives/2:0/actions/mark-ugood", "UBad", None),
+        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
 def test_advanced_drive_audit_failure_returns_500(
@@ -359,7 +365,7 @@ def test_make_hot_spare_missing_dg_id_returns_422(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/make-hot-spare", headers=headers, json={})
+        response = client.post("/drives/2:0/actions/hotspare", headers=headers, json={})
 
     assert response.status_code == 422
 
@@ -375,7 +381,7 @@ def test_make_hot_spare_rejects_coerced_dg_id_types(
         _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
-            "/drives/2:0/make-hot-spare",
+            "/drives/2:0/actions/hotspare",
             headers=headers,
             json={"dg_id": dg_id},
         )
@@ -398,7 +404,7 @@ def test_advanced_drive_action_is_visible_in_audit_view(
         _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
         action_response = client.post(
-            "/drives/2:0/spin-down",
+            "/drives/2:0/actions/spindown",
             headers=headers,
             follow_redirects=False,
         )
@@ -425,7 +431,7 @@ def test_make_hot_spare_nonexistent_dg_returns_409(
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
         response = client.post(
-            "/drives/2:0/make-hot-spare",
+            "/drives/2:0/actions/hotspare",
             headers=headers,
             json={"dg_id": 0},
         )
@@ -445,7 +451,7 @@ def test_advanced_drive_invalid_path_returns_400(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/not-int:0/mark-ubad", headers=headers)
+        response = client.post("/drives/not-int:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 400
 
@@ -461,7 +467,7 @@ def test_advanced_drive_no_snapshot_returns_404(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 404
 
@@ -480,7 +486,7 @@ def test_advanced_drive_without_maintenance_mode_returns_403(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 403
     assert response.json() == {
@@ -510,7 +516,7 @@ def test_advanced_drive_audit_failure_after_storcli_failure_returns_500(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 500
     assert response.json()["storcli_error"] == "storcli exited with code 1: command failed"
