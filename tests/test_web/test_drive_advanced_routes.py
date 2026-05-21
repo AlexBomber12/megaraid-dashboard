@@ -108,6 +108,8 @@ def test_advanced_drive_happy_paths(
         assert use_sudo is False
         assert binary_path == "/usr/local/sbin/storcli64"
         calls.append(args)
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state=state, serial_number="WD-ADV-0001")
         return _SUCCESS
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -127,7 +129,7 @@ def test_advanced_drive_happy_paths(
 
         assert response.status_code == 303
         assert response.headers["location"] == "/drives/2:0"
-        assert calls == [expected_argv]
+        assert calls == [["/c0/e2/s0", "show", "all", "J"], expected_argv]
         event = _single_event(test_app)
         assert event.category == expected_category
         assert event.summary.endswith("succeeded")
@@ -242,7 +244,9 @@ def test_advanced_drive_storcli_failure_returns_502(
     state: str,
     json_body: dict[str, int] | None,
 ) -> None:
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state=state, serial_number="WD-ADV-0001")
         raise StorcliCommandFailed("storcli exited with code 1: command failed")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -256,6 +260,56 @@ def test_advanced_drive_storcli_failure_returns_502(
         assert response.status_code == 502
         assert response.json()["error"] == "storcli command failed"
         assert "failed: StorcliCommandFailed" in _single_event(test_app).summary
+
+
+def test_advanced_drive_revalidates_live_state_before_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        calls.append(args)
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln", serial_number="WD-ADV-0001")
+        raise AssertionError("mutating storcli command should not run after live rejection")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, state="UGood")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "Cannot mark UBad: drive is Onln (must be UGood first)",
+        "state": "Onln",
+        "snapshot_state": "UGood",
+        "action": "mark_ubad",
+        "dg_id": None,
+    }
+    assert calls == [["/c0/e2/s0", "show", "all", "J"]]
+
+
+def test_advanced_drive_live_precheck_failure_returns_502(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            raise StorcliCommandFailed("storcli exited with code 1: device removed")
+        raise AssertionError("mutating storcli command should not run after precheck failure")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, state="UGood")
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post("/drives/2:0/mark-ubad", headers=headers)
+
+    assert response.status_code == 502
+    assert response.json()["error"] == "storcli precheck failed"
 
 
 @pytest.mark.parametrize(
@@ -274,7 +328,9 @@ def test_advanced_drive_audit_failure_returns_500(
     state: str,
     json_body: dict[str, int] | None,
 ) -> None:
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state=state, serial_number="WD-ADV-0001")
         return _SUCCESS
 
     def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
@@ -331,7 +387,9 @@ def test_advanced_drive_action_is_visible_in_audit_view(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="Onln", serial_number="WD-ADV-0001")
         return _SUCCESS
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -435,7 +493,9 @@ def test_advanced_drive_audit_failure_after_storcli_failure_returns_500(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
-    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number="WD-ADV-0001")
         raise StorcliCommandFailed("storcli exited with code 1: command failed")
 
     def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
@@ -541,6 +601,34 @@ def _single_event(test_app: FastAPI) -> Event:
     with session_factory() as session:
         assert isinstance(session, Session)
         return session.scalars(select(Event)).one()
+
+
+def _drive_show_payload(*, state: str, serial_number: str) -> dict[str, Any]:
+    return {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Status": "Success",
+                    "Description": "None",
+                },
+                "Response Data": {
+                    "Drive /c0/e2/s0": [
+                        {
+                            "EID:Slt": "2:0",
+                            "DID": 14,
+                            "State": state,
+                            "Intf": "SATA",
+                        }
+                    ],
+                    "Drive /c0/e2/s0 - Detailed Information": {
+                        "Drive /c0/e2/s0 State": {"Media Error Count": 0},
+                        "Drive /c0/e2/s0 Device attributes": {"SN": serial_number},
+                        "Drive /c0/e2/s0 Policies/Settings": {},
+                    },
+                },
+            }
+        ]
+    }
 
 
 def _seed_drive(test_app: FastAPI, *, state: str) -> None:

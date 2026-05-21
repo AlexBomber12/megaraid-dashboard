@@ -676,6 +676,36 @@ async def _run_advanced_drive_action(
 
     argv = _advanced_drive_action_argv(action, enclosure_id, slot_id, dg_id)
 
+    try:
+        live = await _query_live_drive_show(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {
+                "error": "storcli precheck failed",
+                "action": action,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+
+    if not _advanced_drive_action_allowed(action, live.state, has_requested_dg):
+        return JSONResponse(
+            {
+                "error": _advanced_drive_action_rejection(action, live.state, dg_id),
+                "state": live.state,
+                "snapshot_state": drive.state,
+                "action": action,
+                "dg_id": dg_id,
+            },
+            status_code=409,
+        )
+
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     try:
@@ -699,7 +729,7 @@ async def _run_advanced_drive_action(
                 action=action,
                 enclosure_id=enclosure_id,
                 slot_id=slot_id,
-                state=drive.state,
+                state=live.state,
                 dg_id=dg_id,
             ),
             outcome=outcome,
