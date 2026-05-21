@@ -42,10 +42,15 @@
       }
 
       function payloadFor(form) {
-        if (!form.action.includes("/controller/foreign-config/")) {
-          return null;
-        }
         const formData = new FormData(form);
+        if (!form.action.includes("/controller/foreign-config/")) {
+          if (!form.hasAttribute("data-operation-mode-form")) {
+            return null;
+          }
+          return JSON.stringify({
+            mode: formData.get("mode") || "",
+          });
+        }
         return JSON.stringify({
           confirmation: formData.get("confirmation") || "",
           dry_run: formData.get("dry_run") === "true",

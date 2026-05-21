@@ -27,8 +27,17 @@
                 <input type="hidden" name="csrf_token" value="">
                 <button class="button" type="submit" {% if not operation.can_stop %}disabled{% endif %}>Stop</button>
               </form>
-              <form method="post" action="{{ operation.mode_url or '#' }}" class="inline-form" data-csrf-form>
+              {% set operation_mode_text = operation.mode_text|lower %}
+              {% set next_operation_mode = "auto" if "manual" in operation_mode_text else "manual" %}
+              <form
+                method="post"
+                action="{{ operation.mode_url or '#' }}"
+                class="inline-form"
+                data-csrf-form
+                data-operation-mode-form
+              >
                 <input type="hidden" name="csrf_token" value="">
+                <input type="hidden" name="mode" value="{{ next_operation_mode }}">
                 <button class="button" type="submit" {% if not operation.can_change_mode %}disabled{% endif %}>Mode</button>
               </form>
             </div>

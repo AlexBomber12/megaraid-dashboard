@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import ControllerSnapshot
+from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -127,6 +128,48 @@ def test_controller_detail_submit_handler_honors_canceled_submit() -> None:
     assert guard_index < prevent_default_index
 
 
+def test_live_operation_mode_forms_post_required_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.controller_detail._load_patrol_read_state",
+        lambda _snapshot: PatrolReadStatus(
+            mode="auto",
+            state="stopped",
+            progress_percent=None,
+            completed_drive_count=None,
+            last_run_timestamp=None,
+        ),
+    )
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.controller_detail._load_consistency_check_state",
+        lambda _snapshot: ConsistencyCheckStatus(
+            mode="manual",
+            state="stopped",
+            progress_percent=None,
+            last_run_timestamp=None,
+            inconsistency_count=None,
+            inconsistency_detail=None,
+        ),
+    )
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_controller_snapshot(test_app, alarm_state="On")
+
+        response = client.get("/controller")
+
+    forms = _forms_by_action(response.text)
+    assert forms["/controller/patrol-read/mode"].hidden_inputs["mode"] == "manual"
+    assert forms["/controller/patrol-read/mode"].is_operation_mode_form is True
+    assert forms["/controller/consistency-check/mode"].hidden_inputs["mode"] == "auto"
+    assert forms["/controller/consistency-check/mode"].is_operation_mode_form is True
+
+
+def test_controller_detail_submit_handler_serializes_operation_mode_payload() -> None:
+    template = Path("src/megaraid_dashboard/templates/pages/controller_detail.html").read_text()
+
+    assert 'form.hasAttribute("data-operation-mode-form")' in template
+    assert 'mode: formData.get("mode") || ""' in template
+
+
 def test_buzzer_silence_form_posts_with_csrf(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -218,6 +261,12 @@ def _form_action_by_buzzer_action(html: str, action: str) -> str:
     return parser.form_actions[action]
 
 
+def _forms_by_action(html: str) -> dict[str, _Form]:
+    parser = _FormParser()
+    parser.feed(html)
+    return parser.forms
+
+
 def _csrf_request_headers(
     client: TestClient,
     csrf_headers: Callable[[TestClient], dict[str, str]],
@@ -233,6 +282,12 @@ class _Button:
     def __init__(self, *, label: str, disabled: bool) -> None:
         self.label = label
         self.disabled = disabled
+
+
+class _Form:
+    def __init__(self, *, hidden_inputs: dict[str, str], is_operation_mode_form: bool) -> None:
+        self.hidden_inputs = hidden_inputs
+        self.is_operation_mode_form = is_operation_mode_form
 
 
 class _SectionParser(HTMLParser):
@@ -281,3 +336,37 @@ class _BuzzerButtonParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self.current_button_action is not None:
             self.current_button_label.append(data)
+
+
+class _FormParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.current_action: str | None = None
+        self.current_hidden_inputs: dict[str, str] = {}
+        self.current_is_operation_mode_form = False
+        self.forms: dict[str, _Form] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if tag == "form":
+            self.current_action = attributes.get("action", "")
+            self.current_hidden_inputs = {}
+            self.current_is_operation_mode_form = "data-operation-mode-form" in attributes
+            return
+        if tag != "input" or self.current_action is None:
+            return
+        if attributes.get("type") != "hidden":
+            return
+        name = attributes.get("name")
+        if name is None:
+            return
+        self.current_hidden_inputs[name] = attributes.get("value", "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "form" or self.current_action is None:
+            return
+        self.forms[self.current_action] = _Form(
+            hidden_inputs=self.current_hidden_inputs,
+            is_operation_mode_form=self.current_is_operation_mode_form,
+        )
+        self.current_action = None
