@@ -113,6 +113,18 @@ def test_foreign_config_present_state_renders_clear_action() -> None:
     assert "Source controller SN SRC123" in response.text
     assert 'action="/controller/foreign-config/clear"' in response.text
     assert "Clear foreign config?" in response.text
+    assert 'type="hidden" name="confirmation"' not in response.text
+    assert 'type="text"\n                name="confirmation"' in response.text
+    assert 'pattern="CLEAR FOREIGN CONFIG"' in response.text
+
+
+def test_controller_detail_submit_handler_honors_canceled_submit() -> None:
+    template = Path("src/megaraid_dashboard/templates/pages/controller_detail.html").read_text()
+
+    guard_index = template.index("if (event.defaultPrevented)")
+    prevent_default_index = template.index("event.preventDefault()")
+
+    assert guard_index < prevent_default_index
 
 
 def test_buzzer_silence_form_posts_with_csrf(

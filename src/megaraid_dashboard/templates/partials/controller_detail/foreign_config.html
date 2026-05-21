@@ -21,7 +21,18 @@
             onsubmit="return confirm('Clear foreign config?');"
           >
             <input type="hidden" name="csrf_token" value="">
-            <input type="hidden" name="confirmation" value="CLEAR FOREIGN CONFIG">
+            <label class="foreign-config__field">
+              <span>Confirmation phrase</span>
+              <input
+                class="input"
+                type="text"
+                name="confirmation"
+                required
+                autocomplete="off"
+                spellcheck="false"
+                pattern="CLEAR FOREIGN CONFIG"
+              >
+            </label>
             <button type="submit" class="button button--danger" {% if not view_model.foreign_config.can_clear %}disabled{% endif %}>Clear</button>
           </form>
         {% else %}

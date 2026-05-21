@@ -54,6 +54,9 @@
 
       document.querySelectorAll("[data-csrf-form]").forEach((form) => {
         form.addEventListener("submit", function (event) {
+          if (event.defaultPrevented) {
+            return;
+          }
           event.preventDefault();
           const token = getCookie("__Host-csrf");
           const jsonPayload = payloadFor(form);
