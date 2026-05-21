@@ -89,10 +89,11 @@ def _render_child_template(
     maintenance_state: SimpleNamespace | None = None,
 ) -> str:
     template = create_templates(TEMPLATE_DIR).env.from_string(
-        '{% extends "layouts/base.html" %}{% block nav_active %}overview{% endblock %}' + source
+        '{% extends "layouts/base.html" %}' + source
     )
     return template.render(
         {
+            "active_nav": "overview",
             "request": _StaticRequest(),
             "current_utc_label": "2026-05-04T00:00:00Z",
             "maintenance_state": maintenance_state or SimpleNamespace(active=False),

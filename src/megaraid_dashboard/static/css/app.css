@@ -357,7 +357,11 @@ a:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  max-width: 100%;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .site-nav-v2__link {

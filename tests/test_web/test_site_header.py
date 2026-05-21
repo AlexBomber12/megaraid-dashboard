@@ -54,6 +54,29 @@ def test_overview_nav_link_is_marked_active() -> None:
     assert overview_link["aria-current"] == "page"
 
 
+def test_audit_nav_link_is_marked_active_after_redirect() -> None:
+    response = _get_path("/audit")
+    parser = _LinkParser()
+    parser.feed(response.text)
+
+    audit_link = parser.links["Audit"]
+    events_link = parser.links["Events"]
+
+    assert "site-nav-v2__link--active" in audit_link["class"]
+    assert audit_link["aria-current"] == "page"
+    assert "site-nav-v2__link--active" not in events_link["class"]
+    assert "aria-current" not in events_link
+
+
+def test_nav_active_marker_text_does_not_render_before_header() -> None:
+    response = _get_overview()
+    body_start = response.text.index("<body>")
+    header_start = response.text.index('<header class="site-header-v2">')
+    before_header = response.text[body_start:header_start]
+
+    assert "overview" not in before_header
+
+
 def test_refresh_indicator_dot_is_green() -> None:
     stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text(encoding="utf-8")
 
@@ -77,10 +100,24 @@ def test_header_uses_sticky_css_class() -> None:
     assert "position: sticky;" in stylesheet
 
 
+def test_header_nav_has_v2_mobile_overflow_handling() -> None:
+    stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text(encoding="utf-8")
+
+    assert ".site-nav-v2 {" in stylesheet
+    assert "overflow-x: auto;" in stylesheet
+    assert "-webkit-overflow-scrolling: touch;" in stylesheet
+    assert "@media (max-width: 560px)" in stylesheet
+    assert "flex-wrap: wrap;" in stylesheet
+
+
 def _get_overview() -> object:
+    return _get_path("/")
+
+
+def _get_path(path: str) -> object:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
-        return client.get("/")
+        return client.get(path)
 
 
 class _LinkParser(HTMLParser):

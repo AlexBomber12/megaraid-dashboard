@@ -3022,7 +3022,7 @@ async def controller_foreign_config(request: Request) -> Response:
 
     if _accepts_html(request):
         context: dict[str, Any] = {
-            "active_nav": "overview",
+            "active_nav": "controller",
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "foreign_config": (

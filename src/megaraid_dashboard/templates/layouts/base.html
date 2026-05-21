@@ -39,10 +39,9 @@
     {% block extra_scripts %}{% endblock %}
   </head>
   <body>
-    {% if false %}{% block nav_active %}{% endblock %}{% endif %}
     {% include "partials/maintenance_banner.html" %}
     <div class="app-shell">
-      {% set nav_active = self.nav_active() | trim %}
+      {% set nav_active = active_nav | default("") | trim %}
       {% include "partials/site_header.html" %}
 
       <main class="page-content">
