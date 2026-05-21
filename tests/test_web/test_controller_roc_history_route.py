@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import ControllerSnapshot
+from megaraid_dashboard.services import controller_history
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -33,6 +34,11 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("METRICS_LOCK_PATH", str(tmp_path / "metrics.lock"))
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("LOG_LEVEL", "INFO")
+    monkeypatch.setattr(
+        controller_history,
+        "_now_utc",
+        lambda: datetime(2026, 5, 20, 12, 0, tzinfo=UTC),
+    )
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

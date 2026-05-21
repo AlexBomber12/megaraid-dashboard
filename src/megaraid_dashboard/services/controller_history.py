@@ -46,14 +46,15 @@ def load_roc_temperature_series(
             settings=settings,
         )
 
-    cutoff = latest_captured_at - timedelta(hours=range_hours)
+    until = _now_utc()
+    cutoff = until - timedelta(hours=range_hours)
     if range_hours <= 24:
-        points = _load_raw_points(session, cutoff=cutoff, until=latest_captured_at)
+        points = _load_raw_points(session, cutoff=cutoff, until=until)
     elif range_hours <= 168:
         points = _load_bucketed_points(
             session,
             cutoff=cutoff,
-            until=latest_captured_at,
+            until=until,
             bucket_format="%Y-%m-%d %H",
             bucket_parse_format="%Y-%m-%d %H",
         )
@@ -61,7 +62,7 @@ def load_roc_temperature_series(
         points = _load_bucketed_points(
             session,
             cutoff=cutoff,
-            until=latest_captured_at,
+            until=until,
             bucket_format="%Y-%m-%d",
             bucket_parse_format="%Y-%m-%d",
         )
@@ -81,6 +82,10 @@ def _latest_captured_at(session: Session) -> datetime | None:
         .limit(1)
     )
     return None if captured_at is None else _require_aware_utc(captured_at)
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
 
 
 def _current_celsius(session: Session) -> int | None:
