@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import cast
 
@@ -58,6 +59,20 @@ def test_audit_route_redirects_to_operator_action_events_filter() -> None:
         "&category=controller_buzzer_disable"
         "&category=controller_buzzer_enable"
     )
+
+
+def test_audit_route_marks_audit_nav_link_active() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/audit", follow_redirects=True)
+
+    parser = _NavLinkParser()
+    parser.feed(response.text)
+
+    assert response.status_code == 200
+    assert parser.links["Audit"]["href"] == "/audit"
+    assert "site-nav-v2__link--active" in parser.links["Audit"]["class"]
+    assert parser.links["Audit"]["aria-current"] == "page"
 
 
 def test_events_operator_action_filter_shows_audit_rows_only() -> None:
@@ -118,3 +133,25 @@ def _insert_event(test_app: FastAPI, *, category: str, subject: str, summary: st
             summary=summary,
         )
         session.commit()
+
+
+class _NavLinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: dict[str, dict[str, str]] = {}
+        self._current_attrs: dict[str, str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        attributes = {name: value or "" for name, value in attrs}
+        if "site-nav-v2__link" in attributes.get("class", ""):
+            self._current_attrs = attributes
+
+    def handle_data(self, data: str) -> None:
+        if self._current_attrs is None:
+            return
+        label = data.strip()
+        if label:
+            self.links[label] = self._current_attrs
+            self._current_attrs = None

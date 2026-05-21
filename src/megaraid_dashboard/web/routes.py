@@ -3589,7 +3589,7 @@ def events(
         request=request,
         name="pages/events.html",
         context={
-            "active_nav": "events",
+            "active_nav": _events_nav_active(categories),
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "view_model": view_model,
@@ -3886,6 +3886,12 @@ def _event_filter_values(request: Request) -> tuple[tuple[str, ...], tuple[str, 
     categories = _normalize_query_values(tuple(request.query_params.getlist("category")))
     severities = _normalize_query_values(tuple(request.query_params.getlist("severity")))
     return categories, severities
+
+
+def _events_nav_active(categories: tuple[str, ...]) -> str:
+    if categories == _AUDIT_LOG_CATEGORIES:
+        return "audit"
+    return "events"
 
 
 def _normalize_query_values(values: tuple[str, ...]) -> tuple[str, ...]:
