@@ -62,15 +62,26 @@ def test_drives_page_renders_mobile_data_labels(sample_snapshot: StorcliSnapshot
         assert f'data-label="{label}"' in response.text
 
 
-def test_header_nav_is_wrapped_in_details() -> None:
+def test_header_nav_renders_primary_navigation() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert '<details class="site-nav-details">' in response.text
-    assert 'class="site-nav-toggle"' in response.text
-    assert '<nav class="site-nav" aria-label="Primary navigation">' in response.text
+    assert '<header class="site-header-v2">' in response.text
+    assert '<nav class="site-nav-v2" aria-label="Primary navigation">' in response.text
+
+
+def test_v2_header_nav_has_mobile_overflow_handling() -> None:
+    stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text()
+
+    compact_header_rules = stylesheet.split("@media (max-width: 760px)", maxsplit=1)[1]
+    narrow_header_rules = stylesheet.split("@media (max-width: 560px)", maxsplit=1)[1]
+
+    assert ".site-nav-v2 {\n    grid-column: 1 / -1;" in compact_header_rules
+    assert "overflow-x: auto;" in compact_header_rules
+    assert ".site-nav-v2 {\n    flex-wrap: wrap;" in narrow_header_rules
+    assert ".site-nav-v2__link {\n    flex: 1 1 calc(50% - var(--space-2));" in narrow_header_rules
 
 
 def test_mobile_layout_does_not_require_new_javascript() -> None:

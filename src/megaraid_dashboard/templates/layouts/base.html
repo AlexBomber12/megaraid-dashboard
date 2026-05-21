@@ -41,48 +41,10 @@
   <body>
     {% include "partials/maintenance_banner.html" %}
     <div class="app-shell">
-      <header class="site-header">
-        <div class="site-header__inner">
-          <div class="site-header__left">
-            <a class="brand" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
-            <details class="site-nav-details">
-              <summary class="site-nav-toggle" aria-label="Toggle primary navigation">
-                <span class="site-nav-toggle__bar"></span>
-                <span class="site-nav-toggle__bar"></span>
-                <span class="site-nav-toggle__bar"></span>
-              </summary>
-              <nav class="site-nav" aria-label="Primary navigation">
-                <a
-                  class="site-nav__link{% if active_nav == 'overview' %} site-nav__link--active{% endif %}"
-                  href="{{ request.url_for('overview').path }}"
-                >Dashboard</a>
-                <a
-                  class="site-nav__link{% if active_nav == 'drives' %} site-nav__link--active{% endif %}"
-                  href="{{ request.url_for('drives').path }}"
-                >Drives</a>
-                <a
-                  class="site-nav__link{% if active_nav == 'events' %} site-nav__link--active{% endif %}"
-                  href="{{ request.url_for('events').path }}"
-                >Events</a>
-              </nav>
-            </details>
-          </div>
-          <div class="site-header__actions">
-            <noscript><time class="utc-clock">{{ current_utc_label }}</time></noscript>
-            <time class="utc-clock" data-local-time-clock aria-live="off" hidden>{{ current_utc_label }}</time>
-            <button
-              class="button button--primary"
-              type="button"
-              hx-get="{{ request.url_for('overview_partial').path }}"
-              hx-target="#data-block"
-              hx-swap="outerHTML"
-              hx-trigger="click"
-            >Refresh</button>
-          </div>
-        </div>
-      </header>
+      {% set nav_active = active_nav | default("") | trim %}
+      {% include "partials/site_header.html" %}
 
-      <main class="content">
+      <main class="page-content">
         {% block content %}{% endblock %}
       </main>
 
@@ -91,6 +53,15 @@
           Version {{ app_version }} | Build {{ build_sha }}
         </div>
       </footer>
+
+      {% set status_bar_content %}
+        {% block status_bar %}{% endblock %}
+      {% endset %}
+      {% if status_bar_content | trim %}
+        <div class="status-bar" role="status">
+          {{ status_bar_content | safe }}
+        </div>
+      {% endif %}
     </div>
   </body>
 </html>
