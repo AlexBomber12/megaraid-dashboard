@@ -18,6 +18,7 @@ _LOCATE_VERB: dict[LocateAction, str] = {
 
 _OFFLINE_ALLOWED_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Failed", "UBad", "UGood"})
 _MISSING_ALLOWED_STATES: frozenset[str] = frozenset({"Offln"})
+_SPIN_DOWN_ALLOWED_STATES: frozenset[str] = frozenset({"Onln", "UGood", "UBad"})
 
 # Matches the exact success-audit format written by the route layer for the
 # missing step: ``replace step missing drive {e}:{s} serial {sn} succeeded``.
@@ -57,6 +58,28 @@ def build_set_offline_command(enclosure: int, slot: int) -> list[str]:
 def build_set_missing_command(enclosure: int, slot: int) -> list[str]:
     validate_enclosure_slot(enclosure, slot)
     return [f"/c0/e{enclosure}/s{slot}", "set", "missing", "J"]
+
+
+def build_mark_unconfigured_bad_command(enclosure: int, slot: int) -> list[str]:
+    validate_enclosure_slot(enclosure, slot)
+    return [f"/c0/e{enclosure}/s{slot}", "set", "bad"]
+
+
+def build_mark_unconfigured_good_command(enclosure: int, slot: int) -> list[str]:
+    validate_enclosure_slot(enclosure, slot)
+    return [f"/c0/e{enclosure}/s{slot}", "set", "good"]
+
+
+def build_spin_down_command(enclosure: int, slot: int) -> list[str]:
+    validate_enclosure_slot(enclosure, slot)
+    return [f"/c0/e{enclosure}/s{slot}", "spindown"]
+
+
+def build_make_hot_spare_command(enclosure: int, slot: int, dg_id: int) -> list[str]:
+    validate_enclosure_slot(enclosure, slot)
+    if not isinstance(dg_id, int) or isinstance(dg_id, bool) or dg_id < 0 or dg_id > 63:
+        raise ValueError("dg_id must be int in [0, 63]")
+    return [f"/c0/e{enclosure}/s{slot}", "add", "hotsparedrive", f"dgs={dg_id}"]
 
 
 def build_show_drive_command(enclosure: int, slot: int) -> list[str]:
@@ -181,6 +204,22 @@ def can_transition(current_state: str, requested_step: ReplaceStep) -> bool:
     if requested_step == "missing":
         return current_state in _MISSING_ALLOWED_STATES
     return False
+
+
+def can_mark_ubad(current_state: str) -> bool:
+    return current_state == "UGood"
+
+
+def can_mark_ugood(current_state: str) -> bool:
+    return current_state == "UBad"
+
+
+def can_spin_down(current_state: str) -> bool:
+    return current_state in _SPIN_DOWN_ALLOWED_STATES
+
+
+def can_make_hot_spare(current_state: str, has_existing_dgs: bool) -> bool:
+    return current_state == "UGood" and has_existing_dgs
 
 
 def can_transition_step3(latest_audit_message: str | None) -> bool:

@@ -18,7 +18,7 @@
         </div>
         <span class="timeline__message">
           {{ event.summary | slot_link | safe }}
-          {%- if event.category == "operator_action" and event.operator_username %}
+          {%- if event.operator_username %}
             <span class="event-actor">by {{ event.operator_username }}</span>
           {%- endif %}
         </span>

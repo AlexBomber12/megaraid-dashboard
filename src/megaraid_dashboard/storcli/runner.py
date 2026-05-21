@@ -37,7 +37,9 @@ _ALLOWED_COMMAND_PATTERNS = (
     re.compile(r"^/c0/e\d+/s\d+ show all J$"),
     re.compile(r"^/c0/e\d+/s\d+ show rebuild J$"),
     re.compile(r"^/c0/e\d+/s\d+ (start|stop) locate J$"),
-    re.compile(r"^/c0/e\d+/s\d+ set (offline|missing) J$"),
+    re.compile(r"^/c0/e\d+/s\d+ set (offline|missing|bad|good) J$"),
+    re.compile(r"^/c0/e\d+/s\d+ spindown J$"),
+    re.compile(r"^/c0/e\d+/s\d+ add hotsparedrive dgs=\d+ J$"),
     re.compile(r"^/c0/e\d+/s\d+ insert dg=\d+ array=\d+ row=\d+ J$"),
 )
 

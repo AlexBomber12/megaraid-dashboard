@@ -58,6 +58,10 @@ def test_audit_redirect_preserves_carry_forward_query_path() -> None:
     assert response.status_code == 302
     assert response.headers["location"] == (
         "/events?category=operator_action"
+        "&category=drive_mark_ubad"
+        "&category=drive_mark_ugood"
+        "&category=drive_spin_down"
+        "&category=drive_make_hot_spare"
         "&category=controller_buzzer_silence"
         "&category=controller_buzzer_disable"
         "&category=controller_buzzer_enable"

@@ -285,10 +285,8 @@ async def test_rebuild_status_template_is_allowed(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("verb", ["offline", "missing"])
-async def test_set_offline_and_missing_templates_are_allowed(
-    monkeypatch: pytest.MonkeyPatch, verb: str
-) -> None:
+@pytest.mark.parametrize("verb", ["offline", "missing", "bad", "good"])
+async def test_drive_set_templates_are_allowed(monkeypatch: pytest.MonkeyPatch, verb: str) -> None:
     captured: dict[str, tuple[str, ...]] = {}
 
     async def fake_create_subprocess_exec(
@@ -313,10 +311,11 @@ async def test_set_offline_and_missing_templates_are_allowed(
 @pytest.mark.parametrize(
     "argv",
     [
-        ["/c0/e2/s0", "set", "good", "J"],
         ["/c0/e2/s0", "set", "online", "J"],
         ["/c0/e2/s0", "delete", "missing", "J"],
         ["/c0", "set", "offline", "J"],
+        ["/c0/e2/s0", "add", "hotsparedrive", "dgs=-1", "J"],
+        ["/c0/e2/s0", "add", "hotsparedrive", "dgs=0", "force", "J"],
     ],
 )
 async def test_set_template_rejects_unknown_verbs(
@@ -332,6 +331,33 @@ async def test_set_template_rejects_unknown_verbs(
 
     with pytest.raises(StorcliCommandFailed, match="not allowed"):
         await run_storcli(argv, use_sudo=False, binary_path="storcli64")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["/c0/e2/s0", "spindown", "J"],
+        ["/c0/e2/s0", "add", "hotsparedrive", "dgs=0", "J"],
+    ],
+)
+async def test_advanced_drive_templates_are_allowed(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    async def fake_create_subprocess_exec(
+        *args: str,
+        **_kwargs: Any,
+    ) -> FakeProcess:
+        captured["argv"] = args
+        return FakeProcess(b'{"Controllers":[]}', b"", 0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await run_storcli(argv, use_sudo=False, binary_path="storcli64")
+
+    assert captured["argv"] == ("storcli64", *argv)
 
 
 @pytest.mark.asyncio

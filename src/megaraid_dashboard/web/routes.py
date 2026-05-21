@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, StrictInt, ValidationError, field_validator
 from sqlalchemy import or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -34,7 +34,13 @@ from megaraid_dashboard.db.models import (
     Event,
     PhysicalDriveSnapshot,
 )
-from megaraid_dashboard.services.audit import record_operator_action
+from megaraid_dashboard.services.audit import (
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
+    record_operator_action,
+)
 from megaraid_dashboard.services.drive_actions import (
     ConsistencyCheckMode,
     ConsistencyCheckStatus,
@@ -55,6 +61,9 @@ from megaraid_dashboard.services.drive_actions import (
     build_foreign_config_show_command,
     build_insert_replacement_command,
     build_locate_command,
+    build_make_hot_spare_command,
+    build_mark_unconfigured_bad_command,
+    build_mark_unconfigured_good_command,
     build_patrol_read_mode_command,
     build_patrol_read_show_command,
     build_patrol_read_start_command,
@@ -63,6 +72,11 @@ from megaraid_dashboard.services.drive_actions import (
     build_set_missing_command,
     build_set_offline_command,
     build_show_drive_command,
+    build_spin_down_command,
+    can_make_hot_spare,
+    can_mark_ubad,
+    can_mark_ugood,
+    can_spin_down,
     can_transition,
     can_transition_step3,
     consistency_check_can_start,
@@ -132,6 +146,10 @@ _EVENT_CATEGORY_FILTERS = (
     "disk_space",
     "system",
     "operator_action",
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     "controller_buzzer_silence",
     "controller_buzzer_disable",
     "controller_buzzer_enable",
@@ -140,6 +158,10 @@ _EVENT_CATEGORY_FILTERS = (
 )
 _AUDIT_LOG_CATEGORIES = (
     "operator_action",
+    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
+    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
+    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
+    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     "controller_buzzer_silence",
     "controller_buzzer_disable",
     "controller_buzzer_enable",
@@ -538,6 +560,13 @@ class ReplaceRequest(BaseModel):
     dry_run: bool = False
 
 
+class MakeHotSpareRequest(BaseModel):
+    dg_id: StrictInt = Field(ge=0, le=63)
+
+
+AdvancedDriveAction = Literal["mark_ubad", "mark_ugood", "spin_down", "make_hot_spare"]
+
+
 @router.post("/drives/{enclosure}:{slot}/replace/offline", name="drive_replace_offline")
 async def drive_replace_offline(enclosure: str, slot: str, request: Request) -> JSONResponse:
     """Mark a physical drive offline as Step 1a of the replace procedure."""
@@ -548,6 +577,319 @@ async def drive_replace_offline(enclosure: str, slot: str, request: Request) -> 
 async def drive_replace_missing(enclosure: str, slot: str, request: Request) -> JSONResponse:
     """Mark a physical drive missing as Step 1b of the replace procedure."""
     return await _run_replace_step(enclosure, slot, "missing", request)
+
+
+@router.post("/drives/{enclosure}:{slot}/actions/mark-ubad", name="drive_mark_ubad")
+async def drive_mark_ubad(enclosure: str, slot: str, request: Request) -> Response:
+    return await _run_advanced_drive_action(
+        enclosure=enclosure,
+        slot=slot,
+        request=request,
+        action="mark_ubad",
+        dg_id=None,
+    )
+
+
+@router.post("/drives/{enclosure}:{slot}/actions/mark-ugood", name="drive_mark_ugood")
+async def drive_mark_ugood(enclosure: str, slot: str, request: Request) -> Response:
+    return await _run_advanced_drive_action(
+        enclosure=enclosure,
+        slot=slot,
+        request=request,
+        action="mark_ugood",
+        dg_id=None,
+    )
+
+
+@router.post("/drives/{enclosure}:{slot}/actions/spindown", name="drive_spin_down")
+async def drive_spin_down(enclosure: str, slot: str, request: Request) -> Response:
+    return await _run_advanced_drive_action(
+        enclosure=enclosure,
+        slot=slot,
+        request=request,
+        action="spin_down",
+        dg_id=None,
+    )
+
+
+@router.post("/drives/{enclosure}:{slot}/actions/hotspare", name="drive_make_hot_spare")
+async def drive_make_hot_spare(
+    enclosure: str,
+    slot: str,
+    body: MakeHotSpareRequest,
+    request: Request,
+) -> Response:
+    return await _run_advanced_drive_action(
+        enclosure=enclosure,
+        slot=slot,
+        request=request,
+        action="make_hot_spare",
+        dg_id=body.dg_id,
+    )
+
+
+async def _run_advanced_drive_action(
+    *,
+    enclosure: str,
+    slot: str,
+    request: Request,
+    action: AdvancedDriveAction,
+    dg_id: int | None,
+) -> Response:
+    try:
+        enclosure_id = int(enclosure)
+        slot_id = int(slot)
+        validate_enclosure_slot(enclosure_id, slot_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    drive = await run_in_threadpool(
+        _load_latest_drive_for_slot,
+        request=request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+    )
+    if drive is None:
+        return JSONResponse(
+            {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
+            status_code=404,
+        )
+
+    has_requested_dg = True
+    if action == "make_hot_spare":
+        if dg_id is None:
+            return JSONResponse({"error": "dg_id is required"}, status_code=422)
+        has_requested_dg = await run_in_threadpool(
+            _latest_snapshot_has_disk_group,
+            request=request,
+            dg_id=dg_id,
+        )
+
+    if not _advanced_drive_action_allowed(action, drive.state, has_requested_dg):
+        return JSONResponse(
+            {
+                "error": _advanced_drive_action_rejection(action, drive.state, dg_id),
+                "state": drive.state,
+                "action": action,
+                "dg_id": dg_id,
+            },
+            status_code=409,
+        )
+
+    settings: Settings = request.app.state.settings
+    if not settings.maintenance_mode:
+        return JSONResponse(
+            {
+                "error": "drive changes require maintenance_mode",
+                "maintenance_mode": settings.maintenance_mode,
+            },
+            status_code=403,
+        )
+
+    argv = _advanced_drive_action_argv(action, enclosure_id, slot_id, dg_id)
+
+    try:
+        live = await _query_live_drive_show(
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            settings=settings,
+        )
+    except StorcliError as exc:
+        return JSONResponse(
+            {
+                "error": "storcli precheck failed",
+                "action": action,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "detail": str(exc),
+            },
+            status_code=502,
+        )
+
+    if not _advanced_drive_action_allowed(action, live.state, has_requested_dg):
+        return JSONResponse(
+            {
+                "error": _advanced_drive_action_rejection(action, live.state, dg_id),
+                "state": live.state,
+                "snapshot_state": drive.state,
+                "action": action,
+                "dg_id": dg_id,
+            },
+            status_code=409,
+        )
+
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        ensure_command_succeeded(result)
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+
+    try:
+        await run_in_threadpool(
+            _record_advanced_drive_operator_action_sync,
+            request=request,
+            category=_advanced_drive_action_category(action),
+            message=_advanced_drive_action_audit_message(
+                action=action,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                state=live.state,
+                dg_id=dg_id,
+            ),
+            outcome=outcome,
+        )
+    except SQLAlchemyError:
+        extras: dict[str, Any] = {
+            "action": action,
+            "enclosure": enclosure_id,
+            "slot": slot_id,
+            "argv": argv,
+        }
+        if dg_id is not None:
+            extras["dg_id"] = dg_id
+        if result is not None:
+            extras["result"] = result
+        if storcli_error is not None:
+            extras["storcli_error"] = str(storcli_error)
+        return _audit_persistence_failure_response(**extras)
+
+    if storcli_error is not None:
+        return JSONResponse(
+            {
+                "error": "storcli command failed",
+                "action": action,
+                "enclosure": enclosure_id,
+                "slot": slot_id,
+                "argv": argv,
+                "detail": str(storcli_error),
+            },
+            status_code=502,
+        )
+    return RedirectResponse(f"/drives/{enclosure_id}:{slot_id}", status_code=303)
+
+
+def _advanced_drive_action_allowed(
+    action: AdvancedDriveAction,
+    current_state: str,
+    has_requested_dg: bool,
+) -> bool:
+    if action == "mark_ubad":
+        return can_mark_ubad(current_state)
+    if action == "mark_ugood":
+        return can_mark_ugood(current_state)
+    if action == "spin_down":
+        return can_spin_down(current_state)
+    if action == "make_hot_spare":
+        return can_make_hot_spare(current_state, has_requested_dg)
+    return False
+
+
+def _advanced_drive_action_rejection(
+    action: AdvancedDriveAction,
+    current_state: str,
+    dg_id: int | None,
+) -> str:
+    if action == "mark_ubad":
+        return f"Cannot mark UBad: drive is {current_state} (must be UGood first)"
+    if action == "mark_ugood":
+        return f"Cannot mark UGood: drive is {current_state} (must be UBad first)"
+    if action == "spin_down":
+        return f"Cannot spin down: drive is {current_state} (must be Onln, UGood, or UBad)"
+    if action == "make_hot_spare":
+        return (
+            f"Cannot make hot spare for DG {dg_id}: drive is {current_state} "
+            "and the requested disk group must exist"
+        )
+    return "Cannot run drive action"
+
+
+def _advanced_drive_action_argv(
+    action: AdvancedDriveAction,
+    enclosure_id: int,
+    slot_id: int,
+    dg_id: int | None,
+) -> list[str]:
+    if action == "mark_ubad":
+        return build_mark_unconfigured_bad_command(enclosure_id, slot_id)
+    if action == "mark_ugood":
+        return build_mark_unconfigured_good_command(enclosure_id, slot_id)
+    if action == "spin_down":
+        return build_spin_down_command(enclosure_id, slot_id)
+    if action == "make_hot_spare":
+        if dg_id is None:
+            raise ValueError("dg_id is required")
+        return build_make_hot_spare_command(enclosure_id, slot_id, dg_id)
+    raise ValueError(f"unknown advanced drive action: {action!r}")
+
+
+def _advanced_drive_action_category(action: AdvancedDriveAction) -> str:
+    if action == "mark_ubad":
+        return AUDIT_CATEGORY_DRIVE_MARK_UBAD
+    if action == "mark_ugood":
+        return AUDIT_CATEGORY_DRIVE_MARK_UGOOD
+    if action == "spin_down":
+        return AUDIT_CATEGORY_DRIVE_SPIN_DOWN
+    if action == "make_hot_spare":
+        return AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE
+    raise ValueError(f"unknown advanced drive action: {action!r}")
+
+
+def _advanced_drive_action_audit_message(
+    *,
+    action: AdvancedDriveAction,
+    enclosure_id: int,
+    slot_id: int,
+    state: str,
+    dg_id: int | None,
+) -> str:
+    drive_ref = f"drive {enclosure_id}:{slot_id}"
+    if action == "mark_ubad":
+        return f"mark UBad {drive_ref} from state {state}"
+    if action == "mark_ugood":
+        return f"mark UGood {drive_ref} from state {state}"
+    if action == "spin_down":
+        return (
+            f"spin down {drive_ref} from state {state}; remains spun down until reboot "
+            "or explicit spinup"
+        )
+    if action == "make_hot_spare":
+        return (
+            f"make hot spare {drive_ref} for DG {dg_id} from state {state}; reversible by "
+            "setting the spare drive bad to remove it from the spare pool"
+        )
+    raise ValueError(f"unknown advanced drive action: {action!r}")
+
+
+def _record_advanced_drive_operator_action_sync(
+    *,
+    request: Request,
+    category: str,
+    message: str,
+    outcome: str,
+) -> None:
+    try:
+        with _session(request) as session, session.begin():
+            record_operator_action(
+                session,
+                username=str(request.scope.get("user_username", "unknown")),
+                category=category,
+                message=f"{message} {outcome}",
+            )
+    except SQLAlchemyError:
+        LOGGER.exception(
+            "operator_action_audit_failed",
+            action=category,
+            outcome=outcome,
+        )
+        raise
 
 
 async def _run_replace_step(
@@ -804,6 +1146,28 @@ def _load_latest_drive_for_slot(
             .order_by(ControllerSnapshot.captured_at.desc(), PhysicalDriveSnapshot.id.desc())
             .limit(1)
         ).one_or_none()
+
+
+def _latest_snapshot_has_disk_group(
+    *,
+    request: Request,
+    dg_id: int,
+) -> bool:
+    with _session(request) as session:
+        latest_snapshot_id = session.scalars(
+            select(ControllerSnapshot.id).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
+        ).one_or_none()
+        if latest_snapshot_id is None:
+            return False
+        return (
+            session.scalars(
+                select(PhysicalDriveSnapshot.id)
+                .where(PhysicalDriveSnapshot.snapshot_id == latest_snapshot_id)
+                .where(PhysicalDriveSnapshot.disk_group_id == dg_id)
+                .limit(1)
+            ).one_or_none()
+            is not None
+        )
 
 
 _AUDIT_DETAIL_MAX_LEN = 200
