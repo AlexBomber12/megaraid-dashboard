@@ -48,7 +48,12 @@ def test_audit_route_redirects_to_operator_action_events_filter() -> None:
         response = client.get("/audit", follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers["location"] == "/events?category=operator_action"
+    assert response.headers["location"] == (
+        "/events?category=operator_action"
+        "&category=controller_buzzer_silence"
+        "&category=controller_buzzer_disable"
+        "&category=controller_buzzer_enable"
+    )
 
 
 def test_events_operator_action_filter_shows_audit_rows_only() -> None:
@@ -87,6 +92,8 @@ def test_events_operator_action_filter_chip_is_available() -> None:
     assert response.status_code == 200
     assert 'href="/events?category=operator_action"' in response.text
     assert ">operator action</a>" in response.text
+    assert 'href="/events?category=controller_buzzer_silence"' in response.text
+    assert ">controller buzzer silence</a>" in response.text
 
 
 def _insert_operator_action(test_app: FastAPI, *, username: str, message: str) -> None:

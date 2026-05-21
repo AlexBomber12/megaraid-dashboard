@@ -132,8 +132,17 @@ _EVENT_CATEGORY_FILTERS = (
     "disk_space",
     "system",
     "operator_action",
+    "controller_buzzer_silence",
+    "controller_buzzer_disable",
+    "controller_buzzer_enable",
     "foreign_config_detected",
     "consistency_check_inconsistency",
+)
+_AUDIT_LOG_CATEGORIES = (
+    "operator_action",
+    "controller_buzzer_silence",
+    "controller_buzzer_disable",
+    "controller_buzzer_enable",
 )
 
 HealthStatus = Literal["ok", "degraded"]
@@ -2554,6 +2563,7 @@ def _record_controller_buzzer_operator_action_sync(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
                 message=f"{message} {outcome}",
+                category=category,
             )
     except SQLAlchemyError:
         LOGGER.exception(
@@ -3207,7 +3217,7 @@ async def audit_log(request: Request) -> RedirectResponse:
     target = _events_query_path(
         request=request,
         route_name="events",
-        categories=("operator_action",),
+        categories=_AUDIT_LOG_CATEGORIES,
         severities=(),
     )
     return RedirectResponse(url=target, status_code=302)

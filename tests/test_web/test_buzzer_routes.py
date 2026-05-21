@@ -46,19 +46,19 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         (
             "/controller/buzzer/silence",
             ["/c0", "set", "alarm=silence"],
-            "operator_action",
+            "controller_buzzer_silence",
             "Buzzer silenced by operator admin",
         ),
         (
             "/controller/buzzer/disable",
             ["/c0", "set", "alarm=off"],
-            "operator_action",
+            "controller_buzzer_disable",
             "Buzzer disabled by operator admin",
         ),
         (
             "/controller/buzzer/enable",
             ["/c0", "set", "alarm=on"],
-            "operator_action",
+            "controller_buzzer_enable",
             "Buzzer enabled by operator admin",
         ),
     ],
@@ -165,7 +165,7 @@ def test_silence_storcli_failure_returns_502(
             "detail": "storcli exited with code 1: alarm command failed",
         }
         event = _single_event(test_app)
-        assert event.category == "operator_action"
+        assert event.category == "controller_buzzer_silence"
         assert event.summary.startswith("Buzzer silenced by operator admin")
         assert "failed: StorcliCommandFailed" in event.summary
 
@@ -199,7 +199,7 @@ def test_silence_without_maintenance_mode_returns_403_and_skips_storcli(
         }
         assert calls == []
         event = _single_event(test_app)
-        assert event.category == "operator_action"
+        assert event.category == "controller_buzzer_silence"
         assert event.summary.startswith("Buzzer silenced by operator admin")
         assert event.summary.endswith("rejected: maintenance_mode required")
 
