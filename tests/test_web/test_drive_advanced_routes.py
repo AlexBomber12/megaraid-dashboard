@@ -308,6 +308,25 @@ def test_make_hot_spare_missing_dg_id_returns_422(
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize("dg_id", ["0", True])
+def test_make_hot_spare_rejects_coerced_dg_id_types(
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    dg_id: object,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, state="UGood")
+        _seed_disk_group_member(test_app, dg_id=0)
+        headers = _csrf_request_headers(client, csrf_headers)
+        response = client.post(
+            "/drives/2:0/make-hot-spare",
+            headers=headers,
+            json={"dg_id": dg_id},
+        )
+
+    assert response.status_code == 422
+
+
 def test_advanced_drive_action_is_visible_in_audit_view(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],

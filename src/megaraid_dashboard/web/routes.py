@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, StrictInt, ValidationError, field_validator
 from sqlalchemy import or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -549,7 +549,7 @@ class ReplaceRequest(BaseModel):
 
 
 class MakeHotSpareRequest(BaseModel):
-    dg_id: int = Field(ge=0, le=63)
+    dg_id: StrictInt = Field(ge=0, le=63)
 
 
 AdvancedDriveAction = Literal["mark_ubad", "mark_ugood", "spin_down", "make_hot_spare"]
