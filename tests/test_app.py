@@ -4,6 +4,7 @@ import asyncio
 import os
 import stat
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -217,6 +218,7 @@ def test_lifespan_skips_collector_when_lock_is_already_held(
             response = client.get("/health")
 
         assert response.status_code == 200
+        assert isinstance(test_app.state.start_time, datetime)
         assert test_app.state.collector is None
         assert test_app.state.scheduler is None
         assert test_app.state.collector_lock_fd is None

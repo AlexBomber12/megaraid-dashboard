@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
+    app.state.start_time = datetime.now(UTC)
     _tighten_sqlite_db_permissions(settings.database_url)
     engine = get_engine(settings.database_url)
     health_engine = get_engine(
