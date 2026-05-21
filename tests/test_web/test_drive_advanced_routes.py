@@ -58,7 +58,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
             "UGood",
             None,
             ["/c0/e2/s0", "set", "bad"],
-            "drive_mark_ubad",
+            "operator_action",
             "mark UBad drive 2:0 from state UGood",
         ),
         (
@@ -66,7 +66,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
             "UBad",
             None,
             ["/c0/e2/s0", "set", "good"],
-            "drive_mark_ugood",
+            "operator_action",
             "mark UGood drive 2:0 from state UBad",
         ),
         (
@@ -74,7 +74,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
             "Onln",
             None,
             ["/c0/e2/s0", "spindown"],
-            "drive_spin_down",
+            "operator_action",
             "remains spun down until reboot or explicit spinup",
         ),
         (
@@ -82,7 +82,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
             "UGood",
             {"dg_id": 0},
             ["/c0/e2/s0", "add", "hotsparedrive", "dgs=0"],
-            "drive_make_hot_spare",
+            "operator_action",
             "reversible by setting the spare drive bad",
         ),
     ],
@@ -306,6 +306,33 @@ def test_make_hot_spare_missing_dg_id_returns_422(
         response = client.post("/drives/2:0/make-hot-spare", headers=headers, json={})
 
     assert response.status_code == 422
+
+
+def test_advanced_drive_action_is_visible_in_audit_view(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        return _SUCCESS
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, state="Onln")
+        headers = _csrf_request_headers(client, csrf_headers)
+        action_response = client.post(
+            "/drives/2:0/spin-down",
+            headers=headers,
+            follow_redirects=False,
+        )
+        audit_response = client.get("/audit", follow_redirects=True)
+
+    assert action_response.status_code == 303
+    assert audit_response.status_code == 200
+    assert "spin down drive" in audit_response.text
+    assert 'href="/drives/2:0">2:0</a> from state Onln' in audit_response.text
+    assert "by admin" in audit_response.text
+    assert 'class="event-actor"' in audit_response.text
 
 
 def test_make_hot_spare_nonexistent_dg_returns_409(

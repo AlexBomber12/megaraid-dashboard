@@ -35,10 +35,6 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
 )
 from megaraid_dashboard.services.audit import (
-    AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
-    AUDIT_CATEGORY_DRIVE_MARK_UBAD,
-    AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
-    AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
     record_operator_action,
 )
 from megaraid_dashboard.services.drive_actions import (
@@ -793,14 +789,8 @@ def _advanced_drive_action_argv(
 
 
 def _advanced_drive_action_category(action: AdvancedDriveAction) -> str:
-    if action == "mark_ubad":
-        return AUDIT_CATEGORY_DRIVE_MARK_UBAD
-    if action == "mark_ugood":
-        return AUDIT_CATEGORY_DRIVE_MARK_UGOOD
-    if action == "spin_down":
-        return AUDIT_CATEGORY_DRIVE_SPIN_DOWN
-    if action == "make_hot_spare":
-        return AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE
+    if action in {"mark_ubad", "mark_ugood", "spin_down", "make_hot_spare"}:
+        return "operator_action"
     raise ValueError(f"unknown advanced drive action: {action!r}")
 
 
