@@ -401,7 +401,6 @@ def _drive_grid_tile(
     if temperature_state == "unknown":
         temperature_state = "optimal"
     state_severity = _drive_grid_state_severity(drive.state)
-    tile_severity = _worst_severity(temperature_state, state_severity)
     error_count = (
         drive.media_errors
         + drive.other_errors
@@ -416,10 +415,30 @@ def _drive_grid_tile(
         temperature_state=temperature_state,
         state_text=drive.state,
         state_severity=state_severity,
-        tile_severity=tile_severity,
+        tile_severity=compute_drive_tile_severity(
+            drive,
+            temp_warning=temp_warning,
+            temp_critical=temp_critical,
+        ),
         error_badge_count=None if error_count == 0 else error_count,
         detail_url=f"/drives/{drive.enclosure_id}:{drive.slot_id}",
     )
+
+
+def compute_drive_tile_severity(
+    drive: PhysicalDriveSnapshot,
+    *,
+    temp_warning: int,
+    temp_critical: int,
+) -> str:
+    temperature_state = temperature_severity(
+        drive.temperature_celsius,
+        temp_warning=temp_warning,
+        temp_critical=temp_critical,
+    )
+    if temperature_state == "unknown":
+        temperature_state = "optimal"
+    return _worst_severity(temperature_state, _drive_grid_state_severity(drive.state))
 
 
 def _drive_grid_state_severity(state: str) -> str:
