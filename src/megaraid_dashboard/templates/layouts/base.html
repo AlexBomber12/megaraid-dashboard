@@ -48,12 +48,6 @@
         {% block content %}{% endblock %}
       </main>
 
-      <footer class="site-footer">
-        <div class="site-footer__inner">
-          Version {{ app_version }} | Build {{ build_sha }}
-        </div>
-      </footer>
-
       {% set status_bar_content %}
         {% block status_bar %}{% endblock %}
       {% endset %}

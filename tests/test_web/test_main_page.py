@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -13,6 +14,7 @@ from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot
 from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.services import overview as overview_module
 from megaraid_dashboard.storcli import StorcliSnapshot
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
@@ -40,12 +42,26 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
 
 
 def test_main_page_renders_new_overview(
+    monkeypatch: pytest.MonkeyPatch,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
+    monkeypatch.setattr(
+        overview_module,
+        "_load_patrol_read_state",
+        lambda snapshot: _OperationState(
+            progress_percent=None,
+            is_running=False,
+            last_run_timestamp="2026-04-25 03:46:00",
+        ),
+    )
     test_app = create_app()
     snapshot = _snapshot_with_first_drive_media_error(sample_snapshot)
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
-        _insert_app_snapshot(test_app, snapshot)
+        _insert_app_snapshot(
+            test_app,
+            snapshot,
+            raw_payload={"Next Patrol Read launch": "Jun 1, 2026 00:00"},
+        )
         _insert_events(test_app, count=12)
 
         response = client.get("/")
@@ -57,10 +73,19 @@ def test_main_page_renders_new_overview(
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert '<span class="drive-error-badge-v2">1</span>' in response.text
     assert response.text.count('class="activity-item-v2"') == 10
+    assert '<span class="activity-item-v2__age">pd_state</span>' not in response.text
+    assert '<span class="activity-item-v2__age">' in response.text
+    assert "ago</span>" in response.text
+    assert "Last patrol read Apr 25" in response.text
+    assert "2026-04-25T03:46:00Z UTC" not in response.text
+    assert "Next in " in response.text
     assert "Notifier" in response.text
     assert "ok" in response.text
     assert "Collector" in response.text
     assert "DB" in response.text
+    assert response.text.count('class="status-bar"') == 1
+    assert 'class="site-footer"' not in response.text
+    assert "Build unknown" not in response.text
     assert "2026-04-25T12:00:00Z" in response.text
     assert "/controller" in anchors
     assert "/controller/foreign-config" not in anchors
@@ -70,9 +95,19 @@ def test_main_page_renders_new_overview(
     assert ">Overview</a>" in response.text
 
 
-def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) -> None:
+def _insert_app_snapshot(
+    test_app: FastAPI,
+    sample_snapshot: StorcliSnapshot,
+    *,
+    raw_payload: dict[str, object] | None = None,
+) -> None:
     with test_app.state.session_factory() as session:
-        insert_snapshot(session, sample_snapshot)
+        insert_snapshot(
+            session,
+            sample_snapshot,
+            store_raw=raw_payload is not None,
+            raw_payload=raw_payload,
+        )
         session.commit()
 
 
@@ -117,3 +152,10 @@ class _AnchorParser(HTMLParser):
         for key, value in attrs:
             if key == "href" and value is not None:
                 self.hrefs.add(value)
+
+
+@dataclass(frozen=True)
+class _OperationState:
+    progress_percent: int | None
+    is_running: bool = True
+    last_run_timestamp: str | None = None

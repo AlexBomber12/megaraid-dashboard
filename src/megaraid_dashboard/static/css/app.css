@@ -1895,14 +1895,6 @@ a:hover {
   box-shadow: var(--shadow-card);
 }
 
-.chart-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 280px;
-  aspect-ratio: 16 / 6;
-}
-
 .chart-empty {
   color: var(--color-muted);
 }
@@ -2108,20 +2100,6 @@ a:hover {
   text-align: center;
 }
 
-.site-footer {
-  padding: var(--space-section);
-  border-top: 1px solid var(--color-border-soft);
-  color: var(--color-muted);
-  font-size: var(--font-size-label);
-  text-align: center;
-}
-
-.site-footer__inner {
-  width: min(var(--content-max-width), 100%);
-  margin: 0 auto;
-  text-align: center;
-}
-
 @media (max-width: 760px) {
   .site-header-v2__inner {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -2177,10 +2155,6 @@ a:hover {
     padding: var(--space-4);
   }
 
-  .chart-canvas {
-    min-height: 240px;
-    aspect-ratio: 4 / 3;
-  }
 }
 
 @media (max-width: 720px) {

@@ -37,7 +37,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     get_settings.cache_clear()
 
 
-def test_layout_shell_renders_landmarks_and_version_label() -> None:
+def test_layout_shell_renders_landmarks_and_status_bar_version_label() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/")
@@ -45,9 +45,10 @@ def test_layout_shell_renders_landmarks_and_version_label() -> None:
     assert response.status_code == 200
     assert '<header class="site-header-v2">' in response.text
     assert '<main class="page-content">' in response.text
-    assert '<footer class="site-footer">' in response.text
+    assert '<div class="status-bar" role="status">' in response.text
+    assert '<footer class="site-footer">' not in response.text
     assert "Version " in response.text
-    assert "Build " in response.text
+    assert "Build " not in response.text
     assert "hero" not in response.text.lower()
 
 

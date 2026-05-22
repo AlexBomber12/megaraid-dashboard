@@ -54,13 +54,15 @@
     {% else %}
       <span class="controller-card-v2__operations-label">No active operations</span>
       <span class="controller-card-v2__operation-list">
-        {% if controller.last_patrol_read_completed_at is not none %}
-          Last patrol read {{ controller.last_patrol_read_completed_at | iso_utc }} UTC
+        {% if controller.last_patrol_read_completed_text %}
+          Last patrol read {{ controller.last_patrol_read_completed_text }}{% if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}
+        {% elif controller.last_patrol_read_duration_text %}
+          Last patrol read {{ controller.last_patrol_read_duration_text }}
         {% else %}
           Last patrol read unknown
         {% endif %}
         {% if controller.next_patrol_read_in_text %}
-          &middot; Next {{ controller.next_patrol_read_in_text }}
+          - Next {{ controller.next_patrol_read_in_text }}
         {% endif %}
       </span>
     {% endif %}

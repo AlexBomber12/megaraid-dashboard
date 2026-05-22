@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
@@ -76,6 +76,7 @@ class RecentActivityItem:
     severity: str
     severity_icon: str
     occurred_at: datetime
+    age_text: str
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,7 @@ class ControllerSummaryViewModel:
     errors_24h: int
     active_operations: list[ActiveOperation]
     last_patrol_read_completed_at: datetime | None
+    last_patrol_read_completed_text: str | None
     last_patrol_read_duration_text: str | None
     next_patrol_read_in_text: str | None
 
@@ -183,7 +185,11 @@ def load_main_page_view_model(
     return MainPageViewModel(
         controller=_load_controller_summary(session, settings=settings, snapshot=snapshot, now=now),
         drive_grid=_load_drive_grid(settings=settings, snapshot=snapshot),
-        recent_activity=_load_recent_activity(session, limit=_MAIN_PAGE_RECENT_ACTIVITY_LIMIT),
+        recent_activity=_load_recent_activity(
+            session,
+            limit=_MAIN_PAGE_RECENT_ACTIVITY_LIMIT,
+            now=now,
+        ),
         system_health=_load_system_health(
             settings=settings,
             scheduler=scheduler,
@@ -220,12 +226,19 @@ def _load_controller_summary(
             errors_24h=_count_recent_warning_and_critical_events(session, now=now),
             active_operations=[],
             last_patrol_read_completed_at=None,
+            last_patrol_read_completed_text=None,
             last_patrol_read_duration_text=None,
             next_patrol_read_in_text=None,
         )
 
     cachevault = snapshot.cachevault
     patrol_read_state = _load_patrol_read_state(snapshot)
+    last_patrol_read_completed_at = _parse_operation_timestamp(
+        None if patrol_read_state is None else patrol_read_state.last_run_timestamp
+    )
+    next_patrol_read_at = _parse_operation_timestamp(
+        _first_raw_text(snapshot.raw_json or {}, "Next Patrol Read launch")
+    )
     return ControllerSummaryViewModel(
         state=derive_controller_health(
             snapshot,
@@ -240,11 +253,10 @@ def _load_controller_summary(
         bbu_status=_main_page_bbu_status(snapshot),
         errors_24h=_count_recent_warning_and_critical_events(session, now=now),
         active_operations=_load_active_operations(snapshot),
-        last_patrol_read_completed_at=_parse_operation_timestamp(
-            None if patrol_read_state is None else patrol_read_state.last_run_timestamp
-        ),
+        last_patrol_read_completed_at=last_patrol_read_completed_at,
+        last_patrol_read_completed_text=_format_short_date(last_patrol_read_completed_at),
         last_patrol_read_duration_text=None,
-        next_patrol_read_in_text=None,
+        next_patrol_read_in_text=_format_future_time(next_patrol_read_at, now=now),
     )
 
 
@@ -469,6 +481,29 @@ def _format_relative_time(value: datetime | None, *, now: datetime | None = None
     return f"{days} {_pluralize(days, 'day', 'days')} ago"
 
 
+def _format_short_date(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return _require_aware_utc(value).strftime("%b %-d")
+
+
+def _format_future_time(value: datetime | None, *, now: datetime) -> str | None:
+    if value is None:
+        return None
+    elapsed = max(timedelta(), _require_aware_utc(value) - _require_aware_utc(now))
+    seconds = int(elapsed.total_seconds())
+    days, remainder = divmod(seconds, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes = remainder // 60
+    if days:
+        return f"in {days}d {hours}h"
+    if hours:
+        return f"in {hours}h {minutes}m"
+    if minutes:
+        return f"in {minutes}m"
+    return "now"
+
+
 def _format_db_size(size_bytes: int) -> str:
     if size_bytes < 1024:
         return f"{size_bytes} B"
@@ -495,10 +530,15 @@ def _database_size_bytes(database_url: str) -> int:
 def _parse_operation_timestamp(value: str | None) -> datetime | None:
     if value is None:
         return None
-    text = value.strip()
+    text = value.split("(", maxsplit=1)[0].strip()
     if not text:
         return None
-    for format_string in ("%Y-%m-%d %H:%M:%S", "%m/%d/%Y, %H:%M:%S"):
+    for format_string in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%m/%d/%Y, %H:%M:%S",
+        "%b %d, %Y %H:%M",
+    ):
         try:
             return datetime.strptime(text, format_string).replace(tzinfo=UTC)
         except ValueError:
@@ -569,7 +609,12 @@ def _get_latest_overview_snapshot(session: Session) -> ControllerSnapshot | None
     ).one_or_none()
 
 
-def _load_recent_activity(session: Session, *, limit: int = 8) -> list[RecentActivityItem]:
+def _load_recent_activity(
+    session: Session,
+    *,
+    limit: int = 8,
+    now: datetime | None = None,
+) -> list[RecentActivityItem]:
     return [
         RecentActivityItem(
             category=event.category,
@@ -577,9 +622,50 @@ def _load_recent_activity(session: Session, *, limit: int = 8) -> list[RecentAct
             severity=event.severity,
             severity_icon=_severity_icon(event.severity),
             occurred_at=_require_aware_utc(event.occurred_at),
+            age_text=_format_relative_time(event.occurred_at, now=now),
         )
         for event in list_recent_events(session, limit=limit)
     ]
+
+
+def _first_raw_text(raw_json: Mapping[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = _find_raw_value(raw_json, key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text not in {"-", "None", "N/A"}:
+            return text
+    return None
+
+
+def _find_raw_value(value: Any, key: str) -> Any:
+    if isinstance(value, Mapping):
+        for candidate_key, candidate_value in value.items():
+            if str(candidate_key).strip().lower() == key.lower():
+                return candidate_value
+            found = _find_raw_value(candidate_value, key)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        property_value = _property_value(value, key)
+        if property_value is not None:
+            return property_value
+        for item in value:
+            found = _find_raw_value(item, key)
+            if found is not None:
+                return found
+    return None
+
+
+def _property_value(items: list[Any], key: str) -> Any:
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        property_name = item.get("Property") or item.get("Ctrl_Prop")
+        if str(property_name).strip().lower() == key.lower():
+            return item.get("Value")
+    return None
 
 
 def _severity_icon(severity: str) -> str:
