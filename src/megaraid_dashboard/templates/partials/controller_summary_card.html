@@ -30,7 +30,7 @@
     {% else %}
       <span>No active operations</span>
       <span style="color: var(--color-muted); margin-left: auto;">
-        {% if controller.last_patrol_read_completed_text %}Last patrol read {{ controller.last_patrol_read_completed_text }}{% if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}{% if controller.next_patrol_read_in_text %} &middot; Next in {{ controller.next_patrol_read_in_text }}{% endif %}{% else %}Last patrol read unknown{% endif %}
+        {% if controller.last_patrol_read_completed_text or controller.last_patrol_read_duration_text or controller.next_patrol_read_in_text %}Last patrol read {% if controller.last_patrol_read_completed_text %}{{ controller.last_patrol_read_completed_text }}{% else %}unknown{% endif %}{% if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}{% if controller.next_patrol_read_in_text %} &middot; Next in {{ controller.next_patrol_read_in_text }}{% endif %}{% else %}Last patrol read unknown{% endif %}
       </span>
     {% endif %}
   </div>

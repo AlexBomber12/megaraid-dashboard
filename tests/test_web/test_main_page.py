@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -16,7 +17,10 @@ from megaraid_dashboard.db.dao import insert_snapshot
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services import overview as overview_module
 from megaraid_dashboard.storcli import StorcliSnapshot
+from megaraid_dashboard.web.templates import create_templates
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
+
+TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "src" / "megaraid_dashboard" / "templates"
 
 
 @pytest.fixture(autouse=True)
@@ -117,6 +121,33 @@ def test_controller_card_unknown_state_uses_unknown_color() -> None:
     )
 
 
+def test_controller_card_preserves_patrol_read_metadata_without_completion() -> None:
+    template = create_templates(TEMPLATE_DIR).env.get_template(
+        "partials/controller_summary_card.html"
+    )
+    view_model = SimpleNamespace(
+        controller=SimpleNamespace(
+            state="OPTIMAL",
+            model="LSI MegaRAID SAS 9270CV-8i",
+            serial="SV1234",
+            raid_summary="RAID6 8 drives",
+            roc_temperature_celsius=76,
+            cv_capacitance_percent=91,
+            bbu_status="N/A",
+            errors_24h=0,
+            active_operations=[],
+            last_patrol_read_completed_text=None,
+            last_patrol_read_duration_text="12m",
+            next_patrol_read_in_text="3d 4h",
+        )
+    )
+
+    rendered = template.render(request=_RequestStub(), view_model=view_model)
+
+    assert "Last patrol read unknown (12m)" in rendered
+    assert "Next in 3d 4h" in rendered
+
+
 def _insert_app_snapshot(
     test_app: FastAPI,
     sample_snapshot: StorcliSnapshot,
@@ -181,3 +212,14 @@ class _OperationState:
     progress_percent: int | None
     is_running: bool = True
     last_run_timestamp: str | None = None
+
+
+@dataclass(frozen=True)
+class _Url:
+    path: str
+
+
+class _RequestStub:
+    def url_for(self, name: str) -> _Url:
+        assert name == "controller_detail"
+        return _Url(path="/controller")
