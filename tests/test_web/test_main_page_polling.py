@@ -47,28 +47,28 @@ def test_main_page_refresh_region_has_htmx_polling_attributes(
 
         response = client.get("/")
 
-    refresh_main = _find_refresh_main(response.text)
+    refresh_region = _find_refresh_region(response.text)
     assert response.status_code == 200
-    assert refresh_main is not None
-    assert refresh_main["hx-get"] == "/partials/main-page"
-    assert refresh_main["hx-trigger"] == "every 30s"
-    assert refresh_main["hx-swap"] == "innerHTML"
+    assert refresh_region is not None
+    assert refresh_region["hx-get"] == "/partials/main-page"
+    assert refresh_region["hx-trigger"] == "every 30s"
+    assert refresh_region["hx-swap"] == "innerHTML"
 
 
-def _find_refresh_main(html: str) -> dict[str, str] | None:
-    parser = _MainParser()
+def _find_refresh_region(html: str) -> dict[str, str] | None:
+    parser = _RefreshRegionParser()
     parser.feed(html)
-    return parser.refresh_main
+    return parser.refresh_region
 
 
-class _MainParser(HTMLParser):
+class _RefreshRegionParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.refresh_main: dict[str, str] | None = None
+        self.refresh_region: dict[str, str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "main":
+        if tag != "section":
             return
         attr_map = {key: value or "" for key, value in attrs}
         if attr_map.get("class") == "main-page-v2__refresh":
-            self.refresh_main = attr_map
+            self.refresh_region = attr_map

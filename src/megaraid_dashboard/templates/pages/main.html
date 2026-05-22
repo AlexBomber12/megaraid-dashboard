@@ -14,14 +14,14 @@
       </p>
     </section>
 
-    <main
+    <section
       class="main-page-v2__refresh"
       hx-get="{{ request.url_for('main_page_refresh').path }}"
       hx-trigger="every 30s"
       hx-swap="innerHTML"
     >
       {% include "partials/main_page_refresh.html" %}
-    </main>
+    </section>
     {% if not maintenance_state.active %}
       {% include "partials/maintenance_start_form.html" %}
     {% endif %}
