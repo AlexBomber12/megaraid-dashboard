@@ -3,17 +3,9 @@
     <h2 id="drive-position-heading">Position</h2>
   </div>
   <div class="card position-card">
-    <div class="position-diagram" aria-label="8-slot backplane">
-      {% for slot in view_model.position.backplane_layout %}
-        <a
-          class="position-slot position-slot--{{ slot.severity }}{% if slot.is_this %} this{% endif %}"
-          href="{{ slot.detail_url }}"
-          {% if slot.is_this %}aria-current="page"{% endif %}
-        >
-          {{ slot.slot_label }}
-        </a>
-      {% endfor %}
-    </div>
+    {% with slots=view_model.position.backplane_layout, compact=False %}
+      {% include "partials/backplane_diagram.html" %}
+    {% endwith %}
     <dl class="metadata-grid">
       <div><dt>Enclosure</dt><dd>{{ view_model.position.enclosure }}</dd></div>
       <div><dt>Slot</dt><dd>{{ view_model.position.slot }}</dd></div>
