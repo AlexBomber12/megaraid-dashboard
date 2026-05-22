@@ -66,7 +66,24 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert "<span>Controller</span>" in html
     assert "MegaRAID SAS 9270CV-8i" in html
     assert "SN SV00000001." in html
-    assert "70°C" in html
+    assert '<div class="health-state ">OPTIMAL</div>' in html
+    health_summary = "All systems nominal. 0/0 drives online. RAID unknown healthy."
+    assert f'<div class="health-summary">{health_summary}</div>' in html
+    assert '<div class="metrics-row">' in html
+    assert 'class="health-snapshot__summary"' not in html
+    assert 'class="health-snapshot__metrics"' not in html
+    for label in ("RoC Temp", "CacheVault", "BBU", "Mem ECC Errors", "Errors (24h)", "Uptime"):
+        assert f'<span class="metric-label">{label}</span>' in html
+    assert '<span class="text-label">Controller health</span>' not in html
+    for old_label in (
+        "RoC temperature",
+        "CacheVault capacitance",
+        "Memory ECC",
+        "Errors in 24h",
+        "App uptime",
+    ):
+        assert f"<dt>{old_label}</dt>" not in html
+    assert "70&deg;C" in html
     assert "70 C" not in html
     assert 'class="chart-canvas-v2"' in html
     assert 'data-range-hours="1"' in html
