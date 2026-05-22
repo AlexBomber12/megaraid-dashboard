@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import login_and_navigate
+from tests.e2e.conftest import login_and_navigate, wait_for_htmx_swap
 
 
 def test_main_page_redesign_navigation_and_polling(
@@ -39,8 +39,10 @@ def test_main_page_redesign_navigation_and_polling(
     authenticated_page.goto(f"{live_server}/")
     expect(authenticated_page.locator(".status-bar[role='status']")).to_be_visible()
 
-    response = authenticated_page.wait_for_response(
+    with authenticated_page.expect_response(
         lambda fetched: "/partials/main-page" in fetched.url and fetched.status == 200,
         timeout=45_000,
-    )
+    ) as response_info:
+        wait_for_htmx_swap(authenticated_page, timeout=45_000)
+    response = response_info.value
     assert "Drive backplane" in response.text()
