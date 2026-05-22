@@ -1,0 +1,16 @@
+<section class="section" data-drive-detail-section="identity" aria-labelledby="drive-identity-heading">
+  <div class="section-title">
+    <h2 id="drive-identity-heading">Identity</h2>
+  </div>
+  <dl class="card id-grid">
+    <div><dt>Model</dt><dd>{{ view_model.identity.model }}</dd></div>
+    <div><dt>Serial number</dt><dd class="mono">{{ view_model.identity.serial_number }}</dd></div>
+    <div><dt>Manufacturer</dt><dd>{{ view_model.identity.manufacturer_text }}</dd></div>
+    <div><dt>Firmware revision</dt><dd class="mono">{{ view_model.identity.firmware_revision }}</dd></div>
+    <div><dt>WWN</dt><dd class="mono">{{ view_model.identity.wwn }}</dd></div>
+    <div><dt>Media type</dt><dd>{{ view_model.identity.media_type }}</dd></div>
+    <div><dt>Raw size</dt><dd>{{ view_model.identity.raw_size_text }}</dd></div>
+    <div><dt>Coerced size</dt><dd>{{ view_model.identity.coerced_size_text }}</dd></div>
+    <div><dt>Logical sector size</dt><dd>{{ view_model.identity.logical_sector_size_text }}</dd></div>
+  </dl>
+</section>

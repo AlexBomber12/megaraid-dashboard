@@ -97,6 +97,12 @@ from megaraid_dashboard.services.drive_actions import (
     patrol_read_can_stop,
     validate_enclosure_slot,
 )
+from megaraid_dashboard.services.drive_detail import (
+    DriveDetailViewModel,
+)
+from megaraid_dashboard.services.drive_detail import (
+    load_drive_detail_view_model as load_drive_detail_v2_view_model,
+)
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
     DriveHistoryPointKey,
@@ -105,7 +111,6 @@ from megaraid_dashboard.services.drive_history import (
     load_drive_error_series,
     load_drive_temperature_series,
 )
-from megaraid_dashboard.services.event_detector import physical_drive_state_severity
 from megaraid_dashboard.services.events import (
     EVENTS_PAGE_SIZE,
     EventsFragmentViewModel,
@@ -117,11 +122,9 @@ from megaraid_dashboard.services.overview import (
     DriveListViewModel,
     MainPageViewModel,
     OverviewViewModel,
-    format_tb,
     load_drive_list_view_model,
     load_main_page_view_model,
     load_overview_view_model,
-    temperature_severity,
 )
 from megaraid_dashboard.storcli import (
     DriveShow,
@@ -204,22 +207,6 @@ def _audit_persistence_failure_response(**extras: Any) -> JSONResponse:
 
 
 @dataclass(frozen=True)
-class DriveAttribute:
-    label: str
-    value: str
-    mono: bool = False
-    severity: str | None = None
-
-
-@dataclass(frozen=True)
-class RangeTab:
-    label: str
-    range_days: int
-    active: bool
-    hx_get: str
-
-
-@dataclass(frozen=True)
 class TemperatureFallbackRow:
     timestamp: str
     average_celsius: str
@@ -255,20 +242,6 @@ class DriveChartsViewModel:
     raw_point_count: int
     hourly_point_count: int
     daily_point_count: int
-
-
-@dataclass(frozen=True)
-class DriveDetailViewModel:
-    enclosure_id: int
-    slot_id: int
-    title: str
-    model: str
-    serial_number: str
-    captured_at: datetime
-    captured_at_iso: str
-    attributes: tuple[DriveAttribute, ...]
-    range_tabs: tuple[RangeTab, ...]
-    charts: DriveChartsViewModel
 
 
 @dataclass(frozen=True)
@@ -452,31 +425,24 @@ def controller_detail(request: Request) -> Response:
 @router.get("/drives/{enclosure_id}/{slot_id}", name="drive_detail")
 def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
     started_at = perf_counter()
-    with _session(request) as session:
-        snapshot, drive = _latest_drive_or_404(
-            session,
-            enclosure_id=enclosure_id,
-            slot_id=slot_id,
-        )
-        view_model = _drive_detail_view_model(
-            request=request,
-            session=session,
-            snapshot=snapshot,
-            drive=drive,
-            range_days=_DEFAULT_CHART_RANGE_DAYS,
-        )
+    view_model = _load_drive_detail_v2(
+        request,
+        enclosure_id=enclosure_id,
+        slot_id=slot_id,
+        range_days=30,
+    )
     _log_drive_detail_rendered(
         enclosure_id=enclosure_id,
         slot_id=slot_id,
-        range_days=view_model.charts.active_range_days,
-        raw_point_count=view_model.charts.raw_point_count,
-        hourly_point_count=view_model.charts.hourly_point_count,
-        daily_point_count=view_model.charts.daily_point_count,
+        range_days=30,
+        raw_point_count=view_model.temperature_chart.raw_point_count,
+        hourly_point_count=view_model.temperature_chart.hourly_point_count,
+        daily_point_count=view_model.temperature_chart.daily_point_count,
         elapsed_ms=_elapsed_ms(started_at),
     )
     return TEMPLATES.TemplateResponse(
         request=request,
-        name="pages/drive_detail.html",
+        name="pages/drive_detail_v2.html",
         context={
             "active_nav": "drives",
             "current_utc_label": _current_utc_label(),
@@ -3870,6 +3836,28 @@ def _load_controller_detail(request: Request) -> ControllerDetailViewModel:
         )
 
 
+def _load_drive_detail_v2(
+    request: Request,
+    *,
+    enclosure_id: int,
+    slot_id: int,
+    range_days: int,
+) -> DriveDetailViewModel:
+    settings = cast(Settings, request.app.state.settings)
+    try:
+        with _session(request) as session:
+            return load_drive_detail_v2_view_model(
+                session,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                settings=settings,
+                app_version=__version__,
+                range_days=range_days,
+            )
+    except LookupError as exc:
+        raise HTTPException(status_code=404) from exc
+
+
 def _load_events_page(
     request: Request,
     *,
@@ -4152,94 +4140,6 @@ def _find_physical_drive(
         if drive.enclosure_id == enclosure_id and drive.slot_id == slot_id:
             return drive
     return None
-
-
-def _drive_detail_view_model(
-    *,
-    request: Request,
-    session: Session,
-    snapshot: ControllerSnapshot,
-    drive: PhysicalDriveSnapshot,
-    range_days: int,
-) -> DriveDetailViewModel:
-    settings = get_settings()
-    chart_url = str(
-        request.url_for(
-            "drive_charts",
-            enclosure_id=drive.enclosure_id,
-            slot_id=drive.slot_id,
-        ).path
-    )
-    return DriveDetailViewModel(
-        enclosure_id=drive.enclosure_id,
-        slot_id=drive.slot_id,
-        title=f"Drive {drive.enclosure_id}:{drive.slot_id}",
-        model=drive.model,
-        serial_number=drive.serial_number,
-        captured_at=snapshot.captured_at,
-        captured_at_iso=snapshot.captured_at.isoformat(),
-        attributes=_drive_attributes(
-            drive,
-            temp_warning=settings.temp_warning_celsius,
-            temp_critical=settings.temp_critical_celsius,
-        ),
-        range_tabs=_range_tabs(active_range_days=range_days, chart_url=chart_url),
-        charts=_drive_charts_view_model(
-            session=session,
-            enclosure_id=drive.enclosure_id,
-            slot_id=drive.slot_id,
-            serial_number=drive.serial_number,
-            range_days=range_days,
-            now_utc=snapshot.captured_at,
-        ),
-    )
-
-
-def _drive_attributes(
-    drive: PhysicalDriveSnapshot,
-    *,
-    temp_warning: int,
-    temp_critical: int,
-) -> tuple[DriveAttribute, ...]:
-    return (
-        DriveAttribute(label="Model", value=drive.model),
-        DriveAttribute(label="Serial Number", value=drive.serial_number, mono=True),
-        DriveAttribute(label="Firmware Revision", value=drive.firmware_version, mono=True),
-        DriveAttribute(label="Interface", value=drive.interface),
-        DriveAttribute(label="Media Type", value=drive.media_type),
-        DriveAttribute(label="Size", value=format_tb(drive.size_bytes)),
-        DriveAttribute(label="SAS Address", value=drive.sas_address, mono=True),
-        DriveAttribute(
-            label="State",
-            value=drive.state,
-            severity=_event_severity_to_status(
-                physical_drive_state_severity(drive.state, drive.state)
-            ),
-        ),
-        DriveAttribute(
-            label="Current Temperature",
-            value=(
-                "Unknown" if drive.temperature_celsius is None else f"{drive.temperature_celsius} C"
-            ),
-            severity=temperature_severity(
-                drive.temperature_celsius,
-                temp_warning=temp_warning,
-                temp_critical=temp_critical,
-            ),
-        ),
-    )
-
-
-def _range_tabs(*, active_range_days: int, chart_url: str) -> tuple[RangeTab, ...]:
-    return tuple(
-        RangeTab(
-            label=f"{range_days} days",
-            range_days=range_days,
-            active=range_days == active_range_days,
-            hx_get=chart_url,
-        )
-        for range_days in _ALLOWED_CHART_RANGE_DAYS
-    )
 
 
 def _drive_charts_view_model(

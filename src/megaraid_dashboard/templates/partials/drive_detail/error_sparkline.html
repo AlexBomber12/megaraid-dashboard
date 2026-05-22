@@ -1,0 +1,14 @@
+{% set points = view_model.error_sparkline.points[-30:] %}
+{% set max_total = ([view_model.error_sparkline.current_total] + (points | map(attribute='total_count') | list)) | max %}
+<svg
+  class="error-sparkline"
+  viewBox="0 0 120 36"
+  role="img"
+  aria-label="Current error count {{ view_model.error_sparkline.current_total }}"
+  data-current-count="{{ view_model.error_sparkline.current_total }}"
+>
+  <polyline
+    points="{% for point in points %}{% set x = 0 if points|length == 1 else (loop.index0 * 120 / ((points|length) - 1)) %}{% set y = 34 if max_total == 0 else (34 - (point.total_count * 30 / max_total)) %}{{ '%.1f,%.1f' | format(x, y) }} {% endfor %}"
+  />
+</svg>
+<span class="sparkline-copy">{{ view_model.error_sparkline.current_total }} total · {{ view_model.error_sparkline.meta_text }}</span>

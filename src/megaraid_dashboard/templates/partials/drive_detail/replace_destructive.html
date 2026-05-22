@@ -1,0 +1,109 @@
+<section
+  class="replace-wizard"
+  aria-label="Replace drive"
+  data-replace-wizard
+  data-enclosure="{{ view_model.position.enclosure }}"
+  data-slot="{{ view_model.position.slot }}"
+  data-serial="{{ view_model.identity.serial_number }}"
+  data-replace-offline-url="{{ request.url_for('drive_replace_offline', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+  data-replace-missing-url="{{ request.url_for('drive_replace_missing', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+  data-replace-topology-url="{{ request.url_for('drive_replace_topology', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+  data-replace-insert-url="{{ request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+  data-replace-rebuild-status-url="{{ request.url_for('drive_rebuild_status', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+>
+  <div class="card destructive-card">
+    <div class="replace-wizard__header">
+      <div>
+        <h2 class="replace-wizard__title">Replace drive</h2>
+        <p>{{ view_model.replace.warning_text }}</p>
+      </div>
+      <button type="button" class="button button--warning" data-replace-action="open">Begin Replacement</button>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="confirm" hidden>
+      <p>You are about to begin replacement of:</p>
+      <dl class="replace-wizard__metadata">
+        <dt>Slot</dt>
+        <dd>{{ view_model.position.enclosure }}:{{ view_model.position.slot }}</dd>
+        <dt>Model</dt>
+        <dd>{{ view_model.identity.model }}</dd>
+        <dt>Serial</dt>
+        <dd class="mono">{{ view_model.identity.serial_number }}</dd>
+        <dt>State</dt>
+        <dd>{{ view_model.health.state }}</dd>
+      </dl>
+      <p>
+        This procedure changes RAID array state. Make sure the drive at this slot is the one
+        you intend to replace.
+      </p>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button type="button" class="button button--warning" data-replace-action="continue-to-serial">Continue</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="serial" hidden>
+      <label class="replace-wizard__field">
+        <span>Type the serial number of the drive to replace:</span>
+        <input type="text" class="input mono" data-replace-input="serial" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="replace-wizard__toggle">
+        <input type="checkbox" data-replace-input="dry-run" checked>
+        Dry run (do not invoke storcli)
+      </label>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button type="button" class="button button--warning" data-replace-action="run-step1" disabled>Run Step 1</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="physical-swap" hidden>
+      <h3>Step 2: physical swap</h3>
+      <ol class="replace-wizard__steps">
+        <li>Pull the drive at slot <strong>{{ view_model.position.enclosure }}:{{ view_model.position.slot }}</strong> (serial <span class="mono">{{ view_model.identity.serial_number }}</span>).</li>
+        <li>Insert the replacement drive into the same slot.</li>
+        <li>Wait for the controller to detect the new drive.</li>
+      </ol>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button type="button" class="button button--warning" data-replace-action="continue-to-insert">Continue</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="insert" hidden>
+      <h3>Step 3: insert into array</h3>
+      <p>The controller will insert the new drive into the missing slot and start a rebuild.</p>
+      <dl class="replace-wizard__metadata">
+        <dt>DG</dt><dd class="mono" data-replace-meta="dg">...</dd>
+        <dt>Array</dt><dd class="mono" data-replace-meta="array">...</dd>
+        <dt>Row</dt><dd class="mono" data-replace-meta="row">...</dd>
+      </dl>
+      <label class="replace-wizard__field">
+        <span>Type the serial of the NEW (replacement) drive:</span>
+        <input type="text" class="input mono" data-replace-input="new-serial" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="replace-wizard__toggle">
+        <input type="checkbox" data-replace-input="dry-run-step3" checked>
+        Dry run (do not invoke storcli)
+      </label>
+      <div class="replace-wizard__actions">
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
+        <button type="button" class="button button--warning" data-replace-action="run-step3" disabled>Run Step 3</button>
+      </div>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="result" hidden>
+      <h3>Result</h3>
+      <pre class="mono replace-wizard__output" data-replace-output></pre>
+      <button type="button" class="button" data-replace-action="close">Close</button>
+    </div>
+
+    <div class="replace-wizard__stage" data-stage="rebuild" hidden>
+      <h3>Step 4: rebuild progress</h3>
+      <div class="replace-wizard__progress" data-rebuild-progress>
+        Loading rebuild status...
+      </div>
+      <button type="button" class="button" data-replace-action="close">Close wizard</button>
+    </div>
+  </div>
+</section>

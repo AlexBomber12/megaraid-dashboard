@@ -1,0 +1,74 @@
+<section class="section" data-drive-detail-section="advanced-actions" aria-labelledby="drive-advanced-actions-heading">
+  <div class="section-title">
+    <h2 id="drive-advanced-actions-heading">Advanced Actions</h2>
+  </div>
+  <div class="card advanced-actions-row">
+    {% for action in view_model.advanced_actions %}
+      <form method="post" action="{{ action.url }}" class="inline-form" data-csrf-form data-drive-advanced-action>
+        <input type="hidden" name="csrf_token" value="">
+        {% if action.label == "Hot Spare" %}
+          <input type="hidden" name="dg_id" value="0">
+        {% endif %}
+        <button
+          type="submit"
+          class="button{% if action.is_destructive %} button--danger{% endif %}"
+          {% if not action.is_enabled %}disabled title="{{ action.disabled_reason }}"{% endif %}
+        >{{ action.label }}</button>
+      </form>
+    {% endfor %}
+    <div class="form-error" data-drive-action-error role="alert" hidden></div>
+  </div>
+  <script>
+    (function () {
+      function getCookie(name) {
+        const match = document.cookie.match(
+          new RegExp("(?:^|; )" + name.replace(/[$()*+./?[\\\]^{|}-]/g, "\\$&") + "=([^;]*)")
+        );
+        return match ? decodeURIComponent(match[1]) : "";
+      }
+
+      document.querySelectorAll("[data-drive-advanced-action]").forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const error = form.parentElement.querySelector("[data-drive-action-error]");
+          if (error) {
+            error.hidden = true;
+            error.textContent = "";
+          }
+          const formData = new FormData(form);
+          const isHotSpare = form.action.includes("/hotspare");
+          fetch(form.action, {
+            method: "POST",
+            headers: {
+              "X-CSRF-Token": getCookie("__Host-csrf") || "",
+              ...(isHotSpare ? { "Content-Type": "application/json" } : {}),
+            },
+            body: isHotSpare ? JSON.stringify({ dg_id: Number(formData.get("dg_id") || 0) }) : null,
+          }).then((response) => {
+            if (response.redirected) {
+              window.location.assign(response.url);
+              return;
+            }
+            if (response.ok) {
+              window.location.reload();
+              return;
+            }
+            response.text().then((body) => {
+              if (!error) {
+                return;
+              }
+              error.textContent = body || "Drive action failed.";
+              error.hidden = false;
+            });
+          }).catch(() => {
+            if (!error) {
+              return;
+            }
+            error.textContent = "Drive action failed.";
+            error.hidden = false;
+          });
+        });
+      });
+    }());
+  </script>
+</section>
