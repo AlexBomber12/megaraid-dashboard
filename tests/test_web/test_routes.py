@@ -206,18 +206,7 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "No events yet." in full_response.text
     assert "Collector" in full_response.text
     assert "Notifier" in full_response.text
-    assert "Waiting for first metrics collection" in partial_response.text
-    assert partial_response.text.count('class="status-tile status-tile--') == 6
-    assert "RoC" in partial_response.text
-    assert "status-tile--neutral" in partial_response.text
-    assert (
-        "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
-    )
-    assert 'class="alert-status"' in partial_response.text
-    assert partial_response.text.count('class="alert-status__cell') == 4
-    assert "Never" in partial_response.text
-    assert "<!doctype html>" not in partial_response.text
-    assert "site-header" not in partial_response.text
+    assert partial_response.status_code == 404
 
 
 def test_dashboard_requires_authentication() -> None:
@@ -238,16 +227,7 @@ def test_partial_endpoint_returns_data_block_fragment(
 
         response = client.get("/partials/overview")
 
-    assert response.status_code == 200
-    assert response.text.lstrip().startswith('<div\n  id="data-block"')
-    assert "<!doctype html>" not in response.text
-    assert "site-header" not in response.text
-    assert "SERVER RAID Status" in response.text
-    assert response.text.count('class="status-tile status-tile--') == 6
-    assert "RoC" in response.text
-    assert "status-tile--optimal" in response.text
-    assert 'class="alert-status"' in response.text
-    assert response.text.count('class="alert-status__cell') == 4
+    assert response.status_code == 404
 
 
 def test_alert_status_pending_count_uses_warning_cell(
