@@ -23,7 +23,7 @@
         </span>
         <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
           {% if tile.temperature_celsius is not none %}
-            {{ tile.temperature_celsius }} C
+            {{ tile.temperature_celsius | celsius }}
           {% else %}
             Unknown
           {% endif %}

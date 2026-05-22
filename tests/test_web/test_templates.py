@@ -31,6 +31,14 @@ def test_iso_utc_formats_aware_datetime_as_zulu_iso8601() -> None:
     )
 
 
+def test_celsius_formats_temperature_with_degree_symbol() -> None:
+    assert templates.celsius(42) == "42°C"
+
+
+def test_celsius_returns_na_for_none() -> None:
+    assert templates.celsius(None) == "N/A"
+
+
 def test_utc_to_cest_formats_aware_utc_datetime() -> None:
     formatted = templates.utc_to_cest(datetime(2026, 4, 25, 12, 0, tzinfo=UTC))
 

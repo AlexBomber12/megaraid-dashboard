@@ -38,6 +38,7 @@ def create_templates(
     environment.filters["utc_to_cest"] = utc_to_cest
     environment.filters["iso_utc"] = iso_utc
     environment.filters["slot_link"] = _slot_link_filter
+    environment.filters["celsius"] = celsius
     processors: list[_ContextProcessor] = [_maintenance_context_processor]
     if context_processors is not None:
         processors.extend(context_processors)
@@ -56,6 +57,12 @@ def iso_utc(value: datetime | None) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("iso_utc requires a timezone-aware datetime")
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def celsius(value: int | None) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value}\u00b0C"
 
 
 @pass_context
