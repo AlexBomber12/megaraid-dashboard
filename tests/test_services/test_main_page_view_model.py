@@ -242,6 +242,98 @@ def test_main_page_recent_activity_limit_10(
     ]
 
 
+def test_main_page_recent_activity_has_relative_age(
+    session: Session,
+) -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    session.add(_event(occurred_at=now - timedelta(days=3), summary="drive warmed up"))
+    session.add(_event(occurred_at=now - timedelta(seconds=30), summary="collector finished"))
+    session.commit()
+
+    activity = overview_module._load_recent_activity(session, limit=2, now=now)
+
+    assert [item.age_text for item in activity] == ["just now", "3 days ago"]
+
+
+def test_main_page_controller_summary_formats_patrol_read_text(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        overview_module,
+        "_load_patrol_read_state",
+        lambda snapshot: _OperationState(
+            progress_percent=None,
+            is_running=False,
+            last_run_timestamp="2026/04/25 03:46:00",
+        ),
+    )
+    snapshot = insert_snapshot(
+        session,
+        _snapshot(sample_snapshot),
+        store_raw=True,
+        raw_payload={"Next Patrol Read launch": "Apr 30, 2026 00:00"},
+    )
+    session.commit()
+
+    view_model = overview_module._load_controller_summary(
+        session,
+        settings=_settings(tmp_path),
+        snapshot=snapshot,
+        now=datetime(2026, 4, 25, 12, 0, tzinfo=UTC),
+    )
+
+    assert view_model.last_patrol_read_completed_at == datetime(
+        2026,
+        4,
+        25,
+        3,
+        46,
+        tzinfo=UTC,
+    )
+    assert view_model.last_patrol_read_completed_text == "Apr 25"
+    assert view_model.next_patrol_read_in_text == "in 4d 12h"
+
+
+def test_main_page_patrol_read_formatting_helpers_cover_edge_cases() -> None:
+    now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+
+    assert overview_module._format_future_time(None, now=now) is None
+    assert overview_module._format_future_time(now + timedelta(hours=1, minutes=2), now=now) == (
+        "in 1h 2m"
+    )
+    assert overview_module._format_future_time(now + timedelta(minutes=2), now=now) == "in 2m"
+    assert overview_module._format_future_time(now - timedelta(seconds=1), now=now) == "now"
+    assert overview_module._parse_operation_timestamp(None) is None
+    assert overview_module._parse_operation_timestamp("") is None
+    assert overview_module._parse_operation_timestamp("not a timestamp") is None
+
+
+def test_main_page_raw_text_lookup_handles_nested_property_lists() -> None:
+    raw_json = {
+        "items": [
+            {"Property": "Ignored", "Value": "ignored"},
+            "not a mapping",
+            {"nested": [{"Ctrl_Prop": "Next Patrol Read launch", "Value": "Jun 1, 2026 00:00"}]},
+        ]
+    }
+
+    assert (
+        overview_module._first_raw_text(raw_json, "Next Patrol Read launch") == "Jun 1, 2026 00:00"
+    )
+    assert (
+        overview_module._first_raw_text(
+            {"Next Patrol Read launch": "-", "fallback": "ok"},
+            "Next Patrol Read launch",
+            "fallback",
+        )
+        == "ok"
+    )
+    assert overview_module._first_raw_text({"items": [{"nested": "ignored"}]}, "missing") is None
+
+
 def test_main_page_system_health_collector_never_ran(
     session: Session,
     sample_snapshot: StorcliSnapshot,

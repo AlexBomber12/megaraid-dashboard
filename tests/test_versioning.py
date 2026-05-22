@@ -6,8 +6,6 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from megaraid_dashboard import __version__
 from megaraid_dashboard.web.templates import create_templates
 
@@ -26,20 +24,11 @@ def test_package_version_is_semver_string() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+(\+\w+)?", __version__)
 
 
-def test_footer_renders_package_version_and_unknown_build(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GIT_SHA", raising=False)
-
+def test_base_layout_no_longer_renders_legacy_build_footer() -> None:
     rendered = _render_base_footer()
 
-    assert f"Version {__version__} | Build unknown" in rendered
-
-
-def test_footer_renders_truncated_git_sha(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GIT_SHA", "abc1234567")
-
-    rendered = _render_base_footer()
-
-    assert f"Version {__version__} | Build abc12345" in rendered
+    assert 'class="site-footer"' not in rendered
+    assert "Build " not in rendered
 
 
 def test_wheel_build_uses_project_version(tmp_path: Path) -> None:
