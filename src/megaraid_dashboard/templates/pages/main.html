@@ -14,9 +14,14 @@
       </p>
     </section>
 
-    {% include "partials/controller_summary_card.html" %}
-    {% include "partials/drive_grid.html" %}
-    {% include "partials/activity_timeline_v2.html" %}
+    <main
+      class="main-page-v2__refresh"
+      hx-get="{{ request.url_for('main_page_refresh').path }}"
+      hx-trigger="every 30s"
+      hx-swap="innerHTML"
+    >
+      {% include "partials/main_page_refresh.html" %}
+    </main>
     {% if not maintenance_state.active %}
       {% include "partials/maintenance_start_form.html" %}
     {% endif %}
