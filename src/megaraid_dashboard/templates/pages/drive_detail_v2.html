@@ -1,0 +1,56 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ view_model.page_title }} - MegaRAID Dashboard{% endblock %}
+
+{% block extra_scripts %}
+  <script
+    src="{{ request.url_for('static', path='vendor/chart.min.js').path }}?v={{ static_asset_version }}"
+    defer
+  ></script>
+{% endblock %}
+
+{% block content %}
+  {% set nav_active = "drives" %}
+  <div class="drive-detail-v2">
+    <header class="page-header">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="{{ request.url_for('overview').path }}">Overview</a>
+        <span aria-hidden="true">/</span>
+        <a href="{{ request.url_for('drives').path }}">Drives</a>
+        <span aria-hidden="true">/</span>
+        <span>Slot {{ view_model.position.slot }}</span>
+      </nav>
+      <div class="drive-title-row">
+        <h1>{{ view_model.page_title }}</h1>
+        <nav class="drive-nav" aria-label="Adjacent drives">
+          {% if view_model.prev_drive_url %}
+            <a class="drive-nav__link" href="{{ view_model.prev_drive_url }}" aria-label="Previous drive">‹</a>
+          {% endif %}
+          {% if view_model.next_drive_url %}
+            <a class="drive-nav__link" href="{{ view_model.next_drive_url }}" aria-label="Next drive">›</a>
+          {% endif %}
+        </nav>
+      </div>
+      <p>
+        Drive {{ view_model.position.enclosure }}:{{ view_model.position.slot }} detail
+        &middot; <span class="mono">{{ view_model.identity.model }}</span>
+        &middot; <span class="mono">{{ view_model.identity.serial_number }}</span>
+        &middot; Updated:
+        <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
+        <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
+      </p>
+    </header>
+
+    {% include "partials/drive_detail/health_snapshot.html" %}
+    {% include "partials/drive_detail/physical_position.html" %}
+    {% include "partials/drive_detail/temperature_chart.html" %}
+    {% include "partials/drive_detail/identity_grid.html" %}
+    {% include "partials/drive_detail/connection_grid.html" %}
+    {% include "partials/drive_detail/advanced_actions.html" %}
+    {% include "partials/drive_detail/replace_destructive.html" %}
+  </div>
+{% endblock %}
+
+{% block status_bar %}
+  {% include "partials/system_health_bar.html" %}
+{% endblock %}
