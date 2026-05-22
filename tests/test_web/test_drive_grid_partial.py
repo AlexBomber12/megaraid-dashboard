@@ -23,6 +23,8 @@ def test_drive_grid_partial_renders_warning_temperature_class() -> None:
     rendered = _render_drive_grid(tiles)
 
     assert '<span class="drive-tile-v2__temp status-text--warning">' in rendered
+    assert "57°C" in rendered
+    assert "57 C" not in rendered
     assert 'class="drive-tile-v2 drive-tile-v2--warning"' in rendered
 
 

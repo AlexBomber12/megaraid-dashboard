@@ -66,6 +66,8 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert "<span>Controller</span>" in html
     assert "MegaRAID SAS 9270CV-8i" in html
     assert "SN SV00000001." in html
+    assert "70°C" in html
+    assert "70 C" not in html
     assert 'class="chart-canvas-v2"' in html
     assert 'data-range-hours="1"' in html
     assert 'data-range-hours="24" role="tab" aria-selected="true"' in html

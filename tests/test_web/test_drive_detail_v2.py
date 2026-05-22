@@ -98,6 +98,8 @@ def test_drive_detail_v2_renders_page_shell(sample_snapshot: StorcliSnapshot) ->
     assert "Slot 252:0" in response.text
     assert "WDC WD30EFRX-68EUZN0" in response.text
     assert "WD-WM00000001" in response.text
+    assert "61°C" in response.text
+    assert "61 C" not in response.text
 
 
 def test_drive_detail_v2_prev_next_nav_states(sample_snapshot: StorcliSnapshot) -> None:

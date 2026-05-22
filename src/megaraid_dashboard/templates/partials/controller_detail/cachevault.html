@@ -8,7 +8,7 @@
         <div><dt>Model</dt><dd>{{ view_model.cachevault.model }}</dd></div>
         <div><dt>State</dt><dd>{{ view_model.cachevault.state }}</dd></div>
         <div><dt>Capacitance</dt><dd>{% if view_model.cachevault.capacitance_percent is not none %}{{ view_model.cachevault.capacitance_percent }}%{% else %}N/A{% endif %}</dd></div>
-        <div><dt>Temperature</dt><dd>{% if view_model.cachevault.temperature_celsius is not none %}{{ view_model.cachevault.temperature_celsius }} C{% else %}N/A{% endif %}</dd></div>
+        <div><dt>Temperature</dt><dd>{% if view_model.cachevault.temperature_celsius is not none %}{{ view_model.cachevault.temperature_celsius | celsius }}{% else %}N/A{% endif %}</dd></div>
         <div><dt>Manufactured</dt><dd>{{ view_model.cachevault.mfg_date_text }}</dd></div>
         <div><dt>FW cache</dt><dd>{{ view_model.cachevault.fw_cache_size_text }}</dd></div>
       </dl>

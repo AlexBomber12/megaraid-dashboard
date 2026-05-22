@@ -57,7 +57,7 @@
       <div>
         <dt>Temperature</dt>
         <dd class="status-text status-text--{{ view_model.health.temperature_severity }}">
-          {% if view_model.health.temperature_celsius is not none %}{{ view_model.health.temperature_celsius }} C{% else %}N/A{% endif %}
+          {% if view_model.health.temperature_celsius is not none %}{{ view_model.health.temperature_celsius | celsius }}{% else %}N/A{% endif %}
         </dd>
       </div>
       <div>
