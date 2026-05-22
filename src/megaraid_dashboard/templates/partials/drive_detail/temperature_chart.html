@@ -1,22 +1,22 @@
-<div id="chart-area" class="chart-area" data-range-days="30">
-  <section class="section" data-drive-detail-section="temperature-chart" aria-labelledby="drive-temperature-heading">
-    <div class="section-title">
-      <h2 id="drive-temperature-heading">Temperature chart</h2>
-    </div>
-    <div class="range-tabs" role="tablist" aria-label="History range">
-      {% for range_days in (7, 30, 365) %}
-        <button
-          class="range-tabs__button{% if range_days == 30 %} range-tabs__button--active{% endif %}"
-          type="button"
-          role="tab"
-          aria-selected="{{ 'true' if range_days == 30 else 'false' }}"
-          hx-get="{{ request.url_for('drive_charts', enclosure_id=view_model.position.enclosure, slot_id=view_model.position.slot).path }}"
-          hx-vals='{"range_days": {{ range_days }}, "serial_number": {{ view_model.identity.serial_number | tojson }}, "captured_at": {{ view_model.updated_at.isoformat() | tojson }}}'
-          hx-target="#chart-area"
-          hx-swap="outerHTML"
-        >{{ range_days }}d</button>
-      {% endfor %}
-    </div>
+<section class="section" data-drive-detail-section="temperature-chart" aria-labelledby="drive-temperature-heading">
+  <div class="section-title">
+    <h2 id="drive-temperature-heading">Temperature chart</h2>
+  </div>
+  <div class="range-tabs" role="tablist" aria-label="History range">
+    {% for range_days in (7, 30, 365) %}
+      <button
+        class="range-tabs__button{% if range_days == 30 %} range-tabs__button--active{% endif %}"
+        type="button"
+        role="tab"
+        aria-selected="{{ 'true' if range_days == 30 else 'false' }}"
+        hx-get="{{ request.url_for('drive_charts', enclosure_id=view_model.position.enclosure, slot_id=view_model.position.slot).path }}"
+        hx-vals='{"range_days": {{ range_days }}, "serial_number": {{ view_model.identity.serial_number | tojson }}, "captured_at": {{ view_model.updated_at.isoformat() | tojson }}}'
+        hx-target="#chart-area"
+        hx-swap="outerHTML"
+      >{{ range_days }}d</button>
+    {% endfor %}
+  </div>
+  <div id="chart-area" class="chart-area" data-range-days="30">
     <div class="card chart-card">
       <canvas id="temperature-history-chart" class="chart-canvas-v2"></canvas>
       <script id="temperature-history-data" type="application/json">{
@@ -35,77 +35,77 @@
         <p class="chart-empty">Enable JavaScript to view the temperature chart.</p>
       </noscript>
     </div>
-  </section>
-  <script>
-    (function () {
-      const currentScript = document.currentScript;
-      const chartArea = currentScript ? currentScript.closest("#chart-area") : null;
-      if (!chartArea) {
-        return;
-      }
-      const chartRetryLimit = 40;
-      let chartRetryCount = 0;
-
-      function syncRangeTabs() {
-        return;
-      }
-
-      function initializeCharts() {
-        if (!window.Chart) {
-          chartRetryCount += 1;
-          if (chartRetryCount <= chartRetryLimit) {
-            window.setTimeout(initializeCharts, 50);
-          }
+    <script>
+      (function () {
+        const currentScript = document.currentScript;
+        const chartArea = currentScript ? currentScript.closest("#chart-area") : null;
+        if (!chartArea) {
           return;
         }
-        const canvas = chartArea.querySelector("#temperature-history-chart");
-        const payload = JSON.parse(chartArea.querySelector("#temperature-history-data").textContent || "{}");
-        const existingChart = window.Chart.getChart(canvas);
-        if (existingChart) {
-          existingChart.destroy();
+        const chartRetryLimit = 40;
+        let chartRetryCount = 0;
+
+        function syncRangeTabs() {
+          return;
         }
-        new window.Chart(canvas, {
-          type: "line",
-          data: {
-            labels: payload.labels || [],
-            datasets: payload.datasets || [],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: "index", intersect: false },
-            plugins: {
-              legend: { labels: { color: "#f6f8fb" } },
-              tooltip: { mode: "index", intersect: false },
+
+        function initializeCharts() {
+          if (!window.Chart) {
+            chartRetryCount += 1;
+            if (chartRetryCount <= chartRetryLimit) {
+              window.setTimeout(initializeCharts, 50);
+            }
+            return;
+          }
+          const canvas = chartArea.querySelector("#temperature-history-chart");
+          const payload = JSON.parse(chartArea.querySelector("#temperature-history-data").textContent || "{}");
+          const existingChart = window.Chart.getChart(canvas);
+          if (existingChart) {
+            existingChart.destroy();
+          }
+          new window.Chart(canvas, {
+            type: "line",
+            data: {
+              labels: payload.labels || [],
+              datasets: payload.datasets || [],
             },
-            scales: {
-              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
-              y: {
-                ticks: { color: "#9aa5b1" },
-                grid: { color: "rgba(154, 165, 177, 0.15)" },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: "index", intersect: false },
+              plugins: {
+                legend: { labels: { color: "#f6f8fb" } },
+                tooltip: { mode: "index", intersect: false },
+              },
+              scales: {
+                x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+                y: {
+                  ticks: { color: "#9aa5b1" },
+                  grid: { color: "rgba(154, 165, 177, 0.15)" },
+                },
               },
             },
-          },
-        });
-      }
-
-      syncRangeTabs();
-      chartArea.addEventListener("htmx:beforeSwap", () => {
-        if (!window.Chart) {
-          return;
+          });
         }
-        chartArea.querySelectorAll("canvas").forEach((canvas) => {
-          const chart = window.Chart.getChart(canvas);
-          if (chart) {
-            chart.destroy();
+
+        syncRangeTabs();
+        chartArea.addEventListener("htmx:beforeSwap", () => {
+          if (!window.Chart) {
+            return;
           }
+          chartArea.querySelectorAll("canvas").forEach((canvas) => {
+            const chart = window.Chart.getChart(canvas);
+            if (chart) {
+              chart.destroy();
+            }
+          });
         });
-      });
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", initializeCharts, { once: true });
-      } else {
-        initializeCharts();
-      }
-    }());
-  </script>
-</div>
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", initializeCharts, { once: true });
+        } else {
+          initializeCharts();
+        }
+      }());
+    </script>
+  </div>
+</section>

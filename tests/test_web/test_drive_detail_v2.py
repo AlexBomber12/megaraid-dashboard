@@ -111,20 +111,25 @@ def test_drive_detail_v2_prev_next_nav_states(sample_snapshot: StorcliSnapshot) 
 def test_drive_detail_v2_health_snapshot_actions_and_sparkline(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    parsed = _parse(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    html = _drive_detail_response(sample_snapshot, slot_id=4).text
+    parsed = _parse(html)
 
     assert "health-snapshot" in parsed.sections
     assert _button_by_text_attrs(parsed, "start")["hx-post"] == "/drives/252:4/locate/start"
     assert _button_by_text_attrs(parsed, "stop")["hx-post"] == "/drives/252:4/locate/stop"
+    assert 'class="drive-actions" data-locate-state=' in html
     assert parsed.sparkline_current_count == "0"
 
 
 def test_drive_detail_v2_position_and_chart(sample_snapshot: StorcliSnapshot) -> None:
-    parsed = _parse(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    html = _drive_detail_response(sample_snapshot, slot_id=4).text
+    parsed = _parse(html)
 
     assert parsed.position_slots == 8
     assert parsed.highlighted_position_slots == 1
     assert parsed.chart_canvas_v2
+    assert html.index('class="range-tabs"') < html.index('id="chart-area"')
+    assert html.count('hx-target="#chart-area"') == 3
 
 
 def test_drive_detail_v2_identity_connection_and_action_counts(

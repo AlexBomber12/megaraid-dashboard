@@ -2,53 +2,55 @@
   <div class="section-title">
     <h2 id="drive-health-heading">Health snapshot</h2>
   </div>
-  <div class="health-card health-card--{{ view_model.health.state_severity }}" data-locate-state="{% if view_model.health.locate_active %}start{% else %}stop{% endif %}">
+  <div class="health-card health-card--{{ view_model.health.state_severity }}">
     <div class="health-card__summary">
       <span class="text-label">Drive state</span>
       <strong class="status-text status-text--{{ view_model.health.state_severity }}">{{ view_model.health.state }}</strong>
       <p>{{ view_model.health.summary_text }}</p>
       <p class="muted">{{ view_model.health.state_subtitle }}</p>
-      <div class="drive-actions__controls">
-        <button
-          type="button"
-          class="button button--primary"
-          hx-post="{{ request.url_for('drive_locate_start', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
-          hx-swap="none"
-          hx-target="this"
-          hx-on::before-request="this.setAttribute('aria-busy', 'true')"
-          hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
-          data-confirm="Blink the locate LED on slot {{ view_model.position.enclosure }}:{{ view_model.position.slot }}?"
-          data-locate-action="start"
-          {% if not view_model.health.can_locate_start %}disabled title="Locate is already active."{% endif %}
-        >
-          <svg class="button__icon button__icon--idle" aria-hidden="true">
-            <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-lightbulb"/>
-          </svg>
-          <svg class="button__icon button__icon--busy" aria-hidden="true">
-            <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-refresh-cw"/>
-          </svg>
-          Start locate
-        </button>
-        <button
-          type="button"
-          class="button"
-          hx-post="{{ request.url_for('drive_locate_stop', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
-          hx-swap="none"
-          hx-target="this"
-          hx-on::before-request="this.setAttribute('aria-busy', 'true')"
-          hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
-          data-locate-action="stop"
-          {% if not view_model.health.can_locate_stop %}disabled title="Locate is not active."{% endif %}
-        >
-          <svg class="button__icon button__icon--idle" aria-hidden="true">
-            <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-lightbulb"/>
-          </svg>
-          <svg class="button__icon button__icon--busy" aria-hidden="true">
-            <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-refresh-cw"/>
-          </svg>
-          Stop locate
-        </button>
-        <span class="drive-actions__feedback" data-action-feedback aria-live="polite"></span>
+      <div class="drive-actions" data-locate-state="{% if view_model.health.locate_active %}start{% else %}stop{% endif %}">
+        <div class="drive-actions__controls">
+          <button
+            type="button"
+            class="button button--primary"
+            hx-post="{{ request.url_for('drive_locate_start', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+            hx-swap="none"
+            hx-target="this"
+            hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+            hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+            data-confirm="Blink the locate LED on slot {{ view_model.position.enclosure }}:{{ view_model.position.slot }}?"
+            data-locate-action="start"
+            {% if not view_model.health.can_locate_start %}disabled title="Locate is already active."{% endif %}
+          >
+            <svg class="button__icon button__icon--idle" aria-hidden="true">
+              <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-lightbulb"/>
+            </svg>
+            <svg class="button__icon button__icon--busy" aria-hidden="true">
+              <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-refresh-cw"/>
+            </svg>
+            Start locate
+          </button>
+          <button
+            type="button"
+            class="button"
+            hx-post="{{ request.url_for('drive_locate_stop', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
+            hx-swap="none"
+            hx-target="this"
+            hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+            hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+            data-locate-action="stop"
+            {% if not view_model.health.can_locate_stop %}disabled title="Locate is not active."{% endif %}
+          >
+            <svg class="button__icon button__icon--idle" aria-hidden="true">
+              <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-lightbulb"/>
+            </svg>
+            <svg class="button__icon button__icon--busy" aria-hidden="true">
+              <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-refresh-cw"/>
+            </svg>
+            Stop locate
+          </button>
+          <span class="drive-actions__feedback" data-action-feedback aria-live="polite"></span>
+        </div>
       </div>
     </div>
     <dl class="health-metrics">
