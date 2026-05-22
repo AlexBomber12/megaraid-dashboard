@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+# ruff: noqa: E402, I001
+
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 
 import pytest
 from sqlalchemy.orm import Session
+
+pytest.skip("rewritten in PR-088b", allow_module_level=True)
 
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import (
