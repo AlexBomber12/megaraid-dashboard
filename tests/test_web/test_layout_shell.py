@@ -43,7 +43,7 @@ def test_layout_shell_renders_landmarks_and_version_label() -> None:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert '<header class="site-header-v2">' in response.text
+    assert '<header class="site-header">' in response.text
     assert '<main class="page-content">' in response.text
     assert '<footer class="site-footer">' in response.text
     assert "Version " in response.text

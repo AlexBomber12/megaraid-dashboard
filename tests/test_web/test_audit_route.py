@@ -71,7 +71,7 @@ def test_audit_route_marks_audit_nav_link_active() -> None:
 
     assert response.status_code == 200
     assert parser.links["Audit"]["href"] == "/audit"
-    assert "site-nav-v2__link--active" in parser.links["Audit"]["class"]
+    assert "site-nav__link--active" in parser.links["Audit"]["class"]
     assert parser.links["Audit"]["aria-current"] == "page"
 
 
@@ -145,7 +145,7 @@ class _NavLinkParser(HTMLParser):
         if tag != "a":
             return
         attributes = {name: value or "" for name, value in attrs}
-        if "site-nav-v2__link" in attributes.get("class", ""):
+        if "site-nav__link" in attributes.get("class", ""):
             self._current_attrs = attributes
 
     def handle_data(self, data: str) -> None:

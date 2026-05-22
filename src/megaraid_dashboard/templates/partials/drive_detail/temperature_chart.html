@@ -18,7 +18,7 @@
   </div>
   <div id="chart-area" class="chart-area" data-range-days="30">
     <div class="card chart-card">
-      <canvas id="temperature-history-chart" class="chart-canvas-v2"></canvas>
+      <canvas id="temperature-history-chart" class="chart-canvas"></canvas>
       <script id="temperature-history-data" type="application/json">{
         "labels": [{% for timestamp in view_model.temperature_chart.timestamps %}{{ timestamp | iso_utc | tojson }}{% if not loop.last %}, {% endif %}{% endfor %}],
         "datasets": [{

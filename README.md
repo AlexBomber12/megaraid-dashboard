@@ -180,7 +180,7 @@ Routes:
 
 - `/` renders the Overview page with the latest controller, virtual drive, CacheVault,
   and physical drive snapshot.
-- `/partials/overview` renders only the Overview data block used by HTMX refreshes.
+- `/partials/main-page` renders the refreshable main dashboard content used by HTMX polling.
 - `/drives` renders a physical drive list with links to drive detail pages.
 - `/drives/{enclosure_id}/{slot_id}` renders the Drive Detail page with current drive
   attributes, temperature history, and error counter history.
@@ -290,13 +290,14 @@ The `proxy_set_header X-Forwarded-Prefix /raid` line overwrites any client-suppl
 |       |   |   |-- drive_detail.html
 |       |   |   |-- drives.html
 |       |   |   |-- events.html
-|       |   |   `-- overview.html
+|       |   |   `-- main.html
 |       |   `-- partials/
+|       |       |-- activity_timeline.html
 |       |       |-- drive_charts.html
 |       |       |-- events_data.html
 |       |       |-- events_table.html
-|       |       |-- physical_drive_table.html
-|       |       `-- overview_data.html
+|       |       |-- main_page_refresh.html
+|       |       `-- physical_drive_table.html
 |       `-- web/
 |           |-- __init__.py
 |           |-- middleware.py

@@ -3,7 +3,7 @@
     <div class="section-heading">
       <h2 id="temperature-history-heading">Temperature History</h2>
     </div>
-    <canvas class="chart-canvas-v2" id="temperature-history-chart"></canvas>
+    <canvas class="chart-canvas" id="temperature-history-chart"></canvas>
     <script id="temperature-history-data" type="application/json">{{ view_model.temperature_chart | tojson }}</script>
     <noscript>
       {% if view_model.temperature_rows %}
@@ -39,7 +39,7 @@
     <div class="section-heading">
       <h2 id="error-history-heading">Error Counter History</h2>
     </div>
-    <canvas class="chart-canvas-v2" id="error-history-chart"></canvas>
+    <canvas class="chart-canvas" id="error-history-chart"></canvas>
     <script id="error-history-data" type="application/json">{{ view_model.error_chart | tojson }}</script>
     <noscript>
       {% if view_model.error_rows %}

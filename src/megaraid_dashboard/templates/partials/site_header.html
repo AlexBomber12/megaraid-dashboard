@@ -1,34 +1,34 @@
-<header class="site-header-v2">
-  <div class="site-header-v2__inner">
-    <a class="brand brand-v2" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
-    <nav class="site-nav-v2" aria-label="Primary navigation">
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="brand" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
+    <nav class="site-nav" aria-label="Primary navigation">
       <a
-        class="site-nav-v2__link{% if nav_active == 'overview' %} site-nav-v2__link--active{% endif %}"
+        class="site-nav__link{% if nav_active == 'overview' %} site-nav__link--active{% endif %}"
         href="{{ request.url_for('overview').path }}"
         {% if nav_active == 'overview' %}aria-current="page"{% endif %}
       >Overview</a>
       <a
-        class="site-nav-v2__link{% if nav_active == 'controller' %} site-nav-v2__link--active{% endif %}"
+        class="site-nav__link{% if nav_active == 'controller' %} site-nav__link--active{% endif %}"
         href="{{ request.url_for('controller_detail').path }}"
         {% if nav_active == 'controller' %}aria-current="page"{% endif %}
       >Controller</a>
       <a
-        class="site-nav-v2__link{% if nav_active == 'drives' %} site-nav-v2__link--active{% endif %}"
+        class="site-nav__link{% if nav_active == 'drives' %} site-nav__link--active{% endif %}"
         href="{{ request.url_for('drives').path }}"
         {% if nav_active == 'drives' %}aria-current="page"{% endif %}
       >Drives</a>
       <a
-        class="site-nav-v2__link{% if nav_active == 'events' %} site-nav-v2__link--active{% endif %}"
+        class="site-nav__link{% if nav_active == 'events' %} site-nav__link--active{% endif %}"
         href="{{ request.url_for('events').path }}"
         {% if nav_active == 'events' %}aria-current="page"{% endif %}
       >Events</a>
       <a
-        class="site-nav-v2__link{% if nav_active == 'audit' %} site-nav-v2__link--active{% endif %}"
+        class="site-nav__link{% if nav_active == 'audit' %} site-nav__link--active{% endif %}"
         href="{{ request.url_for('audit_log').path }}"
         {% if nav_active == 'audit' %}aria-current="page"{% endif %}
       >Audit</a>
     </nav>
-    <div class="site-header-v2__meta">
+    <div class="site-header__meta">
       <div class="refresh-status" aria-label="Auto-refresh status">
         <span class="refresh-dot" aria-hidden="true">
           <span class="refresh-dot--pulsing"></span>

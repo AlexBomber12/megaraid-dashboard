@@ -100,9 +100,7 @@ from megaraid_dashboard.services.drive_actions import (
 )
 from megaraid_dashboard.services.drive_detail import (
     DriveDetailViewModel,
-)
-from megaraid_dashboard.services.drive_detail import (
-    load_drive_detail_view_model as load_drive_detail_v2_view_model,
+    load_drive_detail_view_model,
 )
 from megaraid_dashboard.services.drive_history import (
     DriveErrorSeries,
@@ -122,10 +120,8 @@ from megaraid_dashboard.services.events import (
 from megaraid_dashboard.services.overview import (
     DriveListViewModel,
     MainPageViewModel,
-    OverviewViewModel,
     load_drive_list_view_model,
     load_main_page_view_model,
-    load_overview_view_model,
 )
 from megaraid_dashboard.storcli import (
     DriveShow,
@@ -398,19 +394,6 @@ def main_page_refresh(request: Request) -> Response:
     return response
 
 
-@router.get("/partials/overview", name="overview_partial")
-def overview_partial(request: Request) -> Response:
-    started_at = perf_counter()
-    view_model = _load_overview(request)
-    response = TEMPLATES.TemplateResponse(
-        request=request,
-        name="partials/overview_data.html",
-        context={"view_model": view_model},
-    )
-    _log_overview_rendered(view_model=view_model, elapsed_ms=_elapsed_ms(started_at), partial=True)
-    return response
-
-
 @router.get("/drives", name="drives")
 def drives(request: Request) -> Response:
     view_model = _load_drive_list(request)
@@ -444,7 +427,7 @@ def controller_detail(request: Request) -> Response:
 @router.get("/drives/{enclosure_id}/{slot_id}", name="drive_detail")
 def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
     started_at = perf_counter()
-    view_model = _load_drive_detail_v2(
+    view_model = _load_drive_detail(
         request,
         enclosure_id=enclosure_id,
         slot_id=slot_id,
@@ -461,7 +444,7 @@ def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
     )
     return TEMPLATES.TemplateResponse(
         request=request,
-        name="pages/drive_detail_v2.html",
+        name="pages/drive_detail.html",
         context={
             "active_nav": "drives",
             "current_utc_label": _current_utc_label(),
@@ -3797,17 +3780,6 @@ def _task_is_alive(task: object) -> bool:
     return not task.done()
 
 
-def _load_overview(request: Request) -> OverviewViewModel:
-    scheduler = getattr(request.app.state, "scheduler", None)
-    with _session(request) as session:
-        return load_overview_view_model(
-            session,
-            scheduler=scheduler,
-            overview_url=str(request.url_for("overview").path),
-            drives_url=str(request.url_for("drives").path),
-        )
-
-
 def _load_main_page(request: Request) -> MainPageViewModel:
     settings = cast(Settings, request.app.state.settings)
     with _session(request) as session:
@@ -3855,7 +3827,7 @@ def _load_controller_detail(request: Request) -> ControllerDetailViewModel:
         )
 
 
-def _load_drive_detail_v2(
+def _load_drive_detail(
     request: Request,
     *,
     enclosure_id: int,
@@ -3865,7 +3837,7 @@ def _load_drive_detail_v2(
     settings = cast(Settings, request.app.state.settings)
     try:
         with _session(request) as session:
-            view_model = load_drive_detail_v2_view_model(
+            view_model = load_drive_detail_view_model(
                 session,
                 enclosure_id=enclosure_id,
                 slot_id=slot_id,
@@ -3873,12 +3845,12 @@ def _load_drive_detail_v2(
                 app_version=__version__,
                 range_days=range_days,
             )
-            return _prefix_drive_detail_v2_urls(request, view_model)
+            return _prefix_drive_detail_urls(request, view_model)
     except LookupError as exc:
         raise HTTPException(status_code=404) from exc
 
 
-def _prefix_drive_detail_v2_urls(
+def _prefix_drive_detail_urls(
     request: Request,
     view_model: DriveDetailViewModel,
 ) -> DriveDetailViewModel:
@@ -4612,21 +4584,6 @@ def _static_asset_version() -> str:
 
 def _elapsed_ms(started_at: float) -> float:
     return round((perf_counter() - started_at) * 1000, 3)
-
-
-def _log_overview_rendered(
-    *,
-    view_model: OverviewViewModel,
-    elapsed_ms: float,
-    partial: bool,
-) -> None:
-    captured_at = view_model.captured_at.isoformat() if view_model.captured_at is not None else None
-    LOGGER.info(
-        "ui_overview_rendered",
-        captured_at=captured_at,
-        elapsed_ms=elapsed_ms,
-        partial=partial,
-    )
 
 
 def _log_main_page_rendered(

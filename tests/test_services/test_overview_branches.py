@@ -2,19 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import (
-    CacheVaultSnapshot,
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.overview import (
-    _cachevault_card,
     _drive_detail_url,
     _drive_state_badge,
     _drive_temperature_badge,
@@ -24,17 +22,14 @@ from megaraid_dashboard.services.overview import (
     _hottest_drive,
     _max_temperature,
     _physical_drive_aggregate_status,
+    _require_aware_utc,
     _require_temperature,
     _temperature_count,
     _temperature_severity,
-    _virtual_drive_aggregate_status,
-    _virtual_drive_aggregate_value,
+    _temperature_tooltip,
     load_drive_list_view_model,
-    load_overview_view_model,
     temperature_severity,
 )
-from megaraid_dashboard.storcli import StorcliSnapshot
-from tests.test_services.test_overview import _insert, _snapshot
 
 
 @pytest.fixture(autouse=True)
@@ -126,24 +121,6 @@ def test_drive_list_view_model_handles_empty_database(session: Session) -> None:
     assert view_model.empty_next_run == "No collection run is currently scheduled."
 
 
-# --- Line 574: _load_drive_summary upgrades non-optimal info severities -------
-
-
-def test_overview_drive_summary_promotes_rebuilding_non_optimal_state_to_warning(
-    session: Session,
-    sample_snapshot: StorcliSnapshot,
-) -> None:
-    _insert(session, _snapshot(sample_snapshot, pd_state="Rbld"))
-
-    view_model = load_overview_view_model(session)
-
-    # _load_drive_summary upgrades non-PD-optimal states whose severity-to-
-    # status mapping returns "optimal" (e.g., "Rbld" because Onln->Rbld is
-    # severity "info") to "warning". Controller Health reflects this.
-    controller_health = next(card for card in view_model.cards if card.label == "Controller Health")
-    assert controller_health.severity == "warning"
-
-
 # --- Line 736: _empty_next_run_text with naive scheduler run time --------------
 
 
@@ -157,24 +134,25 @@ def test_empty_next_run_text_treats_naive_next_run_as_utc() -> None:
     assert text.endswith(" seconds.")
 
 
-# --- Line 838: _cachevault_card fallback when capacitance_percent <= 0 --------
-
-
-def test_cachevault_card_falls_back_to_unknown_when_capacitance_is_zero() -> None:
-    cv = CacheVaultSnapshot(
-        type="CV",
-        state="Optimal",
-        temperature_celsius=30,
-        pack_energy=None,
-        capacitance_percent=0,
-        replacement_required=False,
-        next_learn_cycle=None,
+def test_empty_next_run_text_covers_disabled_and_missing_job() -> None:
+    assert (
+        _empty_next_run_text(scheduler=None, collector_enabled=False)
+        == "Metrics collection is disabled; no collection run is scheduled."
     )
+    assert _empty_next_run_text(
+        scheduler=_NaiveScheduler(next_run_time=datetime(2099, 1, 1, tzinfo=UTC)),
+        collector_enabled=True,
+    ).startswith("Next scheduled run in ")
 
-    card = _cachevault_card(cv, capacitance_warning_percent=80)
+    class MissingJobScheduler:
+        def get_job(self, job_id: str) -> None:
+            assert job_id == "metrics_collector"
+            return None
 
-    assert card.value == "Unknown"
-    assert card.severity == "unknown"
+    assert (
+        _empty_next_run_text(scheduler=MissingJobScheduler(), collector_enabled=True)
+        == "No collection run is currently scheduled."
+    )
 
 
 # --- Line 964: _drive_state_badge promotes "unknown" state status to warning --
@@ -229,30 +207,6 @@ def test_drive_temperature_badge_returns_unknown_for_missing_temperature() -> No
     assert badge == "unknown"
 
 
-# --- Line 1029, 1034: _virtual_drive_aggregate_status critical and fallback --
-
-
-@pytest.mark.parametrize(
-    ("states", "expected"),
-    [
-        ((), "neutral"),
-        (("Failed",), "critical"),
-        (("Offln", "Optl"), "critical"),
-        (("Dgrd",), "warning"),
-        (("Pdgd",), "warning"),
-        (("Optl", "Optimal"), "optimal"),
-        (("Rbld",), "warning"),
-        (("Optl", "SomethingElse"), "warning"),
-    ],
-)
-def test_virtual_drive_aggregate_status_covers_each_branch(
-    states: tuple[str, ...], expected: str
-) -> None:
-    virtual_drives = [_make_vd(state=state, vd_id=index) for index, state in enumerate(states)]
-
-    assert _virtual_drive_aggregate_status(virtual_drives) == expected
-
-
 # --- Line 1058: _physical_drive_aggregate_status promotes "Rbld" to warning --
 
 
@@ -267,28 +221,6 @@ def test_physical_drive_aggregate_status_promotes_rebuilding_to_warning() -> Non
 
 def test_physical_drive_aggregate_status_empty_is_optimal() -> None:
     assert _physical_drive_aggregate_status([]) == "optimal"
-
-
-# --- Line 1071, 1087: _virtual_drive_aggregate_value branches ----------------
-
-
-@pytest.mark.parametrize(
-    ("states", "expected"),
-    [
-        ((), "Unknown"),
-        (("Failed", "Optl"), "1 failed"),
-        (("Dgrd", "Optl"), "1 degraded"),
-        (("Pdgd", "Optl"), "1 degraded"),
-        (("Optl", "Optimal"), "2/2 OK"),
-        (("Optl", "Rbld"), "1 unknown"),
-    ],
-)
-def test_virtual_drive_aggregate_value_covers_each_branch(
-    states: tuple[str, ...], expected: str
-) -> None:
-    virtual_drives = [_make_vd(state=state, vd_id=index) for index, state in enumerate(states)]
-
-    assert _virtual_drive_aggregate_value(virtual_drives) == expected
 
 
 # --- Line 1118: _event_severity_to_status fallback for unknown severity -----
@@ -330,6 +262,18 @@ def test_temperature_severity_covers_each_branch(value: int | None, expected: st
 def test_temperature_severity_private_wrapper_delegates_to_public() -> None:
     assert _temperature_severity(58, temp_warning=55, temp_critical=60) == "warning"
     assert _temperature_severity(None, temp_warning=55, temp_critical=60) == "unknown"
+
+
+def test_temperature_tooltip_handles_missing_and_populated_values() -> None:
+    assert _temperature_tooltip(None, warning=55, critical=60) is None
+    assert _temperature_tooltip(58, warning=55, critical=60) == (
+        "Current 58 C / Warning 55 C / Critical 60 C"
+    )
+
+
+def test_require_aware_utc_rejects_naive_values() -> None:
+    with pytest.raises(ValueError, match="timezone"):
+        _require_aware_utc(datetime(2026, 5, 22, 12, 0))
 
 
 # --- Line 1165: _temperature_count -------------------------------------------

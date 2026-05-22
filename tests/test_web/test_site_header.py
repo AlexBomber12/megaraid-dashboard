@@ -38,7 +38,7 @@ def test_overview_renders_new_header_with_all_nav_links() -> None:
     response = _get_overview()
 
     assert response.status_code == 200
-    assert '<header class="site-header-v2">' in response.text
+    assert '<header class="site-header">' in response.text
     for label in ("Overview", "Controller", "Drives", "Events", "Audit"):
         assert f">{label}</a>" in response.text
 
@@ -50,7 +50,7 @@ def test_overview_nav_link_is_marked_active() -> None:
 
     overview_link = parser.links["Overview"]
 
-    assert "site-nav-v2__link--active" in overview_link["class"]
+    assert "site-nav__link--active" in overview_link["class"]
     assert overview_link["aria-current"] == "page"
 
 
@@ -72,16 +72,16 @@ def test_audit_nav_link_is_marked_active_after_redirect() -> None:
     audit_link = parser.links["Audit"]
     events_link = parser.links["Events"]
 
-    assert "site-nav-v2__link--active" in audit_link["class"]
+    assert "site-nav__link--active" in audit_link["class"]
     assert audit_link["aria-current"] == "page"
-    assert "site-nav-v2__link--active" not in events_link["class"]
+    assert "site-nav__link--active" not in events_link["class"]
     assert "aria-current" not in events_link
 
 
 def test_nav_active_marker_text_does_not_render_before_header() -> None:
     response = _get_overview()
     body_start = response.text.index("<body>")
-    header_start = response.text.index('<header class="site-header-v2">')
+    header_start = response.text.index('<header class="site-header">')
     before_header = response.text[body_start:header_start]
 
     assert "overview" not in before_header
@@ -105,15 +105,15 @@ def test_utc_clock_element_is_present() -> None:
 def test_header_uses_sticky_css_class() -> None:
     stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text(encoding="utf-8")
 
-    assert '<header class="site-header-v2">' in _get_overview().text
-    assert ".site-header-v2 {" in stylesheet
+    assert '<header class="site-header">' in _get_overview().text
+    assert ".site-header {" in stylesheet
     assert "position: sticky;" in stylesheet
 
 
 def test_header_nav_has_v2_mobile_overflow_handling() -> None:
     stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text(encoding="utf-8")
 
-    assert ".site-nav-v2 {" in stylesheet
+    assert ".site-nav {" in stylesheet
     assert "overflow-x: auto;" in stylesheet
     assert "-webkit-overflow-scrolling: touch;" in stylesheet
     assert "@media (max-width: 560px)" in stylesheet
@@ -140,7 +140,7 @@ class _LinkParser(HTMLParser):
         if tag != "a":
             return
         attributes = {name: value or "" for name, value in attrs}
-        if "site-nav-v2__link" in attributes.get("class", ""):
+        if "site-nav__link" in attributes.get("class", ""):
             self._active_attrs = attributes
 
     def handle_data(self, data: str) -> None:

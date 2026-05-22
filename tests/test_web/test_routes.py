@@ -192,11 +192,10 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert "/raid/" not in response.text
 
 
-def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
+def test_empty_database_renders_empty_state_on_full_page() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         full_response = client.get("/")
-        partial_response = client.get("/partials/overview")
 
     assert full_response.status_code == 200
     assert 'class="controller-card-v2 controller-card-v2--unknown"' in full_response.text
@@ -206,18 +205,6 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
     assert "No events yet." in full_response.text
     assert "Collector" in full_response.text
     assert "Notifier" in full_response.text
-    assert "Waiting for first metrics collection" in partial_response.text
-    assert partial_response.text.count('class="status-tile status-tile--') == 6
-    assert "RoC" in partial_response.text
-    assert "status-tile--neutral" in partial_response.text
-    assert (
-        "Metrics collection is disabled; no collection run is scheduled." in partial_response.text
-    )
-    assert 'class="alert-status"' in partial_response.text
-    assert partial_response.text.count('class="alert-status__cell') == 4
-    assert "Never" in partial_response.text
-    assert "<!doctype html>" not in partial_response.text
-    assert "site-header" not in partial_response.text
 
 
 def test_dashboard_requires_authentication() -> None:
@@ -227,27 +214,6 @@ def test_dashboard_requires_authentication() -> None:
 
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"] == 'Basic realm="megaraid-dashboard"'
-
-
-def test_partial_endpoint_returns_data_block_fragment(
-    sample_snapshot: StorcliSnapshot,
-) -> None:
-    test_app = create_app()
-    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
-        _insert_app_snapshot(test_app, sample_snapshot)
-
-        response = client.get("/partials/overview")
-
-    assert response.status_code == 200
-    assert response.text.lstrip().startswith('<div\n  id="data-block"')
-    assert "<!doctype html>" not in response.text
-    assert "site-header" not in response.text
-    assert "SERVER RAID Status" in response.text
-    assert response.text.count('class="status-tile status-tile--') == 6
-    assert "RoC" in response.text
-    assert "status-tile--optimal" in response.text
-    assert 'class="alert-status"' in response.text
-    assert response.text.count('class="alert-status__cell') == 4
 
 
 def test_alert_status_pending_count_uses_warning_cell(
@@ -354,7 +320,7 @@ def test_data_block_has_auto_refresh_attributes() -> None:
         response = client.get("/")
 
     assert 'class="main-page-v2"' in response.text
-    assert 'hx-get="/partials/overview"' not in response.text
+    assert 'hx-get="/partials/main-page"' in response.text
 
 
 def test_vendored_htmx_exists_and_is_referenced() -> None:
@@ -1012,16 +978,6 @@ def _anchor_hrefs(html: str) -> set[str]:
     parser = _AnchorParser()
     parser.feed(html)
     return parser.hrefs
-
-
-def _status_tile_hrefs(html: str) -> set[str]:
-    return set(
-        re.findall(
-            r'<a\s+class="status-tile[^"]*"\s+href="([^"]+)"',
-            html,
-            flags=re.MULTILINE,
-        )
-    )
 
 
 def _json_scripts(html: str) -> dict[str, dict[str, object]]:

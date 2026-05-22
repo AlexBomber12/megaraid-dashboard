@@ -64,7 +64,7 @@ def test_main_page_renders_new_overview(
     assert "2026-04-25T12:00:00Z" in response.text
     assert "/controller/foreign-config" in anchors
     assert "/drives/252:0" in anchors
-    assert "site-nav-v2__link--active" in response.text
+    assert "site-nav__link--active" in response.text
     assert 'aria-current="page"' in response.text
     assert ">Overview</a>" in response.text
 
