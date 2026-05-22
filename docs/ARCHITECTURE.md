@@ -34,7 +34,7 @@ state, and nginx owns the public HTTP boundary.
 
 ## Components
 
-### storcli wrapper
+### Storcli Wrappers
 
 All controller reads and writes go through `src/megaraid_dashboard/storcli/`. The wrapper
 executes `storcli64` with JSON output, optionally through sudo, then validates the returned
@@ -43,6 +43,13 @@ call `storcli64` directly.
 
 The wrapper is the stability boundary for the project. Kernel and OS upgrades can change
 legacy ioctl behavior, but the application depends on Broadcom's JSON CLI contract instead.
+
+Command builders for controller and drive operations live in
+`src/megaraid_dashboard/services/drive_actions.py`. They construct explicit argv lists for
+locate LED, replacement, rebuild status, patrol read, consistency check, foreign config,
+controller buzzer, and advanced drive actions. Route handlers choose a builder, validate the
+requested state transition, then call `run_storcli`; no route should assemble a free-form
+`storcli` string or call subprocess directly.
 
 ### Collector
 
@@ -96,7 +103,20 @@ The production HTTP boundary is nginx. nginx provides the public `/raid/` path, 
 auth, TLS, and trusted forwarding headers. FastAPI also includes auth, CSRF, rate limiting,
 and path-prefix handling for defense in depth and local deployments.
 
-### Live data flow
+### View Model Layer
+
+The redesigned UI uses per-page view models instead of route-local template dictionaries.
+The main page is assembled by `services/overview.py`, the controller detail page by
+`services/controller_detail.py`, and the drive detail page by `services/drive_detail.py`.
+Each service loads database state, derives display-ready labels and URLs, and returns frozen
+dataclasses consumed by Jinja templates.
+
+This keeps FastAPI routes thin: routes parse path/query/body values, call one service
+function, and render a template or JSON response. Business rules such as drive-state labels,
+temperature severity, backplane tile severity, active-operation summaries, and chart series
+selection belong in service modules where they can be unit tested without a browser.
+
+### HTMX Polling
 
 The main dashboard page uses HTMX polling for live updates. Initial page load renders the
 full `pages/main.html` template, including the header, page chrome, status bar, and the
@@ -112,6 +132,29 @@ controls.
 This keeps live updates on the stable server-rendered HTML path without adding SSE or
 WebSocket state. Polling continues while the browser tab is in the background; tab visibility
 pausing is a future optimization if the request volume becomes a problem.
+
+The polling interval is 30 seconds by default. It is intentionally a snapshot refresh, not a
+real-time hardware stream; operators should expect UI state to lag the controller until the
+collector and the next HTMX refresh complete.
+
+### State Machine
+
+Drive write routes enforce state transitions before running `storcli` commands. Replacement
+actions require the expected step order: set offline, set missing, physically replace the
+drive, insert the replacement, and then poll rebuild status. The missing step is accepted
+only from `Offln`, while the offline step is limited to known controller states where the
+operation is meaningful.
+
+Advanced drive actions use smaller validators:
+
+- `Mark UBad` accepts only a current `UGood` drive.
+- `Mark UGood` accepts only a current `UBad` drive.
+- `Spin Down` accepts `Onln`, `UGood`, or `UBad`.
+- `Make Hot Spare` accepts `UGood` and requires that the requested disk group exists.
+
+The route layer validates both the latest stored snapshot and the live drive returned by
+`storcli /c0/eN/sN show all J`. This prevents a stale UI snapshot from authorizing an
+operation against a different live drive state.
 
 ### Retention
 

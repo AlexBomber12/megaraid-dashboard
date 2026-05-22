@@ -35,6 +35,65 @@ python -m megaraid_dashboard
 
 The local development UI is served at <http://127.0.0.1:8090/>.
 
+## Dashboard Overview
+
+The redesigned dashboard is organized around the normal operator path: start with the main
+page, drill into controller health when the controller needs attention, and drill into a
+single drive when a slot needs action.
+
+![Main dashboard showing the controller card, drive grid, recent activity, and status bar](docs/images/main-dashboard.png)
+
+![Controller detail page with health, RoC history, RAID config, hardware identity, and buzzer controls](docs/images/controller-detail.png)
+
+![Drive detail page with the backplane position diagram, error sparkline, fixed-height temperature chart, and advanced actions](docs/images/drive-detail.png)
+
+![Buzzer Control section with Silence, Disable, and Enable buttons](docs/images/buzzer-control.png)
+
+## Quick Tour
+
+1. Open `/` for the main dashboard. The first viewport shows one controller card, an
+   eight-drive backplane grid, the latest activity timeline, and the system status bar.
+   The page refreshes through HTMX every 30 seconds, so it can lag real controller state by
+   up to one polling interval.
+2. Open `/controller` from the navigation or the controller card when controller-level
+   details matter. The page includes health, live operation status, CacheVault, RAID
+   configuration, scheduled tasks, hardware identity, foreign config status, buzzer control,
+   and the RoC temperature history chart. The RoC chart reads JSON from
+   `/controller/roc-history?range_hours=24`; supported ranges are `1`, `24`, `168`, and
+   `720` hours.
+3. Open a drive detail page from a grid tile, for example `/drives/252:0`. The page shows
+   the selected slot, a backplane position diagram, identity and connection fields, an error
+   sparkline, a fixed-height temperature history chart, locate controls, replacement entry,
+   and advanced drive actions. The backplane diagram is logical; physical bay order may need
+   per-deployment mapping before it exactly matches a chassis.
+
+### Buzzer Control
+
+The controller page exposes three buzzer actions while maintenance mode is enabled:
+
+- `Silence` runs `/c0 set alarm=silence`. It acts on the current audible condition without
+  changing the persistent buzzer setting. The dashboard cannot infer from a stored snapshot
+  whether the buzzer is actively sounding, so use this when the physical alarm is audible.
+- `Disable` runs `/c0 set alarm=off`. It changes the persistent controller buzzer
+  configuration and should be used only when the operator intentionally wants no physical
+  alarm.
+- `Enable` runs `/c0 set alarm=on` to restore the persistent physical alarm setting.
+
+All buzzer POST routes are CSRF-protected, require maintenance mode, and write an operator
+audit event.
+
+### Advanced Drive Actions
+
+The drive detail page includes advanced operations for maintenance workflows:
+
+- `Mark as UBad` is valid only when the latest live drive state is `UGood`.
+- `Mark as UGood` is valid only when the latest live drive state is `UBad`.
+- `Spin Down` is valid for `Onln`, `UGood`, or `UBad` drives.
+- `Make Hot Spare` is valid for a `UGood` drive and requires a real disk group id.
+
+The route layer validates the persisted snapshot first, rechecks live drive state through
+`storcli`, requires maintenance mode, and records the result in the operator audit trail.
+
 ## Development
 
 ```bash
@@ -178,12 +237,20 @@ RoC temperature warning, critical, and hysteresis thresholds default to 95 C, 10
 The read-only server-side rendered UI has no frontend build step and no npm dependency.
 Routes:
 
-- `/` renders the Overview page with the latest controller, virtual drive, CacheVault,
-  and physical drive snapshot.
-- `/partials/overview` renders only the Overview data block used by HTMX refreshes.
-- `/drives` renders a physical drive list with links to drive detail pages.
+- `/` renders the main dashboard with the controller card, drive grid, recent activity, and
+  status bar.
+- `/partials/main-page` renders only the refreshable main-page region used by HTMX polling.
+- `/controller` renders the controller detail page.
+- `/controller/roc-history` returns RoC temperature history JSON for the controller chart.
+- `/controller/buzzer/silence`, `/controller/buzzer/disable`, and
+  `/controller/buzzer/enable` run the maintenance-mode buzzer workflow.
+- `/drives` renders the physical drive list.
 - `/drives/{enclosure_id}/{slot_id}` renders the Drive Detail page with current drive
   attributes, temperature history, and error counter history.
+- `/drives/{enclosure}:{slot}/actions/mark-ubad`,
+  `/drives/{enclosure}:{slot}/actions/mark-ugood`,
+  `/drives/{enclosure}:{slot}/actions/spindown`, and
+  `/drives/{enclosure}:{slot}/actions/hotspare` run advanced drive actions.
 - `/drives/{enclosure_id}/{slot_id}/charts` renders only the chart fragment used by the
   Drive Detail range selector.
 - `/events` renders the read-only events log page.

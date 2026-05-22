@@ -190,6 +190,18 @@ State-changing HTTP methods require a double-submit CSRF token. The cookie uses 
 `__Host-` prefix, `Path=/`, `SameSite=Strict`, and `Secure`. JavaScript copies the cookie
 value into the `X-CSRF-Token` header for HTMX and fetch requests.
 
+The CSRF-protected mutating route set includes maintenance mode, locate LED, replacement
+steps, patrol read, consistency check, foreign config import/clear, controller buzzer, and
+advanced drive action endpoints. New redesign endpoints covered by this rule are:
+
+- `POST /controller/buzzer/silence`
+- `POST /controller/buzzer/disable`
+- `POST /controller/buzzer/enable`
+- `POST /drives/{enclosure}:{slot}/actions/mark-ubad`
+- `POST /drives/{enclosure}:{slot}/actions/mark-ugood`
+- `POST /drives/{enclosure}:{slot}/actions/spindown`
+- `POST /drives/{enclosure}:{slot}/actions/hotspare`
+
 ### Command Safety
 
 The `storcli` wrapper appends JSON mode, rejects whitespace in individual arguments, checks
@@ -204,9 +216,12 @@ executing destructive commands.
 
 ### Audit Logging
 
-Maintenance-mode changes, locate operations, replacement steps, insert operations, and
-rebuild completion observations are recorded as operator-action events. Failed destructive
-commands are recorded before returning errors when the database is available.
+Maintenance-mode changes, locate operations, replacement steps, insert operations, rebuild
+completion observations, buzzer actions, and advanced drive actions are recorded as
+operator-action events. Failed destructive commands are recorded before returning errors when
+the database is available. For the new buzzer and advanced action routes, a successful HTTP
+response means the matching audit event was persisted; audit-write failure is returned as a
+server error rather than silently allowing an unaudited write.
 
 ### Database Access
 
