@@ -7,14 +7,10 @@ from collections.abc import Iterator
 import pytest
 from sqlalchemy.orm import Session
 
-pytest.skip("rewritten in PR-088b", allow_module_level=True)
-
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.services.overview import (
-    OverviewViewModel,
     _pluralize,
     load_drive_list_view_model,
-    load_overview_view_model,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
 from tests.test_services.test_overview import _insert, _snapshot
@@ -50,20 +46,6 @@ def test_pluralize_uses_plural_for_zero() -> None:
 
 def test_pluralize_uses_plural_for_multiple() -> None:
     assert _pluralize(2, "drive", "drives") == "drives"
-
-
-def test_status_strip_uses_singular_drive_copy_for_one_elevated_drive(
-    session: Session,
-    sample_snapshot: StorcliSnapshot,
-) -> None:
-    _insert(session, _snapshot(sample_snapshot, temperatures=(55,)))
-
-    view_model = load_overview_view_model(session)
-    temp_card = _card(view_model, "Max Disk Temp")
-
-    assert [(badge.label, badge.severity) for badge in temp_card.badges] == [
-        ("1 drive elevated", "warning")
-    ]
 
 
 def test_drive_row_with_warning_temperature_and_degraded_state_emits_one_badge(
@@ -109,10 +91,3 @@ def _first_drive_row(session: Session):
 
 def _warning_or_critical_badges(*severities: str) -> tuple[str, ...]:
     return tuple(severity for severity in severities if severity in {"critical", "warning"})
-
-
-def _card(view_model: OverviewViewModel, label: str):
-    for card in view_model.cards:
-        if card.label == label:
-            return card
-    raise AssertionError(f"missing card: {label}")
