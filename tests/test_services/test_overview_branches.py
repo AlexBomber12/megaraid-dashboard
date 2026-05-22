@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# ruff: noqa: E402, I001
+# ruff: noqa: I001
 
 from collections.abc import Iterator
 from dataclasses import dataclass
