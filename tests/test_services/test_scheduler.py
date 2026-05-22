@@ -4,6 +4,7 @@ import asyncio
 import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -19,9 +20,11 @@ from megaraid_dashboard.db import (
     get_sessionmaker,
     insert_snapshot,
 )
+from megaraid_dashboard.services import scheduler as scheduler_module
 from megaraid_dashboard.services.event_detector import EventDetector
 from megaraid_dashboard.services.scheduler import CollectorService
 from megaraid_dashboard.storcli import StorcliNotAvailable, StorcliSnapshot
+from megaraid_dashboard.web.metrics import COLLECTOR_LAST_RUN_TIMESTAMP
 
 
 @pytest.fixture
@@ -31,6 +34,60 @@ def service_session_factory(engine: Engine) -> Iterator[sessionmaker[Session]]:
         yield get_sessionmaker(engine)
     finally:
         Base.metadata.drop_all(engine)
+
+
+@pytest.fixture(autouse=True)
+def reset_collector_last_run_timestamp() -> Iterator[None]:
+    COLLECTOR_LAST_RUN_TIMESTAMP.set(0.0)
+    try:
+        yield
+    finally:
+        COLLECTOR_LAST_RUN_TIMESTAMP.set(0.0)
+
+
+def test_get_last_collector_run_at_returns_none_when_gauge_zero() -> None:
+    COLLECTOR_LAST_RUN_TIMESTAMP.set(0.0)
+
+    assert scheduler_module.get_last_collector_run_at() is None
+
+
+def test_get_last_collector_run_at_returns_none_when_gauge_has_no_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        COLLECTOR_LAST_RUN_TIMESTAMP,
+        "collect",
+        lambda: [SimpleNamespace(samples=[])],
+    )
+
+    assert scheduler_module.get_last_collector_run_at() is None
+
+
+def test_get_last_collector_run_at_returns_aware_datetime_from_gauge() -> None:
+    expected = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    COLLECTOR_LAST_RUN_TIMESTAMP.set(expected.timestamp())
+
+    assert scheduler_module.get_last_collector_run_at() == expected
+
+
+async def test_get_last_collector_run_at_after_successful_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+    service_session_factory: sessionmaker[Session],
+) -> None:
+    service = _service(service_session_factory)
+    before = datetime.now(UTC)
+
+    async def successful_run_once() -> bool:
+        return True
+
+    monkeypatch.setattr(service, "run_once", successful_run_once)
+
+    await service._run_collector_cycle()
+
+    last_run_at = scheduler_module.get_last_collector_run_at()
+    after = datetime.now(UTC)
+    assert last_run_at is not None
+    assert before <= last_run_at <= after
 
 
 async def test_run_once_persists_snapshot_and_events(

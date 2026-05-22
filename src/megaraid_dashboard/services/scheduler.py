@@ -48,7 +48,6 @@ from megaraid_dashboard.web.metrics import (
 )
 
 LOGGER = structlog.get_logger(__name__)
-_LAST_COLLECTOR_RUN_AT: datetime | None = None
 
 
 def _utc_now() -> datetime:
@@ -56,7 +55,17 @@ def _utc_now() -> datetime:
 
 
 def get_last_collector_run_at() -> datetime | None:
-    return _LAST_COLLECTOR_RUN_AT
+    timestamp = _read_collector_last_run_timestamp()
+    if timestamp <= 0.0:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=UTC)
+
+
+def _read_collector_last_run_timestamp() -> float:
+    for metric in COLLECTOR_LAST_RUN_TIMESTAMP.collect():
+        for sample in metric.samples:
+            return float(sample.value)
+    return 0.0
 
 
 class CollectorService:
@@ -261,7 +270,6 @@ class CollectorService:
             COLLECTOR_CYCLE_DURATION.set(elapsed)
             if successful:
                 COLLECTOR_LAST_RUN_TIMESTAMP.set(time())
-                _record_last_collector_run_at(datetime.now(UTC))
             LOGGER.info(
                 "collector_cycle_metrics_recorded",
                 duration_seconds=elapsed,
@@ -392,11 +400,6 @@ def _require_aware_utc(value: datetime) -> datetime:
         msg = "naive datetimes are not allowed; use timezone-aware UTC datetimes"
         raise ValueError(msg)
     return value.astimezone(UTC)
-
-
-def _record_last_collector_run_at(value: datetime) -> None:
-    global _LAST_COLLECTOR_RUN_AT
-    _LAST_COLLECTOR_RUN_AT = _require_aware_utc(value)
 
 
 def _try_acquire_notifier_lock(lock_path: str) -> int | None:
