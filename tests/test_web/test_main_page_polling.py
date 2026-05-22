@@ -50,9 +50,11 @@ def test_main_page_refresh_region_has_htmx_polling_attributes(
     refresh_region = _find_refresh_region(response.text)
     assert response.status_code == 200
     assert refresh_region is not None
+    assert refresh_region["tag"] == "section"
     assert refresh_region["hx-get"] == "/partials/main-page"
     assert refresh_region["hx-trigger"] == "every 30s"
     assert refresh_region["hx-swap"] == "innerHTML"
+    assert response.text.count("<main") == 1
 
 
 def _find_refresh_region(html: str) -> dict[str, str] | None:
@@ -71,4 +73,4 @@ class _RefreshRegionParser(HTMLParser):
             return
         attr_map = {key: value or "" for key, value in attrs}
         if attr_map.get("class") == "main-page-v2__refresh":
-            self.refresh_region = attr_map
+            self.refresh_region = {"tag": tag, **attr_map}

@@ -8,9 +8,6 @@
       <h1>SERVER RAID Status</h1>
       <p>
         {{ view_model.controller.model }}
-        &middot; Updated:
-        <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
-        <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
       </p>
     </section>
 
