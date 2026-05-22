@@ -4,13 +4,6 @@
 
 {% block content %}
   <div class="main-page-v2">
-    <section class="page-title">
-      <h1>SERVER RAID Status</h1>
-      <p>
-        {{ view_model.controller.model }}
-      </p>
-    </section>
-
     <section
       class="main-page-v2__refresh"
       hx-get="{{ request.url_for('main_page_refresh').path }}"

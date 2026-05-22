@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -16,7 +17,10 @@ from megaraid_dashboard.db.dao import insert_snapshot
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services import overview as overview_module
 from megaraid_dashboard.storcli import StorcliSnapshot
+from megaraid_dashboard.web.templates import create_templates
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
+
+TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "src" / "megaraid_dashboard" / "templates"
 
 
 @pytest.fixture(autouse=True)
@@ -68,7 +72,21 @@ def test_main_page_renders_new_overview(
 
     anchors = _anchor_hrefs(response.text)
     assert response.status_code == 200
-    assert '<a\n  class="controller-card-v2 controller-card-v2--optimal"' in response.text
+    assert "<h1>SERVER RAID Status</h1>" not in response.text
+    assert "Updated:" not in response.text
+    assert response.text.count("LSI MegaRAID SAS 9270CV-8i") == 1
+    assert (
+        '<a href="/controller" class="controller-card controller-card--optimal">' in response.text
+    )
+    assert '<div class="controller-state">OPTIMAL</div>' in response.text
+    assert 'status-badge--optimal">OPTIMAL' not in response.text
+    assert '<div class="controller-card-row2">' in response.text
+    assert response.text.count('<div class="metric-item">') == 4
+    assert '<span class="metric-label">RoC</span>' in response.text
+    assert '<span class="metric-label">CacheVault</span>' in response.text
+    assert '<span class="metric-label">BBU</span>' in response.text
+    assert '<span class="metric-label">Errors (24h)</span>' in response.text
+    assert "110&deg;C" in response.text
     assert "OPTIMAL" in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert '<span class="drive-error-badge-v2">1</span>' in response.text
@@ -86,13 +104,48 @@ def test_main_page_renders_new_overview(
     assert response.text.count('class="status-bar"') == 1
     assert 'class="site-footer"' not in response.text
     assert "Build unknown" not in response.text
-    assert "2026-04-25T12:00:00Z" in response.text
     assert "/controller" in anchors
     assert "/controller/foreign-config" not in anchors
     assert "/drives/252:0" in anchors
     assert "site-nav-v2__link--active" in response.text
     assert 'aria-current="page"' in response.text
     assert ">Overview</a>" in response.text
+
+
+def test_controller_card_unknown_state_uses_unknown_color() -> None:
+    stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text(encoding="utf-8")
+
+    assert ".controller-card--unknown { border-left-color: var(--color-unknown); }" in stylesheet
+    assert (
+        ".controller-card--unknown .controller-state { color: var(--color-unknown); }" in stylesheet
+    )
+
+
+def test_controller_card_preserves_patrol_read_metadata_without_completion() -> None:
+    template = create_templates(TEMPLATE_DIR).env.get_template(
+        "partials/controller_summary_card.html"
+    )
+    view_model = SimpleNamespace(
+        controller=SimpleNamespace(
+            state="OPTIMAL",
+            model="LSI MegaRAID SAS 9270CV-8i",
+            serial="SV1234",
+            raid_summary="RAID6 8 drives",
+            roc_temperature_celsius=76,
+            cv_capacitance_percent=91,
+            bbu_status="N/A",
+            errors_24h=0,
+            active_operations=[],
+            last_patrol_read_completed_text=None,
+            last_patrol_read_duration_text="12m",
+            next_patrol_read_in_text="3d 4h",
+        )
+    )
+
+    rendered = template.render(request=_RequestStub(), view_model=view_model)
+
+    assert "Last patrol read unknown (12m)" in rendered
+    assert "Next in 3d 4h" in rendered
 
 
 def _insert_app_snapshot(
@@ -159,3 +212,14 @@ class _OperationState:
     progress_percent: int | None
     is_running: bool = True
     last_run_timestamp: str | None = None
+
+
+@dataclass(frozen=True)
+class _Url:
+    path: str
+
+
+class _RequestStub:
+    def url_for(self, name: str) -> _Url:
+        assert name == "controller_detail"
+        return _Url(path="/controller")
