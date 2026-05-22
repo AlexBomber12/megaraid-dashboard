@@ -3,16 +3,21 @@
     <h2 id="drive-advanced-actions-heading">Advanced Actions</h2>
   </div>
   <div class="card advanced-actions-row">
+    {% set drive_dg_id = view_model.position.dg_span_row_text.split(" : ")[0] %}
     {% for action in view_model.advanced_actions %}
       <form method="post" action="{{ action.url }}" class="inline-form" data-csrf-form data-drive-advanced-action>
         <input type="hidden" name="csrf_token" value="">
         {% if action.label == "Hot Spare" %}
-          <input type="hidden" name="dg_id" value="0">
+          <input type="hidden" name="dg_id" value="{{ drive_dg_id if drive_dg_id != '-' else '' }}">
         {% endif %}
         <button
           type="submit"
           class="button{% if action.is_destructive %} button--danger{% endif %}"
-          {% if not action.is_enabled %}disabled title="{{ action.disabled_reason }}"{% endif %}
+          {% if not action.is_enabled %}
+            disabled title="{{ action.disabled_reason }}"
+          {% elif action.label == "Hot Spare" and drive_dg_id == "-" %}
+            disabled title="No disk group is available for this drive."
+          {% endif %}
         >{{ action.label }}</button>
       </form>
     {% endfor %}
@@ -37,13 +42,14 @@
           }
           const formData = new FormData(form);
           const isHotSpare = form.action.includes("/hotspare");
+          const dgId = formData.get("dg_id");
           fetch(form.action, {
             method: "POST",
             headers: {
               "X-CSRF-Token": getCookie("__Host-csrf") || "",
               ...(isHotSpare ? { "Content-Type": "application/json" } : {}),
             },
-            body: isHotSpare ? JSON.stringify({ dg_id: Number(formData.get("dg_id") || 0) }) : null,
+            body: isHotSpare ? JSON.stringify({ dg_id: Number(dgId) }) : null,
           }).then((response) => {
             if (response.redirected) {
               window.location.assign(response.url);

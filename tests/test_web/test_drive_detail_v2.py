@@ -8,11 +8,13 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import insert_snapshot
+from megaraid_dashboard.db.models import PhysicalDriveSnapshot
 from megaraid_dashboard.storcli import StorcliSnapshot
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
@@ -108,6 +110,22 @@ def test_drive_detail_v2_prev_next_nav_states(sample_snapshot: StorcliSnapshot) 
     assert _nav_labels(last) == ["Previous drive"]
 
 
+def test_drive_detail_v2_precomputed_urls_include_forwarded_prefix(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    response = _drive_detail_response(
+        sample_snapshot,
+        slot_id=4,
+        headers={"X-Forwarded-Prefix": "/raid"},
+    )
+
+    assert response.status_code == 200
+    assert 'href="/raid/drives/252:3"' in response.text
+    assert 'href="/raid/drives/252:5"' in response.text
+    assert 'action="/raid/drives/252:4/actions/mark-ubad"' in response.text
+    assert 'action="/raid/drives/252:4/actions/hotspare"' in response.text
+
+
 def test_drive_detail_v2_health_snapshot_actions_and_sparkline(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -148,6 +166,21 @@ def test_drive_detail_v2_identity_connection_and_action_counts(
     assert "Mark as UBad" in _button_texts(_drive_detail_response(sample_snapshot, slot_id=4).text)
 
 
+def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        _set_drive_dg(test_app, slot_id=4, dg_id=3)
+
+        response = client.get("/drives/252/4")
+
+    assert response.status_code == 200
+    assert 'name="dg_id" value="3"' in response.text
+    assert "JSON.stringify({ dg_id: Number(dgId) })" in response.text
+
+
 def test_drive_detail_v2_replace_card_and_disabled_ubad(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -180,11 +213,16 @@ def test_drive_charts_v2_compat_returns_404_for_missing_drive(
     assert response.status_code == 404
 
 
-def _drive_detail_response(sample_snapshot: StorcliSnapshot, *, slot_id: int) -> Any:
+def _drive_detail_response(
+    sample_snapshot: StorcliSnapshot,
+    *,
+    slot_id: int,
+    headers: dict[str, str] | None = None,
+) -> Any:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
-        return client.get(f"/drives/252/{slot_id}")
+        return client.get(f"/drives/252/{slot_id}", headers=headers)
 
 
 def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) -> None:
@@ -193,6 +231,18 @@ def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) ->
         assert isinstance(session_factory, sessionmaker)
         assert isinstance(session, Session)
         insert_snapshot(session, sample_snapshot)
+        session.commit()
+
+
+def _set_drive_dg(test_app: FastAPI, *, slot_id: int, dg_id: int) -> None:
+    session_factory = test_app.state.session_factory
+    with session_factory() as session:
+        assert isinstance(session_factory, sessionmaker)
+        assert isinstance(session, Session)
+        drive = session.scalars(
+            select(PhysicalDriveSnapshot).where(PhysicalDriveSnapshot.slot_id == slot_id)
+        ).one()
+        drive.disk_group_id = dg_id
         session.commit()
 
 

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Callable
 from concurrent.futures import Executor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from pathlib import Path
@@ -3846,7 +3847,7 @@ def _load_drive_detail_v2(
     settings = cast(Settings, request.app.state.settings)
     try:
         with _session(request) as session:
-            return load_drive_detail_v2_view_model(
+            view_model = load_drive_detail_v2_view_model(
                 session,
                 enclosure_id=enclosure_id,
                 slot_id=slot_id,
@@ -3854,8 +3855,81 @@ def _load_drive_detail_v2(
                 app_version=__version__,
                 range_days=range_days,
             )
+            return _prefix_drive_detail_v2_urls(request, view_model)
     except LookupError as exc:
         raise HTTPException(status_code=404) from exc
+
+
+def _prefix_drive_detail_v2_urls(
+    request: Request,
+    view_model: DriveDetailViewModel,
+) -> DriveDetailViewModel:
+    slot_url = _drive_detail_slot_path(request)
+    action_url = _drive_action_path(request, view_model)
+    backplane_layout = [
+        replace(
+            slot,
+            detail_url=slot_url(slot.enclosure_id, slot.slot_id),
+        )
+        for slot in view_model.position.backplane_layout
+    ]
+    advanced_actions = [
+        replace(
+            action,
+            url=action_url(action.label),
+        )
+        for action in view_model.advanced_actions
+    ]
+    return replace(
+        view_model,
+        prev_drive_url=_prefix_optional_drive_url(request, view_model.prev_drive_url),
+        next_drive_url=_prefix_optional_drive_url(request, view_model.next_drive_url),
+        position=replace(view_model.position, backplane_layout=backplane_layout),
+        advanced_actions=advanced_actions,
+    )
+
+
+def _drive_detail_slot_path(request: Request) -> Callable[[int, int], str]:
+    def slot_url(enclosure_id: int, slot_id: int) -> str:
+        return str(
+            request.url_for(
+                "drive_detail_slot_ref",
+                slot_ref=f"{enclosure_id}:{slot_id}",
+            ).path
+        )
+
+    return slot_url
+
+
+def _prefix_optional_drive_url(request: Request, url: str | None) -> str | None:
+    if url is None:
+        return None
+    slot_ref = url.removeprefix("/drives/")
+    enclosure_text, _, slot_text = slot_ref.partition(":")
+    enclosure_id = int(enclosure_text)
+    slot_id = int(slot_text)
+    return _drive_detail_slot_path(request)(enclosure_id, slot_id)
+
+
+def _drive_action_path(request: Request, view_model: DriveDetailViewModel) -> Callable[[str], str]:
+    route_names = {
+        "Mark as UBad": "drive_mark_ubad",
+        "Mark as UGood": "drive_mark_ugood",
+        "Spin Down": "drive_spin_down",
+        "Hot Spare": "drive_make_hot_spare",
+    }
+
+    def action_url(label: str) -> str:
+        route_name = route_names[label]
+        return str(
+            request.url_for(
+                route_name,
+                enclosure=view_model.position.enclosure,
+                slot=view_model.position.slot,
+            ).path
+        )
+
+    return action_url
 
 
 def _load_events_page(
