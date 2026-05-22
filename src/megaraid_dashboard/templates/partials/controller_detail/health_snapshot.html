@@ -1,39 +1,38 @@
-{% set health_class = "crit" if view_model.health.state == "CRITICAL" else ("warn" if view_model.health.state == "WARNING" else "") %}
+{% set health_class = "crit" if view_model.health.state == "CRITICAL" else ("warn" if view_model.health.state == "WARNING" else ("optimal" if view_model.health.state == "OPTIMAL" else "unknown")) %}
 <section class="section" data-controller-section="health-snapshot" aria-labelledby="controller-health-heading">
   <div class="section-title">
     <h2 id="controller-health-heading">Health snapshot</h2>
   </div>
   <div class="health-snapshot {{ health_class }}">
-    <div class="health-snapshot__summary">
-      <span class="text-label">Controller health</span>
-      <strong>{{ view_model.health.state }}</strong>
-      <p>{{ view_model.health.summary_text }}</p>
+    <div class="health-row1">
+      <div class="health-state {{ health_class }}">{{ view_model.health.state }}</div>
+      <div class="health-summary">{{ view_model.health.summary_text }}</div>
     </div>
-    <dl class="health-snapshot__metrics">
-      <div>
-        <dt>RoC temperature</dt>
-        <dd>{% if view_model.health.roc_temperature_celsius is not none %}{{ view_model.health.roc_temperature_celsius | celsius }}{% else %}N/A{% endif %}</dd>
+    <div class="metrics-row">
+      <div class="metric-item">
+        <span class="metric-label">RoC Temp</span>
+        <span class="metric-value">{% if view_model.health.roc_temperature_celsius is not none %}{{ view_model.health.roc_temperature_celsius }}&deg;C{% else %}N/A{% endif %}</span>
       </div>
-      <div>
-        <dt>CacheVault capacitance</dt>
-        <dd>{% if view_model.health.cv_capacitance_percent is not none %}{{ view_model.health.cv_capacitance_percent }}%{% else %}N/A{% endif %}</dd>
+      <div class="metric-item">
+        <span class="metric-label">CacheVault</span>
+        <span class="metric-value">{% if view_model.health.cv_capacitance_percent is not none %}{{ view_model.health.cv_capacitance_percent }}%{% else %}N/A{% endif %}</span>
       </div>
-      <div>
-        <dt>BBU status</dt>
-        <dd>{{ view_model.health.bbu_status }}</dd>
+      <div class="metric-item">
+        <span class="metric-label">BBU</span>
+        <span class="metric-value">{{ view_model.health.bbu_status }}</span>
       </div>
-      <div>
-        <dt>Memory ECC</dt>
-        <dd>{{ view_model.health.memory_ecc_errors_total }}</dd>
+      <div class="metric-item">
+        <span class="metric-label">Mem ECC Errors</span>
+        <span class="metric-value">{{ view_model.health.memory_ecc_errors_total }}</span>
       </div>
-      <div>
-        <dt>Errors in 24h</dt>
-        <dd>{{ view_model.health.errors_24h }}</dd>
+      <div class="metric-item">
+        <span class="metric-label">Errors (24h)</span>
+        <span class="metric-value">{{ view_model.health.errors_24h }}</span>
       </div>
-      <div>
-        <dt>App uptime</dt>
-        <dd>{{ view_model.health.uptime_text }}</dd>
+      <div class="metric-item">
+        <span class="metric-label">Uptime</span>
+        <span class="metric-value">{{ view_model.health.uptime_text }}</span>
       </div>
-    </dl>
+    </div>
   </div>
 </section>

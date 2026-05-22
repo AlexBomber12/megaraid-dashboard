@@ -595,37 +595,52 @@ a:hover {
 }
 
 .health-snapshot {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
-  gap: var(--space-5);
-  padding: var(--space-5);
-  border: 1px solid rgba(88, 214, 141, 0.38);
-  border-left: 4px solid var(--color-optimal);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  border-left: 3px solid var(--color-unknown);
 }
 
-.health-snapshot.warn {
-  border-color: rgba(240, 180, 77, 0.44);
-  border-left-color: var(--color-warning);
+.health-snapshot.optimal { border-left-color: var(--color-optimal); }
+
+.health-snapshot.warn { border-left-color: var(--color-warning); }
+
+.health-snapshot.crit { border-left-color: var(--color-critical); }
+
+.health-snapshot.unknown { border-left-color: var(--color-unknown); }
+
+.health-row1 {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 8px;
 }
 
-.health-snapshot.crit {
-  border-color: rgba(255, 92, 108, 0.48);
-  border-left-color: var(--color-critical);
+.health-state {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-unknown);
 }
 
-.health-snapshot__summary {
-  display: grid;
-  gap: var(--space-2);
+.health-state.optimal { color: var(--color-optimal); }
+
+.health-state.warn { color: var(--color-warning); }
+
+.health-state.crit { color: var(--color-critical); }
+
+.health-state.unknown { color: var(--color-unknown); }
+
+.health-summary {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--color-muted);
 }
 
-.health-snapshot__summary strong {
-  font-size: var(--font-size-value);
+.metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin-top: 12px;
 }
 
-.health-snapshot__metrics,
 .cv-row,
 .hw-grid {
   display: grid;
@@ -633,17 +648,11 @@ a:hover {
   margin: 0;
 }
 
-.health-snapshot__metrics {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.health-snapshot__metrics div,
 .cv-row div,
 .hw-grid div {
   min-width: 0;
 }
 
-.health-snapshot__metrics dt,
 .cv-row dt,
 .hw-grid dt {
   color: var(--color-muted);
@@ -653,7 +662,6 @@ a:hover {
   text-transform: var(--text-transform-label);
 }
 
-.health-snapshot__metrics dd,
 .cv-row dd,
 .hw-grid dd {
   margin: var(--space-1) 0 0;
