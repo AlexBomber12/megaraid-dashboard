@@ -1,69 +1,36 @@
 {% set controller = view_model.controller %}
-{% set controller_severity = controller.state | lower %}
-<a
-  class="controller-card-v2 controller-card-v2--{{ controller_severity }}"
-  href="{{ request.url_for('controller_detail').path }}"
-  aria-label="Controller details"
->
-  <div class="controller-card-v2__header">
-    <div>
-      <span class="controller-card-v2__eyebrow">Controller</span>
-      <h2>{{ controller.model }}</h2>
-      <p>{{ controller.serial }} &middot; {{ controller.raid_summary }}</p>
-    </div>
-    <span class="status-badge status-badge--{{ controller_severity }}">{{ controller.state }}</span>
+<a href="{{ request.url_for('controller_detail').path }}" class="controller-card controller-card--{{ controller.state | lower }}">
+  <div class="controller-card-row1">
+    <div class="controller-state">{{ controller.state }}</div>
+    <div class="controller-model">{{ controller.model }} &middot; SN {{ controller.serial }} &middot; {{ controller.raid_summary }}</div>
   </div>
-
-  <dl class="controller-card-v2__metrics">
-    <div>
-      <dt>RoC</dt>
-      <dd>
-        {% if controller.roc_temperature_celsius is not none %}
-          {{ controller.roc_temperature_celsius }} C
-        {% else %}
-          Unknown
-        {% endif %}
-      </dd>
+  <div class="controller-card-row2">
+    <div class="metric-item">
+      <span class="metric-label">RoC</span>
+      <span class="metric-value">{% if controller.roc_temperature_celsius is not none %}{{ controller.roc_temperature_celsius }}&deg;C{% else %}N/A{% endif %}</span>
     </div>
-    <div>
-      <dt>CacheVault</dt>
-      <dd>
-        {% if controller.cv_capacitance_percent is not none %}
-          {{ controller.cv_capacitance_percent }}%
-        {% else %}
-          {{ controller.bbu_status }}
-        {% endif %}
-      </dd>
+    <div class="metric-item">
+      <span class="metric-label">CacheVault</span>
+      <span class="metric-value">{% if controller.cv_capacitance_percent is not none %}{{ controller.cv_capacitance_percent }}%{% else %}N/A{% endif %}</span>
     </div>
-    <div>
-      <dt>Errors 24h</dt>
-      <dd>{{ controller.errors_24h }}</dd>
+    <div class="metric-item">
+      <span class="metric-label">BBU</span>
+      <span class="metric-value">{{ controller.bbu_status }}</span>
     </div>
-  </dl>
-
-  <div class="controller-card-v2__operations">
+    <div class="metric-item">
+      <span class="metric-label">Errors (24h)</span>
+      <span class="metric-value">{{ controller.errors_24h }}</span>
+    </div>
+  </div>
+  <div class="controller-ops {% if controller.active_operations %}running{% else %}idle{% endif %}">
     {% if controller.active_operations %}
-      <span class="controller-card-v2__operations-label">Active operations</span>
-      <span class="controller-card-v2__operation-list">
-        {% for operation in controller.active_operations %}
-          <span class="tooltip-v2" data-tooltip="{{ operation.tooltip }}">
-            {{ operation.name | title }}{% if operation.progress_percent is not none %} {{ operation.progress_percent }}%{% endif %}
-          </span>{% if not loop.last %}<span aria-hidden="true"> &middot; </span>{% endif %}
-        {% endfor %}
-      </span>
+      {% for operation in controller.active_operations %}
+        <span class="op-segment" data-tooltip="{{ operation.tooltip }}">{{ operation.name | title }}{% if operation.progress_percent is not none %} {{ operation.progress_percent }}%{% endif %}</span>
+      {% endfor %}
     {% else %}
-      <span class="controller-card-v2__operations-label">No active operations</span>
-      <span class="controller-card-v2__operation-list">
-        {% if controller.last_patrol_read_completed_text %}
-          Last patrol read {{ controller.last_patrol_read_completed_text }}{% if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}
-        {% elif controller.last_patrol_read_duration_text %}
-          Last patrol read {{ controller.last_patrol_read_duration_text }}
-        {% else %}
-          Last patrol read unknown
-        {% endif %}
-        {% if controller.next_patrol_read_in_text %}
-          - Next {{ controller.next_patrol_read_in_text }}
-        {% endif %}
+      <span>No active operations</span>
+      <span style="color: var(--color-muted); margin-left: auto;">
+        {% if controller.last_patrol_read_completed_text %}Last patrol read {{ controller.last_patrol_read_completed_text }}{% if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}{% if controller.next_patrol_read_in_text %} &middot; Next in {{ controller.next_patrol_read_in_text }}{% endif %}{% else %}Last patrol read unknown{% endif %}
       </span>
     {% endif %}
   </div>

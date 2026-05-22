@@ -131,14 +131,14 @@ def test_overview_navigation_and_assets_are_prefix_aware(
 
     assert response.status_code == 200
     assert "SERVER RAID Status" in response.text
-    assert 'class="controller-card-v2 controller-card-v2--optimal"' in response.text
+    assert 'class="controller-card controller-card--optimal"' in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     for label in ("Controller", "Drive backplane", "Recent activity", "RoC", "CacheVault"):
         assert label in response.text
     assert "drive-tile-v2--optimal" in response.text
     assert 'class="status-bar-v2"' in response.text
     assert "Notifier" in response.text
-    assert "status-badge--optimal" in response.text
+    assert '<div class="controller-state">OPTIMAL</div>' in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
     assert "/raid/static/js/csrf.js" in response.text
@@ -200,7 +200,7 @@ def test_empty_database_renders_empty_state_on_full_page_and_partial() -> None:
         partial_response = client.get("/partials/overview")
 
     assert full_response.status_code == 200
-    assert 'class="controller-card-v2 controller-card-v2--unknown"' in full_response.text
+    assert 'class="controller-card controller-card--unknown"' in full_response.text
     assert 'class="drive-grid-v2"' in full_response.text
     assert "RoC" in full_response.text
     assert "Unknown" in full_response.text
@@ -386,8 +386,8 @@ def test_operator_pages_render_local_time_markup(
 
     assert response.status_code == 200
     if path == "/":
-        assert re.search(r'<time datetime="[^"]+" data-local-time hidden>', response.text)
-        assert re.search(r"<noscript>[^<]+ UTC</noscript>", response.text)
+        assert re.search(r'<time datetime="[^"]+" data-local-time hidden>', response.text) is None
+        assert re.search(r"<noscript>[^<]+ UTC</noscript>", response.text) is None
     else:
         assert re.search(
             r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',

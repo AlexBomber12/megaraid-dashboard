@@ -68,7 +68,21 @@ def test_main_page_renders_new_overview(
 
     anchors = _anchor_hrefs(response.text)
     assert response.status_code == 200
-    assert '<a\n  class="controller-card-v2 controller-card-v2--optimal"' in response.text
+    assert "<h1>SERVER RAID Status</h1>" not in response.text
+    assert "Updated:" not in response.text
+    assert response.text.count("LSI MegaRAID SAS 9270CV-8i") == 1
+    assert (
+        '<a href="/controller" class="controller-card controller-card--optimal">' in response.text
+    )
+    assert '<div class="controller-state">OPTIMAL</div>' in response.text
+    assert 'status-badge--optimal">OPTIMAL' not in response.text
+    assert '<div class="controller-card-row2">' in response.text
+    assert response.text.count('<div class="metric-item">') == 4
+    assert '<span class="metric-label">RoC</span>' in response.text
+    assert '<span class="metric-label">CacheVault</span>' in response.text
+    assert '<span class="metric-label">BBU</span>' in response.text
+    assert '<span class="metric-label">Errors (24h)</span>' in response.text
+    assert "110&deg;C" in response.text
     assert "OPTIMAL" in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert '<span class="drive-error-badge-v2">1</span>' in response.text
@@ -86,7 +100,6 @@ def test_main_page_renders_new_overview(
     assert response.text.count('class="status-bar"') == 1
     assert 'class="site-footer"' not in response.text
     assert "Build unknown" not in response.text
-    assert "2026-04-25T12:00:00Z" in response.text
     assert "/controller" in anchors
     assert "/controller/foreign-config" not in anchors
     assert "/drives/252:0" in anchors

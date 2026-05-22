@@ -51,11 +51,12 @@ def test_main_page_refresh_returns_swap_safe_partial(sample_snapshot: StorcliSna
     assert response.headers["cache-control"] == "no-cache"
     assert "<html" not in html
     assert "<head" not in html
-    assert '<a\n  class="controller-card-v2 controller-card-v2--optimal"' in response.text
+    assert (
+        '<a href="/controller" class="controller-card controller-card--optimal">' in response.text
+    )
     assert "OPTIMAL" in response.text
-    assert "Updated:" in response.text
-    assert '<time datetime="' in response.text
-    assert "data-local-time hidden" in response.text
+    assert "Updated:" not in response.text
+    assert "data-local-time hidden" not in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert '<section class="activity-v2" aria-label="Recent activity">' in response.text
     assert response.text.count('class="activity-item-v2"') == 10
