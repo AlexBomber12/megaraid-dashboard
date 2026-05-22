@@ -20,9 +20,10 @@ def test_main_page_redesign_navigation_and_polling(
     expect(primary_nav).to_have_count(5)
     expect(primary_nav.filter(has_text="Overview")).to_have_attribute("aria-current", "page")
 
-    controller_card = authenticated_page.locator(".controller-card-v2")
+    controller_card = authenticated_page.locator(".controller-card")
     expect(controller_card).to_be_visible()
-    expect(controller_card.get_by_text("OPTIMAL")).to_be_visible()
+    expect(controller_card.locator(".controller-state")).to_have_text("OPTIMAL")
+    expect(controller_card.locator(".controller-card-row2 .metric-item")).to_have_count(4)
 
     drive_tiles = authenticated_page.locator(".drive-tile-v2")
     expect(drive_tiles).to_have_count(8)
