@@ -3815,13 +3815,12 @@ def _load_drive_list(request: Request) -> DriveListViewModel:
 
 def _load_controller_detail(request: Request) -> ControllerDetailViewModel:
     settings = cast(Settings, request.app.state.settings)
-    scheduler = getattr(request.app.state, "scheduler", None)
     app_start_time = cast(datetime, getattr(request.app.state, "start_time", datetime.now(UTC)))
     with _session(request) as session:
         return load_controller_detail_view_model(
             session,
             settings=settings,
-            scheduler=scheduler,
+            scheduler=scheduler_state,
             collector_enabled=settings.collector_enabled,
             app_start_time=app_start_time,
             app_version=__version__,

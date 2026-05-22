@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -74,6 +75,21 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert html.count("<dt>") >= 18
     assert 'data-foreign-config-state="absent"' in html
     assert "No foreign configuration detected." in html
+
+
+def test_controller_detail_renders_200_with_real_scheduler_wiring() -> None:
+    test_app = create_app()
+    with TestClient(
+        test_app,
+        headers=TEST_AUTH_HEADER,
+        raise_server_exceptions=False,
+    ) as client:
+        test_app.state.scheduler = AsyncIOScheduler()
+        _insert_controller_snapshot(test_app, alarm_state="On")
+
+        response = client.get("/controller")
+
+    assert response.status_code == 200
 
 
 def test_buzzer_buttons_reflect_current_alarm_state() -> None:
