@@ -40,6 +40,13 @@ def test_backplane_diagram_uses_severity_tint() -> None:
     assert "backplane-slot--crit" in parsed.slot_links[5]["class"]
 
 
+def test_backplane_diagram_preserves_neutral_severity() -> None:
+    parsed = _parse(_render(slots=_slots(neutral_slot=2)))
+
+    assert "backplane-slot--neutral" in parsed.slot_links[2]["class"]
+    assert "backplane-slot--optimal" not in parsed.slot_links[2]["class"]
+
+
 def test_backplane_diagram_compact_variant_marks_container() -> None:
     parsed = _parse(_render(slots=_slots(), compact=True))
 
@@ -69,18 +76,40 @@ def _render(*, slots: list[BackplaneSlot], compact: bool | None = None) -> str:
     return template.render(context)
 
 
-def _slots(*, current_slot: int = 4, critical_slot: int | None = None) -> list[BackplaneSlot]:
+def _slots(
+    *,
+    current_slot: int = 4,
+    critical_slot: int | None = None,
+    neutral_slot: int | None = None,
+) -> list[BackplaneSlot]:
     return [
         BackplaneSlot(
             slot_label=str(slot),
             enclosure_id=252,
             slot_id=slot,
             is_this=slot == current_slot,
-            severity="critical" if slot == critical_slot else "optimal",
+            severity=_severity_for_slot(
+                slot=slot,
+                critical_slot=critical_slot,
+                neutral_slot=neutral_slot,
+            ),
             detail_url=f"/drives/252:{slot}",
         )
         for slot in range(8)
     ]
+
+
+def _severity_for_slot(
+    *,
+    slot: int,
+    critical_slot: int | None,
+    neutral_slot: int | None,
+) -> str:
+    if slot == critical_slot:
+        return "critical"
+    if slot == neutral_slot:
+        return "neutral"
+    return "optimal"
 
 
 def _parse(html: str) -> _BackplaneDiagramParser:

@@ -8,8 +8,10 @@
       {% set severity_class = "crit" %}
     {% elif slot.severity in ("warning", "degraded") %}
       {% set severity_class = "warn" %}
-    {% else %}
+    {% elif slot.severity == "optimal" %}
       {% set severity_class = "optimal" %}
+    {% else %}
+      {% set severity_class = "neutral" %}
     {% endif %}
     <a
       class="backplane-slot backplane-slot--{{ severity_class }} position-slot position-slot--{{ slot.severity }}{% if slot.is_this %} backplane-slot--this this{% endif %}"
