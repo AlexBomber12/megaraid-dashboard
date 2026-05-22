@@ -13,6 +13,7 @@ from megaraid_dashboard.services.overview import (
     _load_system_health,
     _parse_operation_timestamp,
 )
+from megaraid_dashboard.web.metrics import COLLECTOR_LAST_RUN_TIMESTAMP
 
 
 def test_notifier_health_true_false(tmp_path: Path) -> None:
@@ -88,15 +89,34 @@ def test_operation_timestamp_parsing() -> None:
     assert _parse_operation_timestamp("unparseable") is None
 
 
-def test_scheduler_last_collector_run_getter() -> None:
-    original = scheduler_module._LAST_COLLECTOR_RUN_AT
+def test_scheduler_last_collector_run_getter_from_metric() -> None:
+    original = scheduler_module.get_last_collector_run_at()
     try:
         value = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
-        scheduler_module._record_last_collector_run_at(value)
+        COLLECTOR_LAST_RUN_TIMESTAMP.set(value.timestamp())
 
         assert scheduler_module.get_last_collector_run_at() == value
     finally:
-        scheduler_module._LAST_COLLECTOR_RUN_AT = original
+        COLLECTOR_LAST_RUN_TIMESTAMP.set(0.0 if original is None else original.timestamp())
+
+
+def test_system_health_uses_collector_last_run_metric(tmp_path: Path) -> None:
+    original = scheduler_module.get_last_collector_run_at()
+    try:
+        now = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+        COLLECTOR_LAST_RUN_TIMESTAMP.set((now - timedelta(seconds=30)).timestamp())
+
+        health = _load_system_health(
+            settings=_settings(tmp_path),
+            scheduler=scheduler_module,
+            collector_enabled=True,
+            app_version="0.1.0",
+            now=now,
+        )
+
+        assert health.collector_last_run_text == "just now"
+    finally:
+        COLLECTOR_LAST_RUN_TIMESTAMP.set(0.0 if original is None else original.timestamp())
 
 
 def _settings(tmp_path: Path) -> Settings:
