@@ -66,7 +66,7 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert "<span>Controller</span>" in html
     assert "MegaRAID SAS 9270CV-8i" in html
     assert "SN SV00000001." in html
-    assert '<div class="health-state ">OPTIMAL</div>' in html
+    assert '<div class="health-state optimal">OPTIMAL</div>' in html
     health_summary = "All systems nominal. 0/0 drives online. RAID unknown healthy."
     assert f'<div class="health-summary">{health_summary}</div>' in html
     assert '<div class="metrics-row">' in html
@@ -94,6 +94,17 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert html.count("<dt>") >= 18
     assert 'data-foreign-config-state="absent"' in html
     assert "No foreign configuration detected." in html
+
+
+def test_controller_detail_unknown_health_state_uses_neutral_class() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/controller")
+
+    assert response.status_code == 200
+    assert '<div class="health-snapshot unknown">' in response.text
+    assert '<div class="health-state unknown">UNKNOWN</div>' in response.text
+    assert '<div class="health-state ">UNKNOWN</div>' not in response.text
 
 
 def test_controller_detail_renders_200_with_real_scheduler_wiring() -> None:

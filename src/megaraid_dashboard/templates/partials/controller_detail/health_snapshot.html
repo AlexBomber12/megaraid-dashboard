@@ -1,4 +1,4 @@
-{% set health_class = "crit" if view_model.health.state == "CRITICAL" else ("warn" if view_model.health.state == "WARNING" else "") %}
+{% set health_class = "crit" if view_model.health.state == "CRITICAL" else ("warn" if view_model.health.state == "WARNING" else ("optimal" if view_model.health.state == "OPTIMAL" else "unknown")) %}
 <section class="section" data-controller-section="health-snapshot" aria-labelledby="controller-health-heading">
   <div class="section-title">
     <h2 id="controller-health-heading">Health snapshot</h2>

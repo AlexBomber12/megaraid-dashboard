@@ -595,12 +595,16 @@ a:hover {
 }
 
 .health-snapshot {
-  border-left: 3px solid var(--color-optimal);
+  border-left: 3px solid var(--color-unknown);
 }
+
+.health-snapshot.optimal { border-left-color: var(--color-optimal); }
 
 .health-snapshot.warn { border-left-color: var(--color-warning); }
 
 .health-snapshot.crit { border-left-color: var(--color-critical); }
+
+.health-snapshot.unknown { border-left-color: var(--color-unknown); }
 
 .health-row1 {
   display: flex;
@@ -613,12 +617,16 @@ a:hover {
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--color-optimal);
+  color: var(--color-unknown);
 }
+
+.health-state.optimal { color: var(--color-optimal); }
 
 .health-state.warn { color: var(--color-warning); }
 
 .health-state.crit { color: var(--color-critical); }
+
+.health-state.unknown { color: var(--color-unknown); }
 
 .health-summary {
   font-size: 13px;
