@@ -1,0 +1,124 @@
+<section class="section" data-controller-section="roc-history" aria-labelledby="roc-history-heading">
+  <div class="card chart-card" data-roc-history-url="{{ view_model.roc_history_chart_url }}">
+    <div class="card-header">
+      <h2 id="roc-history-heading">RoC temperature history</h2>
+      <div class="range-tabs" role="tablist" aria-label="RoC history range">
+        <button type="button" class="range-tabs__button" data-range-hours="1" role="tab" aria-selected="false">1h</button>
+        <button type="button" class="range-tabs__button range-tabs__button--active" data-range-hours="24" role="tab" aria-selected="true">24h</button>
+        <button type="button" class="range-tabs__button" data-range-hours="168" role="tab" aria-selected="false">7d</button>
+        <button type="button" class="range-tabs__button" data-range-hours="720" role="tab" aria-selected="false">30d</button>
+      </div>
+    </div>
+    <canvas id="roc-history-chart" class="chart-canvas-v2"></canvas>
+    <p class="chart-empty" data-roc-chart-empty hidden>No RoC temperature samples in this range.</p>
+  </div>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const card = document.querySelector("[data-roc-history-url]");
+      const canvas = document.getElementById("roc-history-chart");
+      if (!card || !canvas || !window.Chart) {
+        return;
+      }
+
+      let chart = null;
+      const emptyState = card.querySelector("[data-roc-chart-empty]");
+      const thresholdLinePlugin = {
+        id: "rocThresholdLines",
+        afterDraw(activeChart, _args, options) {
+          if (!activeChart.scales.y || !options.thresholds) {
+            return;
+          }
+          const ctx = activeChart.ctx;
+          const area = activeChart.chartArea;
+          ctx.save();
+          ctx.setLineDash([6, 6]);
+          options.thresholds.forEach((threshold) => {
+            const y = activeChart.scales.y.getPixelForValue(threshold.value);
+            ctx.strokeStyle = threshold.color;
+            ctx.fillStyle = threshold.color;
+            ctx.beginPath();
+            ctx.moveTo(area.left, y);
+            ctx.lineTo(area.right, y);
+            ctx.stroke();
+            ctx.fillText(threshold.label, area.left + 8, y - 6);
+          });
+          ctx.restore();
+        },
+      };
+
+      function setActiveRange(rangeHours) {
+        card.querySelectorAll("[data-range-hours]").forEach((button) => {
+          const active = button.dataset.rangeHours === String(rangeHours);
+          button.classList.toggle("range-tabs__button--active", active);
+          button.setAttribute("aria-selected", active ? "true" : "false");
+        });
+      }
+
+      function render(payload, rangeHours) {
+        const points = payload.points || [];
+        const labels = points.map((point) => point.captured_at);
+        const values = points.map((point) => point.temperature_celsius);
+        if (chart) {
+          chart.destroy();
+        }
+        if (emptyState) {
+          emptyState.hidden = points.length > 0;
+        }
+        chart = new window.Chart(canvas, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "RoC C",
+              data: values,
+              borderColor: "#37d6ff",
+              backgroundColor: "rgba(55, 214, 255, 0.12)",
+              pointRadius: 2,
+              tension: 0.22,
+            }],
+          },
+          plugins: [thresholdLinePlugin],
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { labels: { color: "#f6f8fb" } },
+              rocThresholdLines: {
+                thresholds: [
+                  { label: "Warning", value: payload.warning_threshold, color: "#f0b44d" },
+                  { label: "Critical", value: payload.critical_threshold, color: "#ff5c6c" },
+                ],
+              },
+            },
+            scales: {
+              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+              y: {
+                suggestedMin: payload.min_celsius,
+                suggestedMax: payload.critical_threshold,
+                ticks: { color: "#9aa5b1" },
+                grid: { color: "rgba(154, 165, 177, 0.15)" },
+              },
+            },
+          },
+        });
+        setActiveRange(rangeHours);
+      }
+
+      function fetchRange(rangeHours) {
+        const url = new URL(card.dataset.rocHistoryUrl, window.location.origin);
+        url.searchParams.set("range_hours", rangeHours);
+        fetch(url, { headers: { Accept: "application/json" } })
+          .then((response) => response.json())
+          .then((payload) => render(payload, rangeHours));
+      }
+
+      card.querySelectorAll("[data-range-hours]").forEach((button) => {
+        button.addEventListener("click", function () {
+          fetchRange(button.dataset.rangeHours);
+        });
+      });
+      fetchRange(24);
+    });
+  </script>
+</section>

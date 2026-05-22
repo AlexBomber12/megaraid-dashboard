@@ -143,6 +143,7 @@ class BuzzerControlState:
 class ForeignConfigState:
     present: bool
     drive_count: int
+    digest: str
     source_controller_serial: str | None
     description_text: str
     can_import: bool
@@ -429,6 +430,11 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
         or foreign_mapping.get("source_serial")
         or foreign_mapping.get("controller_serial")
     )
+    digest = (
+        parsed.digest
+        if parsed is not None
+        else (_optional_text(foreign_mapping.get("digest")) or "")
+    )
     description = (
         f"Foreign configuration detected on {drive_count} drive(s)."
         if present
@@ -437,6 +443,7 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
     return ForeignConfigState(
         present=present,
         drive_count=drive_count,
+        digest=digest,
         source_controller_serial=source_serial,
         description_text=description,
         can_import=present,

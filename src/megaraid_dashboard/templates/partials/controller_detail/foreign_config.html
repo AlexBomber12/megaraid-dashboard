@@ -1,0 +1,83 @@
+<section class="section" data-controller-section="foreign-config" aria-labelledby="foreign-config-heading">
+  <div class="section-title">
+    <h2 id="foreign-config-heading">Destructive operations</h2>
+  </div>
+  <div class="card destructive-card">
+    <div class="destructive-card__body" data-foreign-config-state="{% if view_model.foreign_config.present %}present{% else %}absent{% endif %}">
+      <div>
+        <h3>Foreign Config</h3>
+        <p>{{ view_model.foreign_config.description_text }}</p>
+        {% if view_model.foreign_config.source_controller_serial %}
+          <p class="muted">Source controller SN {{ view_model.foreign_config.source_controller_serial }}</p>
+        {% endif %}
+        {% if view_model.foreign_config.present %}
+          <dl class="foreign-config__digest">
+            <dt>Expected import digest</dt>
+            <dd>{{ view_model.foreign_config.digest or "Unavailable" }}</dd>
+          </dl>
+        {% endif %}
+      </div>
+      <div class="button-row">
+        {% if view_model.foreign_config.present %}
+          <div class="form-error" data-controller-action-error hidden role="alert"></div>
+          <form
+            method="post"
+            action="{{ view_model.foreign_config.import_url }}"
+            class="inline-form"
+            data-csrf-form
+            onsubmit="return confirm('Import foreign config?');"
+          >
+            <input type="hidden" name="csrf_token" value="">
+            <label class="foreign-config__field">
+              <span>Confirmation digest</span>
+              <input
+                class="input"
+                type="text"
+                name="confirmation"
+                required
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </label>
+            <button
+              type="submit"
+              class="button button--warning"
+              {% if not view_model.foreign_config.can_import %}disabled{% endif %}
+            >Import</button>
+          </form>
+          <form
+            method="post"
+            action="{{ view_model.foreign_config.clear_url }}"
+            class="inline-form"
+            data-csrf-form
+            onsubmit="return confirm('Clear foreign config?');"
+          >
+            <input type="hidden" name="csrf_token" value="">
+            <label class="foreign-config__field">
+              <span>Confirmation phrase</span>
+              <span class="muted">Type CLEAR FOREIGN CONFIG to confirm.</span>
+              <input
+                class="input"
+                type="text"
+                name="confirmation"
+                required
+                autocomplete="off"
+                spellcheck="false"
+                pattern="CLEAR FOREIGN CONFIG"
+              >
+            </label>
+            <button
+              type="submit"
+              class="button button--danger"
+              {% if not view_model.foreign_config.can_clear %}disabled{% endif %}
+            >Clear</button>
+          </form>
+        {% else %}
+          <p class="muted">
+            Import and clear actions are available when foreign metadata is present.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>

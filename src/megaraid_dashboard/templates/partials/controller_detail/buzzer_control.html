@@ -1,0 +1,26 @@
+<section class="section" data-controller-section="buzzer-control" aria-labelledby="buzzer-control-heading">
+  <div class="section-title">
+    <h2 id="buzzer-control-heading">Buzzer Control</h2>
+  </div>
+  <div class="card buzzer-card">
+    <div>
+      <span class="text-label">Current setting</span>
+      <strong>{{ view_model.buzzer.current_setting }}</strong>
+      <p>{{ view_model.buzzer.explainer_text }}</p>
+    </div>
+    <div class="button-row">
+      <form method="post" action="{{ view_model.buzzer.silence_url }}" class="inline-form" data-csrf-form data-buzzer-action="silence">
+        <input type="hidden" name="csrf_token" value="">
+        <button type="submit" class="button" {% if not view_model.buzzer.can_silence %}disabled{% endif %}>Silence</button>
+      </form>
+      <form method="post" action="{{ view_model.buzzer.disable_url }}" class="inline-form" data-csrf-form data-buzzer-action="disable">
+        <input type="hidden" name="csrf_token" value="">
+        <button type="submit" class="button" {% if not view_model.buzzer.can_disable %}disabled{% endif %}>Disable</button>
+      </form>
+      <form method="post" action="{{ view_model.buzzer.enable_url }}" class="inline-form" data-csrf-form data-buzzer-action="enable">
+        <input type="hidden" name="csrf_token" value="">
+        <button type="submit" class="button" {% if not view_model.buzzer.can_enable %}disabled{% endif %}>Enable</button>
+      </form>
+    </div>
+  </div>
+</section>

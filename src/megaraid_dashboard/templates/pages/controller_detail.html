@@ -1,0 +1,151 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ view_model.page_title }} - MegaRAID Dashboard{% endblock %}
+
+{% block extra_scripts %}
+  <script
+    src="{{ request.url_for('static', path='vendor/chart.min.js').path }}?v={{ static_asset_version }}"
+    defer
+  ></script>
+{% endblock %}
+
+{% block content %}
+  {% set nav_active = "controller" %}
+  <div class="controller-detail-page">
+    <header class="page-header">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="{{ request.url_for('overview').path }}">Overview</a>
+        <span aria-hidden="true">/</span>
+        <span>Controller</span>
+      </nav>
+      <h1>{{ view_model.hardware.model }}</h1>
+      <p>{{ view_model.page_subtitle }}</p>
+    </header>
+
+    {% include "partials/controller_detail/health_snapshot.html" %}
+    {% include "partials/controller_detail/live_operations.html" %}
+    {% include "partials/controller_detail/cachevault.html" %}
+    {% include "partials/controller_detail/roc_history_chart.html" %}
+    {% include "partials/controller_detail/raid_config_table.html" %}
+    {% include "partials/controller_detail/scheduled_tasks.html" %}
+    {% include "partials/controller_detail/hardware_identity.html" %}
+    {% include "partials/controller_detail/buzzer_control.html" %}
+    {% include "partials/controller_detail/foreign_config.html" %}
+  </div>
+  <script>
+    (function () {
+      function getCookie(name) {
+        const match = document.cookie.match(
+          new RegExp("(?:^|; )" + name.replace(/[$()*+./?[\\\]^{|}-]/g, "\\$&") + "=([^;]*)")
+        );
+        return match ? decodeURIComponent(match[1]) : "";
+      }
+
+      function payloadFor(form) {
+        const formData = new FormData(form);
+        if (!form.action.includes("/controller/foreign-config/")) {
+          if (!form.hasAttribute("data-operation-mode-form")) {
+            return null;
+          }
+          return JSON.stringify({
+            mode: formData.get("mode") || "",
+          });
+        }
+        return JSON.stringify({
+          confirmation: formData.get("confirmation") || "",
+          dry_run: formData.get("dry_run") === "true",
+        });
+      }
+
+      function errorContainerFor(form, createFallback) {
+        const scope = form.closest(".button-row") || form.parentElement;
+        const container = scope?.querySelector("[data-controller-action-error]");
+        if (container || !createFallback || !scope) {
+          return container;
+        }
+        const fallback = document.createElement("div");
+        fallback.className = "form-error";
+        fallback.dataset.controllerActionError = "";
+        fallback.hidden = true;
+        fallback.setAttribute("role", "alert");
+        scope.appendChild(fallback);
+        return fallback;
+      }
+
+      function showFormError(form, message) {
+        const container = errorContainerFor(form, true);
+        if (!container) {
+          return;
+        }
+        container.textContent = message;
+        container.hidden = false;
+      }
+
+      function clearFormError(form) {
+        const container = errorContainerFor(form, false);
+        if (!container) {
+          return;
+        }
+        container.textContent = "";
+        container.hidden = true;
+      }
+
+      function responseErrorMessage(payload, fallback) {
+        if (payload && typeof payload === "object") {
+          return payload.detail || payload.error || fallback;
+        }
+        if (typeof payload === "string" && payload.trim()) {
+          return payload.trim();
+        }
+        return fallback;
+      }
+
+      document.querySelectorAll("[data-csrf-form]").forEach((form) => {
+        form.addEventListener("submit", function (event) {
+          if (event.defaultPrevented) {
+            return;
+          }
+          event.preventDefault();
+          clearFormError(form);
+          const token = getCookie("__Host-csrf");
+          const jsonPayload = payloadFor(form);
+          fetch(form.action, {
+            method: "POST",
+            headers: {
+              "X-CSRF-Token": token,
+              ...(jsonPayload ? { "Content-Type": "application/json" } : {}),
+            },
+            body: jsonPayload,
+          }).then((response) => {
+            if (response.redirected) {
+              window.location.assign(response.url);
+              return;
+            }
+            if (response.ok) {
+              window.location.reload();
+              return;
+            }
+            response.text().then((body) => {
+              let payload = body;
+              try {
+                payload = JSON.parse(body);
+              } catch {
+                payload = body;
+              }
+              showFormError(
+                form,
+                responseErrorMessage(payload, "Controller action failed.")
+              );
+            });
+          }).catch(() => {
+            showFormError(form, "Controller action failed.");
+          });
+        });
+      });
+    })();
+  </script>
+{% endblock %}
+
+{% block status_bar %}
+  {% include "partials/system_health_bar.html" %}
+{% endblock %}

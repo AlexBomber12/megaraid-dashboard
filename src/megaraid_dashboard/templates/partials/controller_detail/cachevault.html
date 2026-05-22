@@ -1,0 +1,19 @@
+<section class="section" data-controller-section="cachevault" aria-labelledby="cachevault-heading">
+  <div class="section-title">
+    <h2 id="cachevault-heading">CacheVault</h2>
+  </div>
+  <div class="card">
+    {% if view_model.cachevault %}
+      <dl class="cv-row">
+        <div><dt>Model</dt><dd>{{ view_model.cachevault.model }}</dd></div>
+        <div><dt>State</dt><dd>{{ view_model.cachevault.state }}</dd></div>
+        <div><dt>Capacitance</dt><dd>{% if view_model.cachevault.capacitance_percent is not none %}{{ view_model.cachevault.capacitance_percent }}%{% else %}N/A{% endif %}</dd></div>
+        <div><dt>Temperature</dt><dd>{% if view_model.cachevault.temperature_celsius is not none %}{{ view_model.cachevault.temperature_celsius }} C{% else %}N/A{% endif %}</dd></div>
+        <div><dt>Manufactured</dt><dd>{{ view_model.cachevault.mfg_date_text }}</dd></div>
+        <div><dt>FW cache</dt><dd>{{ view_model.cachevault.fw_cache_size_text }}</dd></div>
+      </dl>
+    {% else %}
+      <p class="muted">No CacheVault module is present in the latest snapshot.</p>
+    {% endif %}
+  </div>
+</section>
