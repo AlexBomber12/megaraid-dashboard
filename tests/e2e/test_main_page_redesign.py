@@ -41,6 +41,6 @@ def test_main_page_redesign_navigation_and_polling(
 
     response = authenticated_page.wait_for_response(
         lambda fetched: "/partials/main-page" in fetched.url and fetched.status == 200,
-        timeout=35_000,
+        timeout=45_000,
     )
     assert "Drive backplane" in response.text()

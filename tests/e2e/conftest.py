@@ -501,7 +501,6 @@ def login_and_navigate(page: Page, path: str) -> None:
                     "value": match.group(1),
                     "url": page.url,
                     "path": "/",
-                    "secure": True,
                     "sameSite": "Strict",
                 }
             ]
