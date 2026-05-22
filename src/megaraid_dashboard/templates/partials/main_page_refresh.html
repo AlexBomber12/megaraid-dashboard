@@ -1,0 +1,11 @@
+<section class="main-page-v2__freshness" aria-label="Dashboard data freshness">
+  <p>
+    Updated:
+    <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
+    <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
+  </p>
+</section>
+
+{% include "partials/controller_summary_card.html" %}
+{% include "partials/drive_grid.html" %}
+{% include "partials/activity_timeline_v2.html" %}

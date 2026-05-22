@@ -96,6 +96,23 @@ The production HTTP boundary is nginx. nginx provides the public `/raid/` path, 
 auth, TLS, and trusted forwarding headers. FastAPI also includes auth, CSRF, rate limiting,
 and path-prefix handling for defense in depth and local deployments.
 
+### Live data flow
+
+The main dashboard page uses HTMX polling for live updates. Initial page load renders the
+full `pages/main.html` template, including the header, page chrome, status bar, and the
+refreshable main-page content.
+
+The refreshable region requests `GET /partials/main-page` every 30 seconds with
+`hx-swap="innerHTML"`. That route is authenticated like the full page, sets
+`Cache-Control: no-cache`, reloads the same main-page view model, and renders only
+`partials/main_page_refresh.html`. The partial contains the controller summary card, drive
+grid, and recent activity timeline; it deliberately excludes page chrome and maintenance
+controls.
+
+This keeps live updates on the stable server-rendered HTML path without adding SSE or
+WebSocket state. Polling continues while the browser tab is in the background; tab visibility
+pausing is a future optimization if the request volume becomes a problem.
+
 ### Retention
 
 Retention is part of the scheduled service. Raw physical-drive snapshots are retained at full

@@ -8,15 +8,17 @@
       <h1>SERVER RAID Status</h1>
       <p>
         {{ view_model.controller.model }}
-        &middot; Updated:
-        <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
-        <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
       </p>
     </section>
 
-    {% include "partials/controller_summary_card.html" %}
-    {% include "partials/drive_grid.html" %}
-    {% include "partials/activity_timeline_v2.html" %}
+    <section
+      class="main-page-v2__refresh"
+      hx-get="{{ request.url_for('main_page_refresh').path }}"
+      hx-trigger="every 30s"
+      hx-swap="innerHTML"
+    >
+      {% include "partials/main_page_refresh.html" %}
+    </section>
     {% if not maintenance_state.active %}
       {% include "partials/maintenance_start_form.html" %}
     {% endif %}

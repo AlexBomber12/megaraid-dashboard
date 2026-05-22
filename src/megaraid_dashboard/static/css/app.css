@@ -408,11 +408,34 @@ a:hover {
 }
 
 .refresh-dot {
+  position: relative;
+  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: var(--color-optimal);
   box-shadow: 0 0 0 3px rgba(88, 214, 141, 0.15);
+}
+
+.refresh-dot--pulsing {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: refresh-dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes refresh-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(88, 214, 141, 0.15);
+    opacity: 1;
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(88, 214, 141, 0.05);
+    opacity: 0.72;
+  }
 }
 
 .site-header-v2__meta {

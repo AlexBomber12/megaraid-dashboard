@@ -380,6 +380,24 @@ def overview(request: Request) -> Response:
     return response
 
 
+@router.get("/partials/main-page", name="main_page_refresh")
+def main_page_refresh(request: Request) -> Response:
+    started_at = perf_counter()
+    view_model = _load_main_page(request)
+    response = TEMPLATES.TemplateResponse(
+        request=request,
+        name="partials/main_page_refresh.html",
+        context={"view_model": view_model},
+    )
+    response.headers["Cache-Control"] = "no-cache"
+    _log_main_page_rendered(
+        view_model=view_model,
+        elapsed_ms=_elapsed_ms(started_at),
+        partial=True,
+    )
+    return response
+
+
 @router.get("/partials/overview", name="overview_partial")
 def overview_partial(request: Request) -> Response:
     started_at = perf_counter()
@@ -4615,10 +4633,12 @@ def _log_main_page_rendered(
     *,
     view_model: MainPageViewModel,
     elapsed_ms: float,
+    partial: bool = False,
 ) -> None:
     LOGGER.info(
         "ui_main_page_rendered",
         elapsed_ms=elapsed_ms,
+        partial=partial,
         drive_count=len(view_model.drive_grid.tiles),
         controller_state=view_model.controller.state,
         activity_count=len(view_model.recent_activity),
