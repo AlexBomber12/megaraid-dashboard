@@ -1391,6 +1391,8 @@ a:hover {
 
 .controller-card--critical { border-left-color: var(--color-critical); }
 
+.controller-card--unknown { border-left-color: var(--color-unknown); }
+
 .controller-card-row1 {
   display: flex;
   align-items: baseline;
@@ -1408,6 +1410,8 @@ a:hover {
 .controller-card--warning .controller-state { color: var(--color-warning); }
 
 .controller-card--critical .controller-state { color: var(--color-critical); }
+
+.controller-card--unknown .controller-state { color: var(--color-unknown); }
 
 .controller-model {
   font-size: 13px;

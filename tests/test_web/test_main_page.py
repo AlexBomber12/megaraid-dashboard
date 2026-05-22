@@ -108,6 +108,15 @@ def test_main_page_renders_new_overview(
     assert ">Overview</a>" in response.text
 
 
+def test_controller_card_unknown_state_uses_unknown_color() -> None:
+    stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text(encoding="utf-8")
+
+    assert ".controller-card--unknown { border-left-color: var(--color-unknown); }" in stylesheet
+    assert (
+        ".controller-card--unknown .controller-state { color: var(--color-unknown); }" in stylesheet
+    )
+
+
 def _insert_app_snapshot(
     test_app: FastAPI,
     sample_snapshot: StorcliSnapshot,
