@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import socket
 import threading
 import time
@@ -34,7 +35,7 @@ import bcrypt
 import pytest
 import uvicorn
 from fastapi import FastAPI
-from playwright.sync_api import Browser, Page
+from playwright.sync_api import Browser, Page, expect
 from sqlalchemy.engine import Engine
 
 E2E_ADMIN_USERNAME = "e2e-admin"
@@ -44,6 +45,7 @@ E2E_ADMIN_PASSWORD_HASH = bcrypt.hashpw(
     bcrypt.gensalt(rounds=4),
 ).decode()
 
+_CSRF_COOKIE_RE = re.compile(r"__Host-csrf=([A-Za-z0-9_-]+)")
 _SERVER_STARTUP_POLL_INTERVAL_SECONDS = 0.1
 _SERVER_STARTUP_TIMEOUT_SECONDS = 10.0
 _SERVER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
@@ -315,19 +317,35 @@ def authenticated_page(
 
 
 @pytest.fixture
-def snapshot_with_drives(fresh_db: str) -> str:
-    """Seed the per-test DB with a controller snapshot and two physical drives.
+def maintenance_mode(_live_server_handle: _LiveServerHandle) -> Iterator[None]:
+    """Temporarily enable read/write controller operations for one e2e test."""
+    original_settings = _live_server_handle.app.state.settings
+    _live_server_handle.app.state.settings = original_settings.model_copy(
+        update={"maintenance_mode": True}
+    )
+    try:
+        yield
+    finally:
+        _live_server_handle.app.state.settings = original_settings
 
-    Inserts drives in enclosure 252 slots 0 and 1 so the locate-flow tests have
-    addressable rows. Writes directly to the fresh-per-test database, bypassing
-    the storcli collector path while still exercising the route handlers end to
-    end via the live server.
+
+@pytest.fixture
+def snapshot_with_drives(fresh_db: str) -> str:
+    """Seed the per-test DB with a controller snapshot and eight physical drives.
+
+    Inserts drives in enclosure 252 slots 0-7 so redesigned overview and detail
+    pages render the full backplane. Writes directly to the fresh-per-test
+    database, bypassing the storcli collector path while still exercising the
+    route handlers end to end via the live server.
     """
-    from datetime import UTC, datetime
+    from datetime import UTC, datetime, timedelta
 
     from megaraid_dashboard.db import (
+        CacheVaultSnapshot,
         ControllerSnapshot,
+        PhysicalDriveMetricsHourly,
         PhysicalDriveSnapshot,
+        VirtualDriveSnapshot,
         get_engine,
         get_sessionmaker,
     )
@@ -336,21 +354,63 @@ def snapshot_with_drives(fresh_db: str) -> str:
     try:
         session_factory = get_sessionmaker(engine)
         with session_factory() as session, session.begin():
+            captured_at = datetime.now(UTC)
             snapshot = ControllerSnapshot(
-                captured_at=datetime.now(UTC),
+                captured_at=captured_at,
                 model_name="LSI MegaRAID SAS 9270CV-8i",
                 serial_number="TEST123",
                 firmware_version="4.230.40-3739",
                 bios_version="6.30.03.0",
                 driver_version="06.811.02.00",
-                alarm_state="Off",
-                cv_present=False,
+                alarm_state="On",
+                cv_present=True,
                 bbu_present=False,
                 roc_temperature_celsius=70,
+                raw_json={
+                    "Revision No": "B0",
+                    "ChipRevision": "D1",
+                    "Mfg Date": "04/16/14",
+                    "Rework Date": "N/A",
+                    "SAS Address": "500605b00abcde00",
+                    "PCI Address": "00:03:00:00",
+                    "Backend Port Count": "8",
+                    "NVRAM Size": "32",
+                    "Flash Size": "32",
+                    "On Board Memory Size": "1024",
+                    "Current Size of FW Cache (MB)": "2048",
+                    "Alarm": "On",
+                    "Patrol Read Reoccurrence": "168",
+                    "foreign_config": {"present": False, "drive_count": 0, "digest": ""},
+                },
             )
             session.add(snapshot)
             session.flush()
-            for slot_id in (0, 1):
+            session.add(
+                CacheVaultSnapshot(
+                    snapshot_id=snapshot.id,
+                    type="CVPM02",
+                    state="Optimal",
+                    temperature_celsius=31,
+                    pack_energy="Good",
+                    capacitance_percent=98,
+                    replacement_required=False,
+                    next_learn_cycle=captured_at + timedelta(days=7),
+                )
+            )
+            session.add(
+                VirtualDriveSnapshot(
+                    snapshot_id=snapshot.id,
+                    vd_id=0,
+                    name="data",
+                    raid_level="RAID5",
+                    size_bytes=18_000_000_000_000,
+                    state="Optl",
+                    access="RW",
+                    cache="RWBD",
+                )
+            )
+            for slot_id in range(8):
+                serial_number = f"WCA275678{slot_id:03d}"
                 session.add(
                     PhysicalDriveSnapshot(
                         snapshot_id=snapshot.id,
@@ -358,12 +418,13 @@ def snapshot_with_drives(fresh_db: str) -> str:
                         slot_id=slot_id,
                         device_id=slot_id,
                         model="WDC WD30EFRX-68EUZN0",
-                        serial_number=f"WCA275678{slot_id:03d}",
+                        serial_number=serial_number,
                         firmware_version="MF8OA8B0",
                         size_bytes=3_000_000_000_000,
                         interface="SATA",
                         media_type="HDD",
                         state="Onln",
+                        disk_group_id=0,
                         temperature_celsius=35,
                         media_errors=0,
                         other_errors=0,
@@ -372,6 +433,75 @@ def snapshot_with_drives(fresh_db: str) -> str:
                         sas_address=f"0x5000c5000000{slot_id:04d}",
                     )
                 )
+                for hour_offset in range(3):
+                    session.add(
+                        PhysicalDriveMetricsHourly(
+                            bucket_start=captured_at - timedelta(hours=hour_offset),
+                            enclosure_id=252,
+                            slot_id=slot_id,
+                            serial_number=serial_number,
+                            temperature_celsius_min=33 + slot_id,
+                            temperature_celsius_max=36 + slot_id,
+                            temperature_celsius_avg=34.5 + slot_id,
+                            temperature_sample_count=1,
+                            media_errors_max=0,
+                            other_errors_max=0,
+                            predictive_failures_max=0,
+                            sample_count=1,
+                        )
+                    )
     finally:
         engine.dispose()
     return fresh_db
+
+
+def wait_for_htmx_swap(page: Page, timeout: int = 35_000) -> None:
+    """Wait until the browser observes an HTMX swap event."""
+    page.evaluate(
+        """timeoutMs => new Promise((resolve, reject) => {
+          const timer = window.setTimeout(() => {
+            document.body.removeEventListener("htmx:afterSwap", onSwap);
+            reject(new Error("timed out waiting for htmx:afterSwap"));
+          }, timeoutMs);
+          function onSwap() {
+            window.clearTimeout(timer);
+            resolve();
+          }
+          document.body.addEventListener("htmx:afterSwap", onSwap, { once: true });
+        })""",
+        timeout,
+    )
+
+
+def assert_chart_height_within(page: Page, selector: str, max_height_px: int) -> None:
+    """Assert a rendered chart canvas stays within a pixel height bound."""
+    expect(page.locator(selector)).to_be_visible()
+    height = page.evaluate(
+        """selector => {
+          const element = document.querySelector(selector);
+          return element ? element.getBoundingClientRect().height : -1;
+        }""",
+        selector,
+    )
+    assert 0 < height <= max_height_px
+
+
+def login_and_navigate(page: Page, path: str) -> None:
+    """Navigate with HTTP basic credentials already configured on the context."""
+    response = page.goto(path)
+    assert response is not None
+    assert response.status == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    match = _CSRF_COOKIE_RE.search(set_cookie)
+    if match is not None:
+        page.context.add_cookies(
+            [
+                {
+                    "name": "__Host-csrf",
+                    "value": match.group(1),
+                    "url": page.url,
+                    "path": "/",
+                    "sameSite": "Strict",
+                }
+            ]
+        )
