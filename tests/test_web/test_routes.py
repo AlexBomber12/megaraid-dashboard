@@ -154,7 +154,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert re.search(r"/raid/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/raid/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert 'data-local-time-clock aria-live="off" hidden' in response.text
-    assert {"/raid/", "/raid/drives", "/raid/events", "/raid/controller/foreign-config"}.issubset(
+    assert {"/raid/", "/raid/drives", "/raid/events", "/raid/controller"}.issubset(
         _anchor_hrefs(response.text)
     )
     drive_tile_hrefs = {
@@ -186,7 +186,8 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
     assert "8 drives" in response.text
-    assert "/controller/foreign-config" in _anchor_hrefs(response.text)
+    assert "/controller" in _anchor_hrefs(response.text)
+    assert "/controller/foreign-config" not in _anchor_hrefs(response.text)
     assert 'class="drive-table"' not in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert "/raid/" not in response.text

@@ -62,7 +62,8 @@ def test_main_page_renders_new_overview(
     assert "Collector" in response.text
     assert "DB" in response.text
     assert "2026-04-25T12:00:00Z" in response.text
-    assert "/controller/foreign-config" in anchors
+    assert "/controller" in anchors
+    assert "/controller/foreign-config" not in anchors
     assert "/drives/252:0" in anchors
     assert "site-nav-v2__link--active" in response.text
     assert 'aria-current="page"' in response.text
