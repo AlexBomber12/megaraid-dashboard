@@ -349,6 +349,24 @@ Expected output:
 ```text
 ```
 
+The redesign does not require a systemd unit change. The nginx proxy should continue to
+forward the whole `/raid/` subtree to FastAPI because the UI now includes these authenticated
+paths in addition to the existing overview, events, and drive routes:
+
+- `GET /raid/partials/main-page`
+- `GET /raid/controller`
+- `GET /raid/controller/roc-history`
+- `POST /raid/controller/buzzer/silence`
+- `POST /raid/controller/buzzer/disable`
+- `POST /raid/controller/buzzer/enable`
+- `POST /raid/drives/<enclosure>:<slot>/actions/mark-ubad`
+- `POST /raid/drives/<enclosure>:<slot>/actions/mark-ugood`
+- `POST /raid/drives/<enclosure>:<slot>/actions/spindown`
+- `POST /raid/drives/<enclosure>:<slot>/actions/hotspare`
+
+Do not add separate unauthenticated nginx locations for these routes. Only `/raid/healthz`
+and static assets should bypass the Basic auth challenge in the sample deployment.
+
 ## Step 7: First Login, Password, and SMTP Test
 
 This verifies the operator-facing web path and confirms alert email delivery.

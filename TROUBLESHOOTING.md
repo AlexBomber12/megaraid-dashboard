@@ -380,3 +380,48 @@ journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 -
   event if the temperature rises again.
 - Notifier paused: stop maintenance mode, verify SMTP with the alert test command, and
   confirm `ALERT_SEVERITY_THRESHOLD` allows the event severity.
+
+## Buzzer keeps sounding
+
+### Symptom
+
+The controller's physical alarm continues to sound even though the dashboard shows the
+controller page and the alarm tile does not clearly indicate a new active condition.
+
+### Probable Causes
+
+1. The buzzer is actively sounding for the current controller condition and has not been
+   silenced yet.
+2. The persistent buzzer setting is `On`; that setting means the alarm is allowed to sound,
+   not that it is currently sounding.
+3. Maintenance mode is disabled, so buzzer POST actions are rejected.
+4. The sudoers fragment does not allow the exact controller alarm command.
+
+The dashboard cannot detect an actively sounding buzzer from a stored snapshot. The
+`Silence` button acts on the current audible condition; `Disable` changes the persistent
+controller setting.
+
+### Diagnostics
+
+```bash
+sudo -u raid-monitor sudo -n /usr/local/sbin/storcli64 /c0 show all J >/tmp/controller.json
+python3 -m json.tool /tmp/controller.json >/dev/null && grep -i 'alarm\|buzzer' /tmp/controller.json
+rm -f /tmp/controller.json
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select created_at,category,summary from events where category in ('controller_buzzer_silence','controller_buzzer_disable','controller_buzzer_enable') order by id desc limit 10;"
+sudo -l -U raid-monitor
+journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i 'buzzer\|alarm\|sudo\|storcli'
+```
+
+### Fixes
+
+- Audible alarm during maintenance: enable maintenance mode, open `/controller`, and use
+  `Silence`. This runs the one-time silence workflow without changing the persistent buzzer
+  setting.
+- Persistent buzzer intentionally unwanted: use `Disable` only after confirming the operator
+  wants the controller alarm setting changed to off. Use `Enable` later to restore physical
+  alarm behavior.
+- Maintenance rejection: start a maintenance window from the UI before pressing the buzzer
+  controls.
+- Sudoers rejection: restore the narrow sudoers entry for `/c0 set alarm=silence`,
+  `/c0 set alarm=off`, and `/c0 set alarm=on`; validate with
+  `visudo -c -f /etc/sudoers.d/megaraid-dashboard`.
