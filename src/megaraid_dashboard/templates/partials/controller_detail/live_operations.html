@@ -1,18 +1,23 @@
 <section class="section" data-controller-section="live-operations" aria-labelledby="live-operations-heading">
   <div class="section-title">
-    <h2 id="live-operations-heading">Live operations</h2>
+    <h2 id="live-operations-heading">Live Operations</h2>
+    {% if not maintenance_state.active %}
+      <p class="action-hint">Changes require <a href="#maintenance">maintenance mode</a>.</p>
+    {% endif %}
   </div>
   <div class="card">
     {% if view_model.live_operations %}
       <div class="ops-list">
         {% for operation in view_model.live_operations %}
-          <article class="op-item">
+          {% set operation_mode_text = operation.mode_text | lower %}
+          {% set next_operation_mode = "auto" if "manual" in operation_mode_text else "manual" %}
+          <article class="op-item" data-action-scope>
             <div>
               <h3>{{ operation.name }}</h3>
               <p>{{ operation.status_text }}</p>
               <p class="muted">{{ operation.mode_text }}</p>
               {% if operation.progress_percent is not none %}
-                <div class="op-progress-bar" aria-label="{{ operation.name }} progress">
+                <div class="op-progress-bar" role="progressbar" aria-label="{{ operation.name }} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ operation.progress_percent }}">
                   <span class="op-progress-fill" style="width: {{ operation.progress_percent }}%"></span>
                 </div>
                 <span class="muted">{{ operation.progress_percent }}%{% if operation.progress_eta_text %} · {{ operation.progress_eta_text }}{% endif %}</span>
@@ -27,20 +32,13 @@
                 <input type="hidden" name="csrf_token" value="">
                 <button class="button" type="submit" {% if not operation.can_stop %}disabled{% endif %}>Stop</button>
               </form>
-              {% set operation_mode_text = operation.mode_text|lower %}
-              {% set next_operation_mode = "auto" if "manual" in operation_mode_text else "manual" %}
-              <form
-                method="post"
-                action="{{ operation.mode_url or '#' }}"
-                class="inline-form"
-                data-csrf-form
-                data-operation-mode-form
-              >
+              <form method="post" action="{{ operation.mode_url or '#' }}" class="inline-form" data-csrf-form data-operation-mode-form>
                 <input type="hidden" name="csrf_token" value="">
                 <input type="hidden" name="mode" value="{{ next_operation_mode }}">
-                <button class="button" type="submit" {% if not operation.can_change_mode %}disabled{% endif %}>Mode</button>
+                <button class="button" type="submit" {% if not operation.can_change_mode %}disabled{% endif %}>Switch to {{ next_operation_mode | title }}</button>
               </form>
             </div>
+            <div class="form-error" data-controller-action-error hidden role="alert"></div>
           </article>
         {% endfor %}
       </div>

@@ -6,10 +6,10 @@
     {% with slots=view_model.position.backplane_layout, compact=False %}
       {% include "partials/backplane_diagram.html" %}
     {% endwith %}
-    <dl class="metadata-grid">
+    <dl class="kv-grid">
       <div><dt>Enclosure</dt><dd>{{ view_model.position.enclosure }}</dd></div>
       <div><dt>Slot</dt><dd>{{ view_model.position.slot }}</dd></div>
-      <div><dt>DG / span / row</dt><dd>{{ view_model.position.dg_span_row_text }}</dd></div>
+      <div><dt>DG / Span / Row</dt><dd>{{ view_model.position.dg_span_row_text }}</dd></div>
       <div><dt>Port</dt><dd>{{ view_model.position.port_text }}</dd></div>
     </dl>
   </div>

@@ -22,6 +22,7 @@ _SLOT_TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 _ContextProcessor = Callable[[Request], dict[str, Any]]
+_IEC_UNITS = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
 
 
 def create_templates(
@@ -39,6 +40,7 @@ def create_templates(
     environment.filters["iso_utc"] = iso_utc
     environment.filters["slot_link"] = _slot_link_filter
     environment.filters["celsius"] = celsius
+    environment.filters["bytes_iec"] = bytes_iec
     processors: list[_ContextProcessor] = [_maintenance_context_processor]
     if context_processors is not None:
         processors.extend(context_processors)
@@ -63,6 +65,18 @@ def celsius(value: int | None) -> str:
     if value is None:
         return "N/A"
     return f"{value}\u00b0C"
+
+
+def bytes_iec(value: int | None) -> str:
+    """Human-readable binary size: 4000787030016 -> '3.64 TiB'."""
+    if value is None or value == "":
+        return "Unknown"
+    size = float(value)
+    for unit in _IEC_UNITS:
+        if abs(size) < 1024 or unit == _IEC_UNITS[-1]:
+            return f"{int(size)} {unit}" if unit == "B" else f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} {_IEC_UNITS[-1]}"
 
 
 @pass_context

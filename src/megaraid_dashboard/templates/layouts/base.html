@@ -8,54 +8,41 @@
       rel="stylesheet"
       href="{{ request.url_for('static', path='css/app.css').path }}?v={{ static_asset_version }}"
     >
-    <script
-      src="{{ request.url_for('static', path='vendor/htmx.min.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
-    <script
-      src="{{ request.url_for('static', path='js/csrf.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
-    <script
-      src="{{ request.url_for('static', path='js/local-time.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
-    <script
-      src="{{ request.url_for('static', path='js/maintenance.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
-    <script
-      src="{{ request.url_for('static', path='js/data-table.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
-    <script
-      src="{{ request.url_for('static', path='js/drive-actions.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
-    <script
-      src="{{ request.url_for('static', path='js/replace-wizard.js').path }}?v={{ static_asset_version }}"
-      defer
-    ></script>
+    {% for script in [
+      'vendor/htmx.min.js',
+      'js/csrf.js',
+      'js/local-time.js',
+      'js/maintenance.js',
+      'js/data-table.js',
+      'js/drive-actions.js',
+      'js/confirm-dialog.js',
+      'js/replace-wizard.js',
+      'js/replace-stepper.js',
+      'js/live-refresh.js',
+    ] %}
+      <script src="{{ request.url_for('static', path=script).path }}?v={{ static_asset_version }}" defer></script>
+    {% endfor %}
     {% block extra_scripts %}{% endblock %}
   </head>
   <body>
-    {% include "partials/maintenance_banner.html" %}
-    <div class="app-shell">
-      {% set nav_active = active_nav | default("") | trim %}
+    {% set nav_active = active_nav | default("") | trim %}
+    <div class="app-top">
+      <div id="maintenance-slot" data-live-region>
+        {% include "partials/maintenance_banner.html" %}
+      </div>
       {% include "partials/site_header.html" %}
+    </div>
 
+    <div class="app-shell">
       <main class="page-content">
         {% block content %}{% endblock %}
       </main>
 
-      {% set status_bar_content %}
-        {% block status_bar %}{% endblock %}
-      {% endset %}
-      {% if status_bar_content | trim %}
-        <div class="status-bar" role="status">
-          {{ status_bar_content | safe }}
-        </div>
-      {% endif %}
+      <footer id="site-status" class="status-bar" data-live-region>
+        {%- if view_model is defined and view_model.system_health is defined -%}
+          {% include "partials/system_health_bar.html" %}
+        {%- endif -%}
+      </footer>
     </div>
   </body>
 </html>

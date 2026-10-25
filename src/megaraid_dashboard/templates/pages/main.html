@@ -1,23 +1,14 @@
 {% extends "layouts/base.html" %}
 
-{% block title %}SERVER RAID Status - MegaRAID Dashboard{% endblock %}
+{% block title %}Overview - MegaRAID Dashboard{% endblock %}
 
 {% block content %}
-  <div class="main-page-v2">
-    <section
-      class="main-page-v2__refresh"
-      hx-get="{{ request.url_for('main_page_refresh').path }}"
-      hx-trigger="every 30s"
-      hx-swap="innerHTML"
-    >
+  <div class="page-stack">
+    <header class="page-header">
+      <h1>Overview</h1>
+    </header>
+    <div id="overview-live" class="main-page-v2" data-live-region>
       {% include "partials/main_page_refresh.html" %}
-    </section>
-    {% if not maintenance_state.active %}
-      {% include "partials/maintenance_start_form.html" %}
-    {% endif %}
+    </div>
   </div>
-{% endblock %}
-
-{% block status_bar %}
-  {% include "partials/system_health_bar.html" %}
 {% endblock %}
