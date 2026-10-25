@@ -122,8 +122,10 @@ from megaraid_dashboard.services.events import (
 from megaraid_dashboard.services.overview import (
     DriveListViewModel,
     MainPageViewModel,
+    SystemHealthViewModel,
     load_drive_list_view_model,
     load_main_page_view_model,
+    load_system_health_view_model,
 )
 from megaraid_dashboard.storcli import (
     DriveShow,
@@ -406,6 +408,7 @@ def drives(request: Request) -> Response:
             "active_nav": "drives",
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
+            "system_health": _load_system_health(request),
             "view_model": view_model,
         },
     )
@@ -3020,6 +3023,7 @@ async def controller_foreign_config(request: Request) -> Response:
             "active_nav": "controller",
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
+            "system_health": _load_system_health(request),
             "foreign_config": (
                 _foreign_config_response_body(foreign_config)
                 if foreign_config is not None
@@ -3587,6 +3591,7 @@ def events(
             "active_nav": _events_nav_active(categories),
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
+            "system_health": _load_system_health(request),
             "view_model": view_model,
             **_events_filter_context(request=request, categories=categories, severities=severities),
             **_events_empty_context(request=request, view_model=view_model),
@@ -3699,6 +3704,7 @@ def _events_fragment_response(
         request=request,
         name=template_name,
         context={
+            "active_nav": _events_nav_active(categories),
             "events_poll_since": max(since_id or 0, view_model.latest_event_id),
             "render_events_data_oob": render_events_data_oob,
             "render_events_load_more_oob": render_events_load_more_oob,
@@ -3792,6 +3798,16 @@ def _load_main_page(request: Request) -> MainPageViewModel:
             collector_enabled=settings.collector_enabled,
             app_version=__version__,
         )
+
+
+def _load_system_health(request: Request) -> SystemHealthViewModel:
+    settings = cast(Settings, request.app.state.settings)
+    return load_system_health_view_model(
+        settings=settings,
+        scheduler=scheduler_state,
+        collector_enabled=settings.collector_enabled,
+        app_version=__version__,
+    )
 
 
 def _load_drive_list(request: Request) -> DriveListViewModel:
@@ -4570,13 +4586,14 @@ def _static_asset_version() -> str:
     if STATIC_ASSET_VERSION:
         return STATIC_ASSET_VERSION
 
+    static_root = _PACKAGE_ROOT / "static"
     digest = hashlib.sha256()
     for path in (
-        _PACKAGE_ROOT / "static" / "css" / "app.css",
-        _PACKAGE_ROOT / "static" / "icons.svg",
-        _PACKAGE_ROOT / "static" / "js" / "local-time.js",
-        _PACKAGE_ROOT / "static" / "vendor" / "chart.min.js",
-        _PACKAGE_ROOT / "static" / "vendor" / "htmx.min.js",
+        *sorted((static_root / "css").glob("*.css")),
+        static_root / "icons.svg",
+        *sorted((static_root / "js").glob("*.js")),
+        static_root / "vendor" / "chart.min.js",
+        static_root / "vendor" / "htmx.min.js",
     ):
         digest.update(path.read_bytes())
     STATIC_ASSET_VERSION = digest.hexdigest()[:12]

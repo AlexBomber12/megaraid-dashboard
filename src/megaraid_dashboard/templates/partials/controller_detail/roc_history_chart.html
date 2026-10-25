@@ -1,7 +1,7 @@
 <section class="section" data-controller-section="roc-history" aria-labelledby="roc-history-heading">
   <div class="card chart-card" data-roc-history-url="{{ view_model.roc_history_chart_url }}">
     <div class="card-header">
-      <h2 id="roc-history-heading">RoC temperature history</h2>
+      <h2 id="roc-history-heading">RoC Temperature History</h2>
       <div class="range-tabs" role="tablist" aria-label="RoC history range">
         <button type="button" class="range-tabs__button" data-range-hours="1" role="tab" aria-selected="false">1h</button>
         <button type="button" class="range-tabs__button range-tabs__button--active" data-range-hours="24" role="tab" aria-selected="true">24h</button>
@@ -69,7 +69,7 @@
           data: {
             labels,
             datasets: [{
-              label: "RoC C",
+              label: "RoC °C",
               data: values,
               borderColor: "#37d6ff",
               backgroundColor: "rgba(55, 214, 255, 0.12)",

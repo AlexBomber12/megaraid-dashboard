@@ -69,14 +69,16 @@ def celsius(value: int | None) -> str:
 
 def bytes_iec(value: int | None) -> str:
     """Human-readable binary size: 4000787030016 -> '3.64 TiB'."""
-    if value is None or value == "":
+    if value is None:
         return "Unknown"
+    if abs(value) < 1024:
+        return f"{value} B"
     size = float(value)
-    for unit in _IEC_UNITS:
-        if abs(size) < 1024 or unit == _IEC_UNITS[-1]:
-            return f"{int(size)} {unit}" if unit == "B" else f"{size:.2f} {unit}"
+    for unit in _IEC_UNITS[1:-1]:
         size /= 1024
-    return f"{size:.2f} {_IEC_UNITS[-1]}"
+        if abs(size) < 1024:
+            return f"{size:.2f} {unit}"
+    return f"{size / 1024:.2f} {_IEC_UNITS[-1]}"
 
 
 @pass_context

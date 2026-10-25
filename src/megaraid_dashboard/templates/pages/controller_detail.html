@@ -51,20 +51,36 @@
         return match ? decodeURIComponent(match[1]) : "";
       }
 
-      function errorContainerFor(form) {
+      function payloadFor(form) {
+        if (!form.hasAttribute("data-operation-mode-form")) return null;
+        const formData = new FormData(form);
+        return JSON.stringify({
+          mode: formData.get("mode") || "",
+        });
+      }
+
+      function errorContainerFor(form, createFallback) {
         const scope = form.closest("[data-action-scope]") || form.parentElement;
-        return scope ? scope.querySelector("[data-controller-action-error]") : null;
+        const container = scope?.querySelector("[data-controller-action-error]");
+        if (container || !createFallback || !scope) return container;
+        const fallback = document.createElement("div");
+        fallback.className = "form-error";
+        fallback.dataset.controllerActionError = "";
+        fallback.hidden = true;
+        fallback.setAttribute("role", "alert");
+        scope.appendChild(fallback);
+        return fallback;
       }
 
       function showFormError(form, message) {
-        const container = errorContainerFor(form);
+        const container = errorContainerFor(form, true);
         if (!container) return;
         container.textContent = message;
         container.hidden = false;
       }
 
       function clearFormError(form) {
-        const container = errorContainerFor(form);
+        const container = errorContainerFor(form, false);
         if (!container) return;
         container.textContent = "";
         container.hidden = true;
@@ -81,10 +97,10 @@
         const form = event.target;
         if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-csrf-form")) return;
         if (form.hasAttribute("data-drive-advanced-action")) return;
+        if (event.defaultPrevented) return;
         event.preventDefault();
         clearFormError(form);
-        const isModeForm = form.hasAttribute("data-operation-mode-form");
-        const jsonPayload = isModeForm ? JSON.stringify({ mode: new FormData(form).get("mode") || "" }) : null;
+        const jsonPayload = payloadFor(form);
         fetch(form.action, {
           method: "POST",
           headers: {

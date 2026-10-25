@@ -2,6 +2,7 @@
 // each element marked [data-live-region][id] with its fresh counterpart.
 // Pauses while the user is typing, a dialog is open, a wizard stage is open
 // ([data-live-pause] not hidden) or the tab is hidden.
+// Pages opt out with <body data-live-refresh="off">.
 (function () {
   const INTERVAL_MS = 30000;
   let timer = null;
@@ -12,7 +13,12 @@
   }
 
   function fmtTime(date) {
-    return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(date);
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
   }
 
   function setStatus(state, text) {
@@ -24,6 +30,7 @@
   }
 
   function regions() {
+    if (document.body.dataset.liveRefresh === "off") return [];
     return Array.prototype.slice.call(document.querySelectorAll("[data-live-region][id]"));
   }
 

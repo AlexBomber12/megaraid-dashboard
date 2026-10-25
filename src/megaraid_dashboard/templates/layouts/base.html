@@ -24,8 +24,11 @@
     {% endfor %}
     {% block extra_scripts %}{% endblock %}
   </head>
-  <body>
+  <body{% block body_attrs %}{% endblock %}>
     {% set nav_active = active_nav | default("") | trim %}
+    {% if system_health is not defined and view_model is defined and view_model.system_health is defined %}
+      {% set system_health = view_model.system_health %}
+    {% endif %}
     <div class="app-top">
       <div id="maintenance-slot" data-live-region>
         {% include "partials/maintenance_banner.html" %}
@@ -39,7 +42,7 @@
       </main>
 
       <footer id="site-status" class="status-bar" data-live-region>
-        {%- if view_model is defined and view_model.system_health is defined -%}
+        {%- if system_health is defined -%}
           {% include "partials/system_health_bar.html" %}
         {%- endif -%}
       </footer>

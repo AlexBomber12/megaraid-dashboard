@@ -284,6 +284,22 @@ def _load_drive_grid(
     return DriveGridViewModel(tiles=tiles, worst_severity=worst_severity)
 
 
+def load_system_health_view_model(
+    *,
+    settings: Settings,
+    scheduler: _CollectorStateProvider | None,
+    collector_enabled: bool,
+    app_version: str,
+) -> SystemHealthViewModel:
+    return _load_system_health(
+        settings=settings,
+        scheduler=scheduler,
+        collector_enabled=collector_enabled,
+        app_version=app_version,
+        now=datetime.now(UTC),
+    )
+
+
 def _load_system_health(
     *,
     settings: Settings,

@@ -3,6 +3,7 @@
 {% set warning_count = tiles | selectattr("tile_severity", "equalto", "warning") | list | length %}
 {% set optimal_count = tiles | selectattr("tile_severity", "equalto", "optimal") | list | length %}
 {% set root_path = request.scope.get("root_path", "") if request is defined else "" %}
+{% set drives_url = request.url_for("drives").path if request is defined else "/drives" %}
 <section class="drive-grid-section-v2" aria-labelledby="drive-backplane-heading">
   <div class="section-heading">
     <h2 id="drive-backplane-heading">Drive Backplane</h2>
@@ -10,7 +11,7 @@
       {% if critical_count %}<span class="status-badge status-badge--critical">{{ critical_count }} Critical</span>{% endif %}
       {% if warning_count %}<span class="status-badge status-badge--warning">{{ warning_count }} Warning</span>{% endif %}
       {% if optimal_count %}<span class="status-badge status-badge--optimal">{{ optimal_count }} Optimal</span>{% endif %}
-      <a href="{{ request.url_for('drives').path }}">{{ tiles | length }} Drives →</a>
+      <a href="{{ drives_url }}">{{ tiles | length }} Drives →</a>
     </div>
   </div>
 

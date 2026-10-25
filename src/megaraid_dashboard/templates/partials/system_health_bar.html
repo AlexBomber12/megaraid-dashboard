@@ -1,8 +1,8 @@
-{% set health = view_model.system_health %}
+{% set health = system_health %}
 <div class="status-bar-v2">
   <span>
     Notifier
-    <strong class="status-text--{% if health.notifier_ok %}optimal{% else %}critical{% endif %}">
+    <strong class="status-text--{{ 'optimal' if health.notifier_ok else 'critical' }}">
       {% if health.notifier_ok %}OK{% else %}Error{% endif %}
     </strong>
   </span>

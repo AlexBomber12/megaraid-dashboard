@@ -2,6 +2,9 @@
 
 {% block title %}Foreign Configuration - MegaRAID Dashboard{% endblock %}
 
+{# Every GET runs a live storcli query, so this page does not auto-refresh. #}
+{% block body_attrs %} data-live-refresh="off"{% endblock %}
+
 {% block content %}
   {% set icons = request.url_for('static', path='icons.svg').path %}
   <section class="foreign-config" aria-labelledby="foreign-config-title">

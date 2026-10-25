@@ -38,7 +38,7 @@
       </dl>
       <p class="muted">This procedure changes RAID array state. Make sure this is the drive you intend to replace — use Blink Locate LED to check the physical slot.</p>
       <div class="replace-wizard__actions">
-        <button type="button" class="button" data-replace-action="cancel">Cancel</button>
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
         <button type="button" class="button button--warning" data-replace-action="continue-to-serial">Continue</button>
       </div>
     </div>
@@ -47,14 +47,14 @@
       <h3>Step 1 of 4 · Take Drive Offline</h3>
       <label class="replace-wizard__field">
         <span class="field__label">Type the serial number of the drive being replaced</span>
-        <input type="text" class="input mono" data-replace-input="serial" autocomplete="off" spellcheck="false" placeholder="{{ view_model.identity.serial_number }}">
+        <input type="text" class="input mono" data-replace-input="serial" autocomplete="off" spellcheck="false">
       </label>
       <label class="replace-wizard__toggle">
         <input type="checkbox" data-replace-input="dry-run" checked>
         Dry run (validate only, no controller changes)
       </label>
       <div class="replace-wizard__actions">
-        <button type="button" class="button" data-replace-action="cancel">Cancel</button>
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
         <button type="button" class="button button--danger" data-replace-action="run-step1" disabled>Set Offline &amp; Missing</button>
       </div>
     </div>
@@ -67,7 +67,7 @@
         <li>Wait for the controller to detect the new drive.</li>
       </ol>
       <div class="replace-wizard__actions">
-        <button type="button" class="button" data-replace-action="cancel">Cancel</button>
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
         <button type="button" class="button button--warning" data-replace-action="continue-to-insert">New Drive Inserted</button>
       </div>
     </div>
@@ -89,7 +89,7 @@
         Dry run (validate only, no controller changes)
       </label>
       <div class="replace-wizard__actions">
-        <button type="button" class="button" data-replace-action="cancel">Cancel</button>
+        <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
         <button type="button" class="button button--danger" data-replace-action="run-step3" disabled>Insert &amp; Start Rebuild</button>
       </div>
     </div>
