@@ -575,8 +575,8 @@ with the event. Legacy events fall back to the exact latest snapshot at their ev
 if identity is unavailable, delivery waits. Recovered states, removed/replaced disks,
 cleared SMART flags and error counters reset below the event value become `skipped` /
 `obsolete`. Temperature warnings also check the current reading and persisted drive
-hysteresis state; missing readings wait. Controller temperature uses its thresholds and
-hysteresis. No extra storcli request is made. Missing/stale data retain a durable retry
+hysteresis state; missing readings wait. Drive states remain active at the hysteresis
+boundary and clear strictly below it; controller events clear at the boundary. No extra storcli request is made. Missing/stale data retain a durable retry
 with `awaiting_*` diagnostics, without a lifetime cutoff. An outage alert itself needs no
 fresh hardware snapshot; a successful collection after its event makes it obsolete.
 Only the collector's explicit `monitoring_outage=true` system event is eligible; arbitrary

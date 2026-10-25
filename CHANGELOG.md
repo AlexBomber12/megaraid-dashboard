@@ -15,6 +15,8 @@
 
 ### Fixed
 
+- Preserve physical-drive temperature warnings exactly at the hysteresis boundary;
+  retain the controller detector's separate clearing rules for warnings and criticals.
 - Filter Telegram eligibility before limiting the candidate batch, so accumulated
   nonthermal warnings cannot block critical alerts or due retries. Match the outage
   marker as a JSON boolean, excluding numeric/string lookalikes.

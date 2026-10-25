@@ -88,6 +88,8 @@ def _temperature_event(session: Session, **overrides: Any) -> Event:
     [
         ({"temperature_celsius": 57}, False, "warning", "sent"),
         ({"temperature_celsius": 53}, False, "warning", "sent"),  # hysteresis remains active
+        ({"temperature_celsius": 50}, False, "warning", "sent"),
+        ({"temperature_celsius": 49}, False, "warning", "skipped"),
         ({"temperature_celsius": 40}, False, "ok", "skipped"),
         ({"temperature_celsius": 40}, False, None, "skipped"),
         ({"temperature_celsius": 57}, False, "ok", "skipped"),
@@ -608,3 +610,35 @@ def test_candidate_query_matches_complete_alert_policy(
     expected = {event.id for event in events if is_telegram_alert(event)}
     actual = {event.id for event, _ in telegram_notifier._load_candidates(session, now=NOW)}
     assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("category", "temperature", "expected"),
+    [
+        ("temperature", 54, 0),
+        ("temperature", 55, 1),
+        ("temperature", 56, 1),
+        ("controller_temperature", 99, 0),
+        ("controller_temperature", 100, 0),
+        ("controller_temperature", 101, 1),
+    ],
+)
+def test_critical_temperature_hysteresis_matches_each_detector(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    category: str,
+    temperature: int,
+    expected: int,
+) -> None:
+    _temperature_event(
+        session,
+        category=category,
+        severity="critical",
+        subject="PD e252:s0" if category == "temperature" else "Controller",
+        after={"state": "critical", "serial_number": "ORIGINAL", "temperature_celsius": 65}
+        if category == "temperature"
+        else {"roc_temperature_celsius": 110},
+    )
+    _save(session, sample_snapshot, drive={"temperature_celsius": temperature}, roc=temperature)
+    sender = FakeSender()
+    assert _cycle(session, sender).sent == expected

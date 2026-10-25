@@ -98,6 +98,7 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
             warning=settings.roc_temp_warning_celsius,
             critical=settings.roc_temp_critical_celsius,
             hysteresis=settings.roc_temp_hysteresis_celsius,
+            clear_at_boundary=True,
         )
     if event.category == "vd_state":
         drive = next((d for d in snapshot.virtual_drives if event.subject == f"VD {d.vd_id}"), None)
@@ -151,6 +152,7 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
             warning=settings.temp_warning_celsius,
             critical=settings.temp_critical_celsius,
             hysteresis=settings.temp_hysteresis_celsius,
+            clear_at_boundary=False,
         )
     if event.category == "pd_state":
         active = drive_pd.state == after.get("state")
@@ -165,12 +167,19 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
 
 
 def _temperature_relevance(
-    temperature: int | None, *, severity: str, warning: int, critical: int, hysteresis: int
+    temperature: int | None,
+    *,
+    severity: str,
+    warning: int,
+    critical: int,
+    hysteresis: int,
+    clear_at_boundary: bool,
 ) -> str:
     if temperature is None:
         return "awaiting_temperature"
-    if severity == "critical":
-        active = temperature >= critical - hysteresis
-    else:
-        active = warning - hysteresis < temperature < critical
+    threshold = critical if severity == "critical" else warning
+    boundary = threshold - hysteresis
+    # Drive states clear strictly below the boundary; RoC events clear at it.
+    above_boundary = temperature > boundary if clear_at_boundary else temperature >= boundary
+    active = above_boundary and (severity == "critical" or temperature < critical)
     return "active" if active else "obsolete"
