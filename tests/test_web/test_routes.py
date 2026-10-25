@@ -130,10 +130,10 @@ def test_overview_navigation_and_assets_are_prefix_aware(
         response = client.get("/", headers={"X-Forwarded-Prefix": "/raid"})
 
     assert response.status_code == 200
-    assert "SERVER RAID Status" in response.text
+    assert "<h1>Overview</h1>" in response.text
     assert 'class="controller-card controller-card--optimal"' in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
-    for label in ("Controller", "Drive backplane", "Recent activity", "RoC", "CacheVault"):
+    for label in ("Controller", "Drive Backplane", "Recent Activity", "RoC", "CacheVault"):
         assert label in response.text
     assert "drive-tile-v2--optimal" in response.text
     assert 'class="status-bar-v2"' in response.text
@@ -146,14 +146,15 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "/raid/static/vendor/chart.min.js" not in response.text
     assert "Physical Drives" not in response.text
     assert 'class="drive-table"' not in response.text
-    assert "8 drives" in response.text
+    assert '<a href="/raid/drives">8 Drives →</a>' in response.text
     assert re.search(r"/raid/static/css/app\.css\?v=[0-9a-f]{12}", response.text) is not None
     assert (
         re.search(r"/raid/static/vendor/htmx\.min\.js\?v=[0-9a-f]{12}", response.text) is not None
     )
     assert re.search(r"/raid/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/raid/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
-    assert 'data-local-time-clock aria-live="off" hidden' in response.text
+    assert re.search(r"/raid/static/js/live-refresh\.js\?v=[0-9a-f]{12}", response.text) is not None
+    assert "data-live-status" in response.text
     assert {"/raid/", "/raid/drives", "/raid/events", "/raid/controller"}.issubset(
         _anchor_hrefs(response.text)
     )
@@ -185,7 +186,7 @@ def test_overview_navigation_is_prefix_free_without_forwarded_prefix(
     assert re.search(r"/static/js/csrf\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert re.search(r"/static/js/local-time\.js\?v=[0-9a-f]{12}", response.text) is not None
     assert {"/", "/drives", "/events"}.issubset(_anchor_hrefs(response.text))
-    assert "8 drives" in response.text
+    assert '<a href="/drives">8 Drives →</a>' in response.text
     assert "/controller" in _anchor_hrefs(response.text)
     assert "/controller/foreign-config" not in _anchor_hrefs(response.text)
     assert 'class="drive-table"' not in response.text
@@ -259,7 +260,7 @@ def test_alert_status_last_sent_has_noscript_utc_fallback(
 
     assert response.status_code == 200
     assert 'class="activity-item-v2"' in response.text
-    assert 'datetime="2026-04-25T12:05:00Z" data-local-time' in response.text
+    assert 'datetime="2026-04-25T12:05:00Z" title="2026-04-25T12:05:00Z UTC"' in response.text
 
 
 def test_overview_renders_recent_activity_timeline_with_links(
@@ -289,7 +290,7 @@ def test_overview_renders_recent_activity_timeline_with_links(
     assert "Drive state changed" in response.text
     assert "CacheVault state changed" in response.text
     assert response.text.count('class="activity-item-v2"') == 2
-    assert 'datetime="2026-04-25T12:02:00Z" data-local-time' in response.text
+    assert 'datetime="2026-04-25T12:02:00Z" title="2026-04-25T12:02:00Z UTC"' in response.text
     assert "/events" in _anchor_hrefs(response.text)
 
 
@@ -394,7 +395,8 @@ def test_operator_pages_render_local_time_markup(
             response.text,
         )
         assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
-    assert 'data-local-time-clock aria-live="off" hidden' in response.text
+    assert "data-local-time-clock" not in response.text
+    assert "data-live-status" in response.text
 
 
 def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
@@ -407,7 +409,7 @@ def test_drives_route_renders_drive_list_with_prefix_aware_detail_links(
         response = client.get("/drives", headers={"X-Forwarded-Prefix": "/raid"})
 
     assert response.status_code == 200
-    assert "Physical Drives" in response.text
+    assert '<section class="drives" aria-label="Physical drives">' in response.text
     assert 'class="data-table"' in response.text
     assert response.history == []
     drive_links = {
@@ -438,7 +440,7 @@ def test_drive_detail_slot_ref_route_renders_detail(sample_snapshot: StorcliSnap
         response = client.get("/drives/252:4")
 
     assert response.status_code == 200
-    assert "Drive 252:4" in response.text
+    assert '<span aria-current="page">Slot 252:4</span>' in response.text
 
 
 def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapshot) -> None:
@@ -449,13 +451,21 @@ def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapsh
         response = client.get("/drives")
 
     assert response.status_code == 200
-    assert '<table class="data-table">' in response.text
+    assert '<table class="data-table" id="physical-drives-table">' in response.text
     assert 'class="drive-table"' not in response.text
     assert 'class="table-frame"' not in response.text
     for sort_key in ("slot", "model", "state", "temperature", "size"):
         assert f'data-sort-key="{sort_key}"' in response.text
+    assert response.text.count('<button type="button" class="sort-button">') == 8
+    assert response.text.count('aria-sort="ascending"') == 1
+    assert 'data-sort-key="slot" data-sort-direction="asc" aria-sort="ascending"' in response.text
+    assert '<button type="button" class="sort-button">Media Errors</button>' in response.text
+    assert '<button type="button" class="sort-button">Other Errors</button>' in response.text
     assert response.text.count("<tr data-row-state=") == 8
-    assert re.search(r"8 drives,\s+\d+ optimal,\s+\d+ warning,\s+\d+ critical", response.text)
+    assert '<span class="status-badge status-badge--critical">1 Critical</span>' in response.text
+    assert '<span class="status-badge status-badge--warning">5 Warning</span>' in response.text
+    assert '<span class="status-badge status-badge--optimal">2 Optimal</span>' in response.text
+    assert '<span class="muted">of 8</span>' in response.text
     assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
 
 
@@ -490,7 +500,7 @@ def test_drive_detail_renders_attributes_and_chart_area(
         overview_response = client.get("/")
 
     assert response.status_code == 200
-    assert "Drive 252:4" in response.text
+    assert '<span aria-current="page">Slot 252:4</span>' in response.text
     assert '<span class="mono">WDC WD30EFRX-68EUZN0</span>' in response.text
     assert "WD-WM00000005" in response.text
     assert 'id="chart-area"' in response.text
@@ -850,6 +860,7 @@ def test_drive_detail_prefixes_chart_hx_get_urls(sample_snapshot: StorcliSnapsho
     "asset_relative_path",
     [
         Path("static/js/local-time.js"),
+        Path("static/js/live-refresh.js"),
         Path("static/vendor/chart.min.js"),
     ],
 )

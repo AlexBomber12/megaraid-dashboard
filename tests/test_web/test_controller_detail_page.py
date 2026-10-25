@@ -63,17 +63,16 @@ def test_controller_detail_page_renders_expected_sections() -> None:
         "foreign-config",
     }.issubset(sections)
     assert ">Overview</a>" in html
-    assert "<span>Controller</span>" in html
+    assert '<span aria-current="page">Controller</span>' in html
     assert "MegaRAID SAS 9270CV-8i" in html
     assert "SN SV00000001." in html
-    assert '<div class="health-state optimal">OPTIMAL</div>' in html
+    assert '<div class="health-card health-card--optimal">' in html
+    assert '<strong class="health-card__state status-text--optimal">OPTIMAL</strong>' in html
     health_summary = "All systems nominal. 0/0 drives online. RAID unknown healthy."
-    assert f'<div class="health-summary">{health_summary}</div>' in html
-    assert '<div class="metrics-row">' in html
-    assert 'class="health-snapshot__summary"' not in html
-    assert 'class="health-snapshot__metrics"' not in html
+    assert f'<span class="health-card__detail">{health_summary}</span>' in html
+    assert ">Health Snapshot</h2>" in html
     for label in ("RoC Temp", "CacheVault", "BBU", "Mem ECC Errors", "Errors (24h)", "Uptime"):
-        assert f'<span class="metric-label">{label}</span>' in html
+        assert f"<dt>{label}</dt>" in html
     assert '<span class="text-label">Controller health</span>' not in html
     for old_label in (
         "RoC temperature",
@@ -102,9 +101,11 @@ def test_controller_detail_unknown_health_state_uses_neutral_class() -> None:
         response = client.get("/controller")
 
     assert response.status_code == 200
-    assert '<div class="health-snapshot unknown">' in response.text
-    assert '<div class="health-state unknown">UNKNOWN</div>' in response.text
-    assert '<div class="health-state ">UNKNOWN</div>' not in response.text
+    assert '<div class="health-card health-card--unknown">' in response.text
+    assert (
+        '<strong class="health-card__state status-text--unknown">UNKNOWN</strong>' in response.text
+    )
+    assert "health-card--optimal" not in response.text
 
 
 def test_controller_detail_renders_200_with_real_scheduler_wiring() -> None:
@@ -134,12 +135,12 @@ def test_buzzer_buttons_reflect_current_alarm_state() -> None:
     assert buttons["silence"].disabled is True
     assert buttons["disable"].disabled is True
     assert buttons["enable"].disabled is False
-    assert buttons["silence"].label == "Silence"
-    assert buttons["disable"].label == "Disable"
-    assert buttons["enable"].label == "Enable"
+    assert buttons["silence"].label == "Silence Now"
+    assert buttons["disable"].label == "Disabled"
+    assert buttons["enable"].label == "Enabled"
 
 
-def test_foreign_config_present_state_renders_clear_action() -> None:
+def test_foreign_config_present_state_links_to_foreign_config_page() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_controller_snapshot(
@@ -158,19 +159,25 @@ def test_foreign_config_present_state_renders_clear_action() -> None:
     assert response.status_code == 200
     assert 'data-foreign-config-state="present"' in response.text
     assert "Foreign configuration detected on 2 drive(s)." in response.text
-    assert "Source controller SN SRC123" in response.text
-    assert "Expected import digest" in response.text
-    assert "FC-DG1-PD2-500GB" in response.text
-    assert 'data-controller-action-error hidden role="alert"' in response.text
-    assert 'action="/controller/foreign-config/import"' in response.text
-    assert "Import foreign config?" in response.text
-    assert ">Import</button>" in response.text
-    assert 'action="/controller/foreign-config/clear"' in response.text
-    assert "Clear foreign config?" in response.text
-    assert "Type CLEAR FOREIGN CONFIG to confirm." in response.text
-    assert 'type="hidden" name="confirmation"' not in response.text
-    assert 'type="text"\n                name="confirmation"' in response.text
-    assert 'pattern="CLEAR FOREIGN CONFIG"' in response.text
+    assert 'Source controller SN <span class="mono">SRC123</span>' in response.text
+    assert 'href="/controller/foreign-config">Review Foreign Configuration' in response.text
+    # Import and clear run only from the dedicated foreign-config page.
+    assert 'action="/controller/foreign-config/import"' not in response.text
+    assert 'action="/controller/foreign-config/clear"' not in response.text
+    assert 'name="confirmation"' not in response.text
+    assert "confirm(" not in response.text
+
+
+def test_foreign_config_absent_state_has_no_review_link() -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_controller_snapshot(test_app, alarm_state="On")
+
+        response = client.get("/controller")
+
+    assert response.status_code == 200
+    assert 'data-foreign-config-state="absent"' in response.text
+    assert 'href="/controller/foreign-config"' not in response.text
 
 
 def test_controller_detail_submit_handler_honors_canceled_submit() -> None:

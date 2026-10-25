@@ -67,7 +67,7 @@ def test_maintenance_start_renders_banner_on_overview(
     authenticated_page.goto(f"{live_server}/")
     content = authenticated_page.content()
     assert _MAINTENANCE_BANNER_MARKER in content
-    assert "Maintenance mode active" in content
+    assert "Maintenance Mode Active" in content
 
 
 def test_maintenance_stop_clears_banner(

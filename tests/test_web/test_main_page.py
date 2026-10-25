@@ -89,16 +89,17 @@ def test_main_page_renders_new_overview(
     assert "110&deg;C" in response.text
     assert "OPTIMAL" in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
-    assert '<span class="drive-error-badge-v2">1</span>' in response.text
+    assert '<span class="drive-error-badge-v2" title="1 drive errors">' in response.text
+    assert '1<span class="visually-hidden"> errors</span>' in response.text
     assert response.text.count('class="activity-item-v2"') == 10
     assert '<span class="activity-item-v2__age">pd_state</span>' not in response.text
-    assert '<span class="activity-item-v2__age">' in response.text
-    assert "ago</span>" in response.text
+    assert '<time class="activity-item-v2__age" datetime="' in response.text
+    assert "ago</time>" in response.text
     assert "Last patrol read Apr 25" in response.text
     assert "2026-04-25T03:46:00Z UTC" not in response.text
     assert "Next in " in response.text
     assert "Notifier" in response.text
-    assert "ok" in response.text
+    assert "OK" in response.text
     assert "Collector" in response.text
     assert "DB" in response.text
     assert response.text.count('class="status-bar"') == 1

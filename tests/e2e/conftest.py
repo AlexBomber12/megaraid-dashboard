@@ -455,19 +455,19 @@ def snapshot_with_drives(fresh_db: str) -> str:
     return fresh_db
 
 
-def wait_for_htmx_swap(page: Page, timeout: int = 35_000) -> None:
-    """Wait until the browser observes an HTMX swap event."""
+def wait_for_live_update(page: Page, timeout: int = 35_000) -> None:
+    """Wait until live-refresh.js swaps a live region (``live:updated`` event)."""
     page.evaluate(
         """timeoutMs => new Promise((resolve, reject) => {
           const timer = window.setTimeout(() => {
-            document.body.removeEventListener("htmx:afterSwap", onSwap);
-            reject(new Error("timed out waiting for htmx:afterSwap"));
+            document.removeEventListener("live:updated", onUpdate);
+            reject(new Error("timed out waiting for live:updated"));
           }, timeoutMs);
-          function onSwap() {
+          function onUpdate() {
             window.clearTimeout(timer);
             resolve();
           }
-          document.body.addEventListener("htmx:afterSwap", onSwap, { once: true });
+          document.addEventListener("live:updated", onUpdate, { once: true });
         })""",
         timeout,
     )
