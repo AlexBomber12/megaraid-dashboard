@@ -222,7 +222,8 @@ def test_live_refresh_pauses_for_editing_dialogs_and_wizard() -> None:
     assert 'document.body.dataset.liveRefresh === "off"' in source
     assert 'document.querySelector("dialog[open]")' in source
     assert 'document.querySelector("[data-live-pause]:not([hidden])")' in source
-    assert 'active.matches("input, textarea, select")' in source
+    assert "active.matches(EDITABLE)" in source
+    assert "active.matches(INTERACTIVE)" in source
     assert 'setStatus("live", "Live · " + fmtTime(new Date()));' in source
 
 

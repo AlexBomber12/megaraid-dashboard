@@ -189,7 +189,7 @@ def test_replace_wizard_js_step3_posts_insert_without_client_topology() -> None:
     assert "newSerialInput.value.trim() !== expectedSerial.trim()" in source
     assert 'show("physical-swap");' in source
     assert "await loadTopology();" in source
-    assert "if (topology === null) return;" in source
+    assert "if (topology === null || runStep3Button.disabled) return;" in source
     assert "dry_run: dryRunStep3Input.checked," in source
     # Topology is server-derived; the client must NOT send dg/array/row in
     # the insert request body (otherwise a crafted request could overwrite
