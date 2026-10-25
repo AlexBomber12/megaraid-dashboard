@@ -15,6 +15,11 @@
 
 ### Fixed
 
+- Preserve temperature-warning confirmation across repeated same-incident warnings.
+- Bound Telegram response handling with a 10-second absolute deadline, 64 KiB byte cap
+  and rejection of compressed bodies; keep 429 cooldown on unreadable responses.
+- Release the scheduler write lock during Telegram network I/O so collection, retention
+  and disk checks continue; revalidate later sends using current time/data/maintenance.
 - Preserve physical-drive temperature warnings exactly at the hysteresis boundary;
   retain the controller detector's separate clearing rules for warnings and criticals.
 - Filter Telegram eligibility before limiting the candidate batch, so accumulated

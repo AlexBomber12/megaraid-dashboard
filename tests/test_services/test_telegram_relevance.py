@@ -642,3 +642,64 @@ def test_critical_temperature_hysteresis_matches_each_detector(
     _save(session, sample_snapshot, drive={"temperature_celsius": temperature}, roc=temperature)
     sender = FakeSender()
     assert _cycle(session, sender).sent == expected
+
+
+def test_controller_warning_oscillations_preserve_original_confirmation_deadline(
+    session: Session, sample_snapshot: StorcliSnapshot
+) -> None:
+    first = _temperature_event(
+        session,
+        category="controller_temperature",
+        subject="Controller",
+        after={"roc_temperature_celsius": 96},
+    )
+    for minutes in (12, 4):
+        _temperature_event(
+            session,
+            category="controller_temperature",
+            subject="Controller",
+            after={"roc_temperature_celsius": 96},
+            occurred_at=NOW - timedelta(minutes=minutes),
+        )
+    _save(session, sample_snapshot, roc=94)
+    sender = FakeSender()
+    result = _cycle(session, sender)
+    assert result.sent == 1 and f"событие #{first.id}" in sender.sent[0]
+    assert _delivery(session, first).status == "sent"
+
+    later = NOW + timedelta(minutes=15)
+    _save(session, sample_snapshot, now=later, roc=96)
+    assert _cycle(session, sender, now=later).sent == 0
+    assert len(sender.sent) == 1
+
+
+@pytest.mark.parametrize("ending_severity", ["info", "critical"])
+def test_repeated_controller_warning_still_cancels_on_clear_or_escalation(
+    session: Session, sample_snapshot: StorcliSnapshot, ending_severity: str
+) -> None:
+    warning = _temperature_event(
+        session,
+        category="controller_temperature",
+        subject="Controller",
+        after={"roc_temperature_celsius": 96},
+    )
+    _temperature_event(
+        session,
+        category="controller_temperature",
+        subject="Controller",
+        after={"roc_temperature_celsius": 96},
+        occurred_at=NOW - timedelta(minutes=10),
+    )
+    _temperature_event(
+        session,
+        category="controller_temperature",
+        subject="Controller",
+        severity=ending_severity,
+        after={"roc_temperature_celsius": 90 if ending_severity == "info" else 106},
+        occurred_at=NOW - timedelta(minutes=1),
+    )
+    _save(session, sample_snapshot, roc=90 if ending_severity == "info" else 106)
+    sender = FakeSender()
+    _cycle(session, sender)
+    assert _delivery(session, warning).detail == "not_confirmed"
+    assert all("🟠" not in text for text in sender.sent)

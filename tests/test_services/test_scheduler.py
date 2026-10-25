@@ -280,7 +280,10 @@ async def test_prolonged_collection_outage_reports_stale_monitoring_once(
     stale_summary = events[3][1]
     assert stale_summary.startswith("Monitoring stale: no successful collection for 2")
     assert stale_summary.endswith("min (3 failed polls); RAID state is unknown")
-    from megaraid_dashboard.services.telegram_notifier import is_telegram_alert, run_telegram_cycle
+    from megaraid_dashboard.services.telegram_notifier import (
+        is_telegram_alert,
+        run_telegram_cycle_async,
+    )
     from tests.test_services.test_telegram_notifier import FakeSender
 
     sender = FakeSender()
@@ -293,7 +296,7 @@ async def test_prolonged_collection_outage_reports_stale_monitoring_once(
             True,
             False,
         ]
-        result = run_telegram_cycle(
+        result = await run_telegram_cycle_async(
             session,
             settings=service.settings,
             now=datetime.now(UTC),
@@ -475,7 +478,7 @@ async def test_run_once_waits_for_notifier_write_lock(
 
     monkeypatch.setattr(
         service,
-        "_run_notifier_cycle_with_lock",
+        "_run_smtp_cycle",
         slow_notifier_cycle_with_lock,
     )
     monkeypatch.setattr(

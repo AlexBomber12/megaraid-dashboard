@@ -42,7 +42,7 @@ from megaraid_dashboard.services.notifier import (
     _record_telegram_health,
     run_notifier_cycle,
 )
-from megaraid_dashboard.services.telegram_notifier import run_telegram_cycle
+from megaraid_dashboard.services.telegram_notifier import run_telegram_cycle_async
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 from megaraid_dashboard.web.metrics import (
     COLLECTOR_CYCLE_DURATION,
@@ -310,38 +310,48 @@ class CollectorService:
                 session.commit()
 
     async def _run_notifier_once(self) -> None:
-        async with self._write_lock:
-            await asyncio.to_thread(self._run_notifier_cycle_with_lock)
+        await self._run_notifier_cycle_with_lock()
 
-    def _run_notifier_cycle_with_lock(self) -> None:
+    async def _run_notifier_cycle_with_lock(self) -> None:
         lock_fd = _try_acquire_notifier_lock(_LOCK_PATH_DEFAULT)
         if lock_fd is None:
             LOGGER.info("notifier_overlap_skipped", lock_path=_LOCK_PATH_DEFAULT)
             return
         try:
-            # Telegram and SMTP are independent phases: an error in one never skips the
-            # other. Telegram runs first because one failure ends its cycle (bounded delay).
+            # Keep the process lock throughout both phases. Telegram takes the shared
+            # write lock only for DB work; its bounded network I/O runs without it.
             if self.settings.telegram_enabled:
                 with self.session_factory() as session:
                     try:
-                        run_telegram_cycle(session, settings=self.settings, now=self.clock())
+                        await run_telegram_cycle_async(
+                            session,
+                            settings=self.settings,
+                            now=self.clock(),
+                            database_lock=self._write_lock,
+                            clock=self.clock,
+                        )
                     except Exception:
                         _record_telegram_health(False)
                         LOGGER.exception("telegram_notifier_cycle_failed")
-            transport = SmtpAlertTransport(self.settings)
-            with self.session_factory() as session:
-                try:
-                    run_notifier_cycle(
-                        session,
-                        transport,
-                        settings=self.settings,
-                        now=self.clock(),
-                    )
-                except Exception:
-                    _record_notifier_health(False)
-                    LOGGER.exception("notifier_cycle_failed")
+            # SMTP retains its existing transaction, transport and locking behavior.
+            async with self._write_lock:
+                await asyncio.to_thread(self._run_smtp_cycle)
         finally:
             _release_notifier_lock(lock_fd)
+
+    def _run_smtp_cycle(self) -> None:
+        transport = SmtpAlertTransport(self.settings)
+        with self.session_factory() as session:
+            try:
+                run_notifier_cycle(
+                    session,
+                    transport,
+                    settings=self.settings,
+                    now=self.clock(),
+                )
+            except Exception:
+                _record_notifier_health(False)
+                LOGGER.exception("notifier_cycle_failed")
 
     async def _run_tracked_job(self, job: Callable[[], Awaitable[None]]) -> None:
         task = asyncio.current_task()

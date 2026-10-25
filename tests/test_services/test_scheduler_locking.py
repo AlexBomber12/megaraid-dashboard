@@ -315,7 +315,7 @@ def test_release_notifier_lock_releases_lock(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_notifier_cycle_with_lock_skips_when_lock_held(
+async def test_run_notifier_cycle_with_lock_skips_when_lock_held(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -333,11 +333,11 @@ def test_run_notifier_cycle_with_lock_skips_when_lock_held(
         lambda *args, **kwargs: called.append(True),
     )
 
-    service._run_notifier_cycle_with_lock()
+    await service._run_notifier_cycle_with_lock()
     assert called == []
 
 
-def test_run_notifier_cycle_with_lock_runs_cycle_and_releases(
+async def test_run_notifier_cycle_with_lock_runs_cycle_and_releases(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -368,12 +368,12 @@ def test_run_notifier_cycle_with_lock_runs_cycle_and_releases(
 
     monkeypatch.setattr(scheduler_module, "run_notifier_cycle", fake_cycle)
 
-    service._run_notifier_cycle_with_lock()
+    await service._run_notifier_cycle_with_lock()
     assert cycle_calls == [True]
     assert released == [fake_fd]
 
 
-def test_run_notifier_cycle_with_lock_logs_cycle_failure(
+async def test_run_notifier_cycle_with_lock_logs_cycle_failure(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -403,7 +403,7 @@ def test_run_notifier_cycle_with_lock_logs_cycle_failure(
     monkeypatch.setattr(scheduler_module, "run_notifier_cycle", boom)
 
     # Should not raise — the inner exception is logged and the lock is released
-    service._run_notifier_cycle_with_lock()
+    await service._run_notifier_cycle_with_lock()
     assert released == [fake_fd]
 
 
@@ -419,8 +419,10 @@ def _patch_notifier_phases(
     monkeypatch.setattr(scheduler_module, "_release_notifier_lock", released.append)
     monkeypatch.setattr(scheduler_module, "SmtpAlertTransport", lambda settings: object())
 
-    def fake_telegram(session: Session, *, settings: Any, now: Any) -> None:
-        del session, settings, now
+    async def fake_telegram(
+        session: Session, *, settings: Any, now: Any, database_lock: Any, clock: Any
+    ) -> None:
+        del session, settings, now, database_lock, clock
         calls.append("telegram")
         if telegram_error is not None:
             raise telegram_error
@@ -431,7 +433,7 @@ def _patch_notifier_phases(
         if smtp_error is not None:
             raise smtp_error
 
-    monkeypatch.setattr(scheduler_module, "run_telegram_cycle", fake_telegram)
+    monkeypatch.setattr(scheduler_module, "run_telegram_cycle_async", fake_telegram)
     monkeypatch.setattr(scheduler_module, "run_notifier_cycle", fake_smtp)
     return released
 
@@ -442,33 +444,33 @@ def _telegram_service(session_factory: sessionmaker[Session]) -> CollectorServic
     return service
 
 
-def test_notifier_skips_telegram_phase_when_disabled(
+async def test_notifier_skips_telegram_phase_when_disabled(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
     released = _patch_notifier_phases(monkeypatch, calls)
 
-    _service(service_session_factory)._run_notifier_cycle_with_lock()
+    await _service(service_session_factory)._run_notifier_cycle_with_lock()
 
     assert calls == ["smtp"]
     assert released == [7]
 
 
-def test_notifier_runs_telegram_then_smtp_when_enabled(
+async def test_notifier_runs_telegram_then_smtp_when_enabled(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
     released = _patch_notifier_phases(monkeypatch, calls)
 
-    _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
+    await _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
 
     assert calls == ["telegram", "smtp"]
     assert released == [7]
 
 
-def test_telegram_phase_crash_does_not_skip_smtp(
+async def test_telegram_phase_crash_does_not_skip_smtp(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -478,7 +480,7 @@ def test_telegram_phase_crash_does_not_skip_smtp(
     )
 
     try:
-        _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
+        await _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
         assert calls == ["telegram", "smtp"]
         assert released == [7]
         assert notifier_module.get_notifier_health() is False
@@ -486,7 +488,7 @@ def test_telegram_phase_crash_does_not_skip_smtp(
         notifier_module._record_telegram_health(True)
 
 
-def test_smtp_phase_crash_after_telegram_is_contained(
+async def test_smtp_phase_crash_after_telegram_is_contained(
     service_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -494,7 +496,7 @@ def test_smtp_phase_crash_after_telegram_is_contained(
     released = _patch_notifier_phases(monkeypatch, calls, smtp_error=RuntimeError("smtp exploded"))
 
     try:
-        _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
+        await _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
         assert calls == ["telegram", "smtp"]
         assert released == [7]
     finally:
@@ -508,7 +510,7 @@ async def test_run_notifier_once_invokes_cycle_with_lock(
     service = _service(service_session_factory)
     invoked: list[bool] = []
 
-    def fake_cycle() -> None:
+    async def fake_cycle() -> None:
         invoked.append(True)
 
     monkeypatch.setattr(service, "_run_notifier_cycle_with_lock", fake_cycle)

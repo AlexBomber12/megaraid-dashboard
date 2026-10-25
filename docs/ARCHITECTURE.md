@@ -103,7 +103,14 @@ warnings after confirmation, nothing else. A single failed collection is a warni
 collector records one critical `Monitoring stale` event only after persistent failure.
 Every attempt revalidates against fresh saved snapshots, disk serial identity and current
 incident state. Active incidents survive long transport outages at a capped retry rate;
-obsolete incidents are skipped. Channel-wide HTTP 429 cooldown lives in `system_state`,
+obsolete incidents are skipped. Repeated temperature warnings retain the original
+confirmation deadline until a clear/escalation. Telegram DB phases use the scheduler's
+write lock, but release it and close the transaction before network I/O. The async
+transport enforces a 10 s absolute request deadline and 64 KiB response cap, and rejects
+compression before decoding. Collection/disk checks/retention can progress during a send;
+the process notifier lock remains held across the entire cycle. Later candidates recheck
+current time, snapshots and maintenance after the unlocked phase. SMTP keeps its existing
+locking and delivery behavior. Channel-wide HTTP 429 cooldown lives in `system_state`,
 without an additional migration. Interrupted `sending` claims retry after revalidation,
 accepting possible duplicates after an ambiguous remote acceptance rather than silently
 losing an unsent critical alert. Candidate batches and sends per cycle are bounded.

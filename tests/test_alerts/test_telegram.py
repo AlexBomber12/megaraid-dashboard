@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +56,7 @@ def _token_file(tmp_path: Path, content: bytes = FAKE_TOKEN.encode(), mode: int 
 def _transport(
     handler: Callable[[httpx.Request], httpx.Response],
 ) -> TelegramTransport:
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return TelegramTransport(TelegramConfig(chat_id=CHAT_ID, token=FAKE_TOKEN), client=client)
 
 
@@ -220,18 +221,18 @@ def test_send_without_injected_client_uses_bounded_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     created: list[dict[str, Any]] = []
-    real_client = httpx.Client
+    real_client = httpx.AsyncClient
 
-    def client_factory(**kwargs: Any) -> httpx.Client:
+    def client_factory(**kwargs: Any) -> httpx.AsyncClient:
         created.append(kwargs)
         return real_client(transport=httpx.MockTransport(_ok), **kwargs)
 
-    monkeypatch.setattr(telegram_module.httpx, "Client", client_factory)
+    monkeypatch.setattr(telegram_module.httpx, "AsyncClient", client_factory)
     transport = TelegramTransport(TelegramConfig(chat_id=CHAT_ID, token=FAKE_TOKEN))
 
     transport.send("hello")
 
-    assert created == [{"timeout": telegram_module._TIMEOUT}]
+    assert created == [{"timeout": telegram_module._TIMEOUT, "follow_redirects": False}]
     assert transport.chat_id == CHAT_ID
 
 
@@ -364,3 +365,125 @@ def test_token_file_check_uses_nofollow_open(
     load_telegram_config(_settings(telegram_bot_token_file=str(token_file)))
 
     assert flags_seen and flags_seen[0] & os.O_NOFOLLOW and flags_seen[0] & os.O_NONBLOCK
+
+
+class _Stream(httpx.AsyncByteStream):
+    def __init__(
+        self, chunks: list[bytes], *, delay: float = 0, error: Exception | None = None
+    ) -> None:
+        self.chunks = chunks
+        self.delay = delay
+        self.error = error
+        self.reads = 0
+        self.closed = False
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for chunk in self.chunks:
+            await asyncio.sleep(self.delay)
+            self.reads += 1
+            yield chunk
+        if self.error is not None:
+            raise self.error
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.parametrize("status", [200, 429])
+def test_absolute_deadline_stops_trickling_response_and_closes_stream(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    monkeypatch.setattr(telegram_module, "_TOTAL_TIMEOUT_SECONDS", 0.05)
+    stream = _Stream([b" " for _ in range(100)], delay=0.01)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Accept-Encoding"] == "identity"
+        return httpx.Response(status, stream=stream)
+
+    with pytest.raises(TelegramSendError, match=r"^timeout$") as error:
+        _transport(handler).send("hello")
+
+    assert stream.closed
+    assert stream.reads < 100
+    assert error.value.retry_after_seconds == (60 if status == 429 else None)
+    assert FAKE_TOKEN not in str(error.value)
+
+
+def test_absolute_deadline_also_covers_response_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(telegram_module, "_TOTAL_TIMEOUT_SECONDS", 0.01)
+    cancelled: list[bool] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            cancelled.append(True)
+        return httpx.Response(200, json={"ok": True})
+
+    with pytest.raises(TelegramSendError, match=r"^timeout$"):
+        _transport(handler).send("hello")
+    assert cancelled == [True]
+
+
+@pytest.mark.parametrize("status", [200, 429])
+def test_stream_byte_cap_ignores_false_content_length_and_stops_reading(status: int) -> None:
+    stream = _Stream([b" " * telegram_module._RESPONSE_MAX_BYTES, b"x", b"must not be read"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(status, headers={"Content-Length": "1"}, stream=stream)
+
+    with pytest.raises(TelegramSendError, match=r"^response too large$") as error:
+        _transport(handler).send("hello")
+    assert stream.reads == 2
+    assert stream.closed
+    assert error.value.retry_after_seconds == (60 if status == 429 else None)
+
+
+def test_response_exactly_at_byte_cap_is_accepted_and_closed() -> None:
+    body = b'{"ok": true}'
+    stream = _Stream([body, b" " * (telegram_module._RESPONSE_MAX_BYTES - len(body))])
+    _transport(lambda _: httpx.Response(200, stream=stream)).send("hello")
+    assert stream.closed and stream.reads == 2
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "br"])
+def test_compressed_response_is_rejected_before_decompression(encoding: str) -> None:
+    stream = _Stream([b"untrusted compressed bytes"])
+    with pytest.raises(TelegramSendError, match=r"^unexpected response encoding$"):
+        _transport(
+            lambda _: httpx.Response(200, headers={"Content-Encoding": encoding}, stream=stream)
+        ).send("hello")
+    assert stream.closed and stream.reads == 0
+
+
+@pytest.mark.parametrize("status", [200, 429])
+def test_body_network_failure_closes_stream_and_keeps_token_out_of_error(status: int) -> None:
+    stream = _Stream([b"{"], error=httpx.ReadError(f"failed bot{FAKE_TOKEN}"))
+    with pytest.raises(TelegramSendError, match=r"^network error: ReadError$") as error:
+        _transport(lambda _: httpx.Response(status, stream=stream)).send("hello")
+    assert stream.closed
+    assert error.value.retry_after_seconds == (60 if status == 429 else None)
+    assert FAKE_TOKEN not in str(error.value)
+
+
+def test_deeply_nested_response_is_rejected_without_leaking_its_contents() -> None:
+    body = b"[" * 2000 + json.dumps(FAKE_TOKEN).encode() + b"]" * 2000
+    with pytest.raises(TelegramSendError, match=r"^HTTP 200$") as error:
+        _transport(lambda _: httpx.Response(200, content=body)).send("hello")
+    assert FAKE_TOKEN not in str(error.value)
+
+
+def test_redirect_is_never_followed_even_if_injected_client_allows_it() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(302, headers={"Location": "https://untrusted.invalid/"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True)
+    sender = TelegramTransport(TelegramConfig(chat_id=CHAT_ID, token=FAKE_TOKEN), client=client)
+    with pytest.raises(TelegramSendError, match=r"^HTTP 302$"):
+        sender.send("hello")
+    assert len(requests) == 1 and requests[0].url.host == "api.telegram.org"

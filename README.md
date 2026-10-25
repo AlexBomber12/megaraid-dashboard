@@ -539,6 +539,10 @@ red, and SMTP continues normally.
 | Warning `temperature`, `controller_temperature` | After `TELEGRAM_WARNING_CONFIRM_MINUTES`, with fresh readings confirming the same disk and active temperature state; a newer clear/escalation cancels it |
 | Everything else (info, other warnings, `disk_space`) | Never |
 
+Repeated warnings for an incident already in its hysteresis band preserve the first
+warning's confirmation deadline. For example, controller readings oscillating between
+94 and 96 C do not reset the 15-minute wait; only a clear or escalation cancels it.
+
 A single failed collection is a `warning` event and is not sent on either channel.
 
 One incident produces one message: the same category, object, severity, and state (or
@@ -576,7 +580,8 @@ if identity is unavailable, delivery waits. Recovered states, removed/replaced d
 cleared SMART flags and error counters reset below the event value become `skipped` /
 `obsolete`. Temperature warnings also check the current reading and persisted drive
 hysteresis state; missing readings wait. Drive states remain active at the hysteresis
-boundary and clear strictly below it; controller events clear at the boundary. No extra storcli request is made. Missing/stale data retain a durable retry
+boundary and clear strictly below it; controller events clear at the boundary. No extra
+storcli request is made. Missing/stale data retain a durable retry
 with `awaiting_*` diagnostics, without a lifetime cutoff. An outage alert itself needs no
 fresh hardware snapshot; a successful collection after its event makes it obsolete.
 Only the collector's explicit `monitoring_outage=true` system event is eligible; arbitrary
@@ -595,8 +600,22 @@ send an older **still-active** incident, after revalidation; it never replays re
 
 Pending attempted retries keep notifier health unhealthy even between attempts. SMTP's
 marker, selection, dedup and transport are unchanged. Telegram runs before SMTP and an
-exception in either phase never skips the other. HTTPS uses 5 s connect / 10 s operation
-timeouts. There are no new privileges or RAID commands.
+exception in either phase never skips the other. Telegram's async phase holds the shared
+write lock only while reading/revalidating/claiming or recording outcomes, and commits
+before HTTP. Collection, retention and disk checks can continue during network waits. The
+process-level notifier lock stays held for the entire cycle to prevent overlapping sends.
+Before each later send it refreshes the clock, snapshot and maintenance state. In-flight
+messages cannot be recalled if state changes after the claim. SMTP retains its existing
+transport, database markers and locking behavior.
+
+HTTPS has a **10-second absolute request deadline**, including headers and streamed body,
+as well as 5 s connect / 10 s operation timeouts. Responses are capped at **64 KiB**, based
+on actual bytes rather than Content-Length. Requests ask for identity encoding and reject
+compressed responses before decoding, avoiding decompression bombs. Oversized, compressed,
+malformed or deeply nested responses fail safely and enter normal retry handling. If a
+429's headers arrived but its body cannot be read, the channel uses a 60-second fallback
+cooldown. Redirects are disabled even for an injected client. No new privileges or RAID
+commands are introduced.
 
 ### CLI
 

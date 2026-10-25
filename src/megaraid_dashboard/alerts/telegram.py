@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -19,6 +20,8 @@ _LOG = structlog.get_logger(__name__)
 TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+_TOTAL_TIMEOUT_SECONDS = 10.0
+_RESPONSE_MAX_BYTES = 64 * 1024
 _TOKEN_PATTERN = re.compile(r"^[0-9]{5,16}:[A-Za-z0-9_-]{30,64}$")
 _CHAT_ID_PATTERN = re.compile(r"^-?[1-9][0-9]{4,19}$")
 _TOKEN_FILE_MAX_BYTES = 256
@@ -44,6 +47,11 @@ class TelegramSendError(Exception):
 class TelegramConfig:
     chat_id: str
     token: str = field(repr=False)
+
+
+@dataclass
+class _ResponseState:
+    status_code: int | None = None
 
 
 def load_telegram_config(settings: Settings, *, chat_id: str | None = None) -> TelegramConfig:
@@ -93,7 +101,7 @@ def _read_token_file(raw_path: str) -> str:
 
 
 class TelegramTransport:
-    def __init__(self, config: TelegramConfig, *, client: httpx.Client | None = None) -> None:
+    def __init__(self, config: TelegramConfig, *, client: httpx.AsyncClient | None = None) -> None:
         self._config = config
         self._client = client
         for logger_name in _HTTP_CLIENT_LOGGERS:
@@ -104,32 +112,76 @@ class TelegramTransport:
         return self._config.chat_id
 
     def send(self, text: str) -> None:
+        asyncio.run(self.send_async(text))
+
+    async def send_async(self, text: str) -> None:
         text = text[:TELEGRAM_MAX_MESSAGE_LENGTH]
-        payload = {
+        payload: dict[str, str | bool] = {
             "chat_id": self._config.chat_id,
             "text": text,
             "disable_web_page_preview": True,
         }
         start = time.monotonic()
+        state = _ResponseState()
         try:
-            # The URL embeds the token; it is never bound to a local so that tracebacks
-            # rendered with locals cannot show it.
-            if self._client is not None:
-                response = self._client.post(self._url(), json=payload, timeout=_TIMEOUT)
-            else:
-                with httpx.Client(timeout=_TIMEOUT) as client:
-                    response = client.post(self._url(), json=payload)
-        except httpx.TimeoutException:
-            raise TelegramSendError("timeout") from None
+            response = await self._send_bounded(payload, state)
+        except TelegramSendError as exc:
+            if state.status_code == 429:
+                raise TelegramSendError(exc.reason, retry_after_seconds=60) from None
+            raise
+        except (httpx.TimeoutException, TimeoutError):
+            raise TelegramSendError(
+                "timeout",
+                retry_after_seconds=60 if state.status_code == 429 else None,
+            ) from None
         except Exception as exc:
             # httpx exception text can embed the request URL, so only the type is kept.
-            raise TelegramSendError(f"network error: {type(exc).__name__}") from None
+            raise TelegramSendError(
+                f"network error: {type(exc).__name__}",
+                retry_after_seconds=60 if state.status_code == 429 else None,
+            ) from None
         self._raise_for_response(response)
         _LOG.info(
             "alert_telegram_send",
             elapsed_ms=int((time.monotonic() - start) * 1000),
             text_length=len(text),
         )
+
+    async def _send_bounded(
+        self,
+        payload: dict[str, str | bool],
+        state: _ResponseState,
+    ) -> httpx.Response:
+        # The absolute deadline includes headers, every body chunk and client cleanup.
+        # HTTPX's read timeout alone resets after each received chunk.
+        async with asyncio.timeout(_TOTAL_TIMEOUT_SECONDS):
+            if self._client is not None:
+                return await self._read_response(self._client, payload, state)
+            async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False) as client:
+                return await self._read_response(client, payload, state)
+
+    async def _read_response(
+        self, client: httpx.AsyncClient, payload: dict[str, str | bool], state: _ResponseState
+    ) -> httpx.Response:
+        # Never bind the token-bearing URL in our locals or include it in exceptions.
+        async with client.stream(
+            "POST",
+            self._url(),
+            json=payload,
+            timeout=_TIMEOUT,
+            headers={"Accept-Encoding": "identity"},
+            follow_redirects=False,
+        ) as response:
+            state.status_code = response.status_code
+            # Reject compression before HTTPX can allocate a decompressed chunk.
+            if response.headers.get("Content-Encoding", "identity").strip().lower() != "identity":
+                raise TelegramSendError("unexpected response encoding")
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(body) + len(chunk) > _RESPONSE_MAX_BYTES:
+                    raise TelegramSendError("response too large")
+                body.extend(chunk)
+            return httpx.Response(response.status_code, content=bytes(body))
 
     def _url(self) -> str:
         return f"{TELEGRAM_API_BASE_URL}/bot{self._config.token}/sendMessage"
@@ -157,7 +209,7 @@ class TelegramTransport:
 def _json_body(response: httpx.Response) -> dict[str, Any]:
     try:
         body = response.json()
-    except ValueError:
+    except (ValueError, RecursionError):
         return {}
     return body if isinstance(body, dict) else {}
 

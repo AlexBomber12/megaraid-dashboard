@@ -130,6 +130,13 @@ an incident whose fresh data, temperature or disk identity cannot yet be verifie
 retry beyond three hours and eight attempts (at most hourly after backoff); pending
 attempted retries keep the health flag unhealthy. A requeued interrupted claim can
 produce a duplicate with the same event ID if Telegram already accepted the request.
+Telegram also enforces a 10 s absolute request deadline and 64 KiB response cap.
+`timeout`, `response too large`, `unexpected response encoding` and sanitized
+`network error: <type>` use normal durable retry. A 429 with an unreadable body falls
+back to a 60 s channel cooldown. Do not raise limits just to accept an unexpected response;
+check the trusted API path, connectivity and TLS first. Network waits do not hold the
+collector's shared write lock. Repeated controller warning crossings inside hysteresis
+preserve the first confirmation deadline; only a clear or escalation cancels it.
 See [Telegram delivery](README.md#delivery) and [missed alerts](docs/RUNBOOK.md#missed-alerts-what-now).
 
 ### Fixes

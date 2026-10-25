@@ -165,6 +165,16 @@ state, and runs as the `raid-monitor` service user.
    a crash before HTTP is retried. Recovered/replaced/removed incidents are skipped after
    fresh-state validation. Keep the events and delivery tables in database backups.
    Disabling Telegram preserves this queue; re-enabling can send an old still-active risk.
+10. Telegram responses have a 10 s absolute request deadline and 64 KiB byte cap;
+    compression is rejected before decoding. `response too large`,
+    `unexpected response encoding` and `timeout` remain durable retries. A 429 with
+    an unreadable body sets a 60 s fallback channel cooldown. Check connectivity/TLS
+    and the trusted Telegram API path; do not enlarge limits without diagnosis.
+    Collection, disk checks and retention continue during Telegram network waits.
+11. Repeated controller warnings within the active hysteresis band (e.g. 94/96 C)
+    preserve the first warning's confirmation deadline. Only clear/escalation resets it.
+    Later candidates are revalidated after each unlocked HTTP phase, including current
+    maintenance and snapshot freshness. A message already in flight cannot be recalled.
 
 ### Collection failure; what now?
 
