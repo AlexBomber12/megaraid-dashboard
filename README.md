@@ -554,6 +554,12 @@ is eligible again. For SMART and CacheVault replacement-required flags, a record
 recovery event. This evidence survives raw-snapshot pruning. Baseline observations with
 no prior clear still deduplicate; an older queued flag incident is skipped when a new
 rising edge supersedes it. No additional SMTP events are introduced.
+Controller episodes also use successful saved readings: cooling to or below the relevant
+warning/critical threshold minus hysteresis ends that episode, even if no recovery event
+was emitted. Two latest-clear timestamps in `system_state` survive snapshot pruning and
+are recorded atomically with collection, even with Telegram disabled. Retained readings
+bootstrap missing metadata; missing sensors prove no recovery. Already-pruned history from
+before this tracking cannot be reconstructed. The event stream and SMTP stay unchanged.
 Growing error counters stay one incident. Events recorded during
 maintenance mode are skipped permanently for Telegram (SMTP keeps its existing
 pause-then-send behaviour). Events that existed before migration `0009` are never sent.

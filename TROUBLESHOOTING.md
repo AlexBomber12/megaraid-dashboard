@@ -137,6 +137,11 @@ back to a 60 s channel cooldown. Do not raise limits just to accept an unexpecte
 check the trusted API path, connectivity and TLS first. Network waits do not hold the
 collector's shared write lock. Repeated controller warning crossings inside hysteresis
 preserve the first confirmation deadline; only a clear or escalation cancels it.
+For a new controller episode without an intervening recovery event, check
+`system_state.telegram_roc_warning_cleared_at` / `telegram_roc_critical_cleared_at`.
+Successful cool readings update these atomically, even when Telegram is disabled; the
+timestamps survive raw-history pruning. Missing sensors do not prove recovery. Retained
+readings bootstrap missing metadata; pre-tracking history already pruned cannot be recovered.
 See [Telegram delivery](README.md#delivery) and [missed alerts](docs/RUNBOOK.md#missed-alerts-what-now).
 
 ### Fixes

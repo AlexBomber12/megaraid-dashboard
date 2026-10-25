@@ -181,6 +181,15 @@ state, and runs as the `raid-monitor` service user.
     baseline without a recorded clear still deduplicates. This adds no recovery events
     and does not alter SMTP selection or delivery.
 
+13. For recurring controller overheating, inspect `system_state` keys
+    `telegram_roc_warning_cleared_at` and `telegram_roc_critical_cleared_at` (ISO UTC).
+    Each records the latest successful reading at/below its threshold minus hysteresis,
+    even if no recovery event was emitted (e.g. 96 → 94 → 89 → 96 C). These two
+    monotonic timestamps survive history pruning, update even with Telegram disabled,
+    and roll back with a failed collection transaction. Missing sensors do not clear
+    incidents. Retained readings bootstrap missing/invalid metadata; already-pruned
+    pre-tracking history cannot be reconstructed. Keep these keys with database backups.
+
 ### Collection failure; what now?
 
 1. Check the Events page for a system collection-failure event.
@@ -261,7 +270,9 @@ state, and runs as the `raid-monitor` service user.
    revision is unsafe: it restores the three-hour cutoff and interrupted-send loss.
    Prefer `TELEGRAM_ENABLED=false` with this code, preserving the queue and SMTP. The
    `telegram_not_before` system-state row is harmless to older code but is only enforced
-   by the fixed notifier; preserve it when temporarily disabling Telegram.
+   by the fixed notifier; preserve it when temporarily disabling Telegram. The two
+   `telegram_roc_*_cleared_at` rows are also harmless to older code; keep them. Older
+   revisions ignore this recovery evidence and can suppress recurring overheating.
 3. Restore the prior source tree under `/opt/megaraid-dashboard/src`.
    Expected output: the application code matches the intended prior revision.
 4. Reinstall the package in the service virtual environment if needed.

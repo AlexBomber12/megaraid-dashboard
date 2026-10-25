@@ -194,7 +194,12 @@ async def run_telegram_cycle_async(
                 _defer(session, event, delivery, now=now_utc, detail=relevance)
                 deferred += 1
                 continue
-            if _same_incident_sent_since(session, event, since=now_utc - _REPEAT_SUPPRESS_WINDOW):
+            if _same_incident_sent_since(
+                session,
+                event,
+                since=now_utc - _REPEAT_SUPPRESS_WINDOW,
+                settings=settings,
+            ):
                 _skip(session, event, delivery, detail="duplicate")
                 skipped += 1
                 _LOG.info("telegram_event_deduplicated", event_id=event.id, category=event.category)
@@ -345,7 +350,13 @@ def _warning_has_ended(session: Session, event: Event) -> bool:
     return session.execute(statement).first() is not None
 
 
-def _same_incident_sent_since(session: Session, event: Event, *, since: datetime) -> bool:
+def _same_incident_sent_since(
+    session: Session,
+    event: Event,
+    *,
+    since: datetime,
+    settings: Settings,
+) -> bool:
     statement = (
         select(Event)
         .join(EventDelivery, EventDelivery.event_id == Event.id)
@@ -365,7 +376,13 @@ def _same_incident_sent_since(session: Session, event: Event, *, since: datetime
         incident_key(other) == key
         and drive_serial_at(session, other) == drive_serial
         # Include this event: a flag's false-to-true edge itself proves a new episode.
-        and not incident_superseded(session, other, before_id=event.id + 1)
+        and not incident_superseded(
+            session,
+            other,
+            before_id=event.id + 1,
+            settings=settings,
+            until=_to_aware_utc(event.occurred_at),
+        )
         for other in session.scalars(statement)
     )
 

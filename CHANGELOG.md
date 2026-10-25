@@ -15,6 +15,11 @@
 
 ### Fixed
 
+- Recognize controller-temperature recoveries missed by adjacent-sample event detection;
+  persist two bounded recovery timestamps atomically with collection, including while
+  Telegram is disabled. New episodes remain eligible after raw-history pruning, without
+  adding recovery events or changing SMTP.
+
 - Preserve recurring SMART and CacheVault replacement-required alerts by using their
   durable false-to-true transition metadata as an incident boundary; unchanged baseline
   observations still deduplicate, without adding SMTP recovery events.

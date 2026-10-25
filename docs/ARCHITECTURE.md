@@ -114,6 +114,11 @@ locking and delivery behavior. Channel-wide HTTP 429 cooldown lives in `system_s
 without an additional migration. Interrupted `sending` claims retry after revalidation,
 accepting possible duplicates after an ambiguous remote acceptance rather than silently
 losing an unsent critical alert. Candidate batches and sends per cycle are bounded.
+Collection persists two monotonic RoC recovery timestamps in existing `system_state`,
+atomically with each successful snapshot and even when Telegram is disabled. These record
+readings at/below each severity's hysteresis clear boundary, including clears missed by
+the adjacent-sample event detector. Relevance/dedup use them plus retained raw readings;
+raw-history pruning cannot erase newly tracked recoveries. No extra SMTP events are added.
 See the README "Alerts (Telegram)" section for the full policy and delivery guarantees.
 
 ### Web app

@@ -43,6 +43,7 @@ from megaraid_dashboard.services.notifier import (
     run_notifier_cycle,
 )
 from megaraid_dashboard.services.telegram_notifier import run_telegram_cycle_async
+from megaraid_dashboard.services.telegram_relevance import record_controller_temperature_clears
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 from megaraid_dashboard.web.metrics import (
     COLLECTOR_CYCLE_DURATION,
@@ -112,6 +113,12 @@ class CollectorService:
                         snapshot,
                         store_raw=self.settings.store_raw_snapshot_payload,
                         raw_payload=raw_payload,
+                    )
+                    record_controller_temperature_clears(
+                        session,
+                        temperature=snapshot.controller.roc_temperature_celsius,
+                        captured_at=snapshot.captured_at,
+                        settings=self.settings,
                     )
                     events = self.event_detector.detect(previous, snapshot)
                     if self._latest_system_event_was_collection_failure(session):

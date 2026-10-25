@@ -10,10 +10,11 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import Settings
+from megaraid_dashboard.db.dao import get_state, set_state
 from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
@@ -24,6 +25,88 @@ from megaraid_dashboard.services.notifier import _to_aware_utc
 from megaraid_dashboard.services.telegram_messages import incident_key
 
 DRIVE_SUBJECT = re.compile(r"PD e(\d+):s(\d+)")
+_CONTROLLER_CLEAR_KEYS = {
+    "warning": "telegram_roc_warning_cleared_at",
+    "critical": "telegram_roc_critical_cleared_at",
+}
+
+
+def _controller_clear_boundary(settings: Settings, severity: str) -> int:
+    threshold = (
+        settings.roc_temp_critical_celsius
+        if severity == "critical"
+        else settings.roc_temp_warning_celsius
+    )
+    return threshold - settings.roc_temp_hysteresis_celsius
+
+
+def _stored_clear_time(session: Session, key: str) -> datetime | None:
+    raw = get_state(session, key)
+    if raw is None:
+        return None
+    try:
+        return _to_aware_utc(datetime.fromisoformat(raw))
+    except ValueError:
+        # Fall back to observed snapshots; malformed bookkeeping must not break collection.
+        return None
+
+
+def record_controller_temperature_clears(
+    session: Session,
+    *,
+    temperature: int | None,
+    captured_at: datetime,
+    settings: Settings,
+) -> None:
+    """Persist bounded recovery evidence atomically with every successful snapshot.
+
+    RoC event detection compares adjacent samples and can miss a hysteresis clear.
+    Two latest-clear timestamps survive raw-history pruning without changing the
+    event stream or SMTP behavior. Missing state bootstraps from retained readings.
+    """
+    captured = _to_aware_utc(captured_at)
+    for severity, key in _CONTROLLER_CLEAR_KEYS.items():
+        boundary = _controller_clear_boundary(settings, severity)
+        existing = _stored_clear_time(session, key)
+        observed = captured if temperature is not None and temperature <= boundary else None
+        if existing is None and observed is None:
+            observed = session.scalar(
+                select(func.max(ControllerSnapshot.captured_at)).where(
+                    ControllerSnapshot.captured_at <= captured,
+                    ControllerSnapshot.roc_temperature_celsius <= boundary,
+                )
+            )
+        if observed is not None and (existing is None or observed > existing):
+            set_state(session, key, observed.isoformat())
+
+
+def _controller_temperature_recovered(
+    session: Session,
+    event: Event,
+    *,
+    settings: Settings,
+    until: datetime,
+) -> bool:
+    if event.category != "controller_temperature" or event.severity not in _CONTROLLER_CLEAR_KEYS:
+        return False
+    occurred = _to_aware_utc(event.occurred_at)
+    cleared = _stored_clear_time(session, _CONTROLLER_CLEAR_KEYS[event.severity])
+    if cleared is not None and occurred < cleared <= until:
+        return True
+    # Compatibility for incidents recorded before recovery tracking was introduced.
+    return (
+        session.scalar(
+            select(ControllerSnapshot.id)
+            .where(
+                ControllerSnapshot.captured_at > occurred,
+                ControllerSnapshot.captured_at <= until,
+                ControllerSnapshot.roc_temperature_celsius
+                <= _controller_clear_boundary(settings, event.severity),
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def drive_serial_at(session: Session, event: Event) -> str | None:
@@ -68,7 +151,14 @@ def _flag_incident_started(event: Event) -> bool:
     )
 
 
-def incident_superseded(session: Session, event: Event, *, before_id: int | None = None) -> bool:
+def incident_superseded(
+    session: Session,
+    event: Event,
+    *,
+    settings: Settings,
+    until: datetime,
+    before_id: int | None = None,
+) -> bool:
     """A clear/change ends an incident, even if the same state recurs later.
 
     CacheVault state, presence and replacement-required flags are independent dimensions;
@@ -78,6 +168,7 @@ def incident_superseded(session: Session, event: Event, *, before_id: int | None
         Event.category == event.category,
         Event.subject == event.subject,
         Event.id > event.id,
+        Event.occurred_at <= until,
     )
     if before_id is not None:
         statement = statement.where(Event.id < before_id)
@@ -90,7 +181,7 @@ def incident_superseded(session: Session, event: Event, *, before_id: int | None
             or _flag_incident_started(other)
         )
         for other in session.scalars(statement)
-    )
+    ) or _controller_temperature_recovered(session, event, settings=settings, until=until)
 
 
 def delivery_relevance(session: Session, event: Event, *, settings: Settings, now: datetime) -> str:
@@ -107,7 +198,7 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
     freshness = timedelta(seconds=max(60, 2 * settings.metrics_interval_seconds))
     if snapshot is None or _to_aware_utc(snapshot.captured_at) < now - freshness:
         return "awaiting_fresh_data"
-    if incident_superseded(session, event):
+    if incident_superseded(session, event, settings=settings, until=now):
         return "obsolete"
     after = event.after_json or {}
     if event.category == "controller_temperature":
