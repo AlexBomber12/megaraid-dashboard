@@ -57,6 +57,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "PGH"]
 
+[tool.ruff.format]
+# Task briefs are uploaded as-is by the orchestrator and contain illustrative snippets,
+# not maintained source. Ruff versions that format Markdown must not rewrite them.
+exclude = ["tasks/*.md"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

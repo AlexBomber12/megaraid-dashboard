@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -153,7 +153,7 @@ def _load_bucketed_points(
     points = [
         RocTemperaturePoint(
             captured_at=_bucket_captured_at(bucket_value, sqlite_parse_format=sqlite_parse_format),
-            temperature_celsius=round(temperature_avg),
+            temperature_celsius=round(cast(float, temperature_avg)),
         )
         for bucket_value, temperature_avg in rows
         if bucket_value is not None and temperature_avg is not None

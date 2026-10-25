@@ -669,10 +669,20 @@ class EventDetector:
         return events
 
 
+_VD_INFO_STATES = frozenset({"optl", "optimal"})
+# Losing RAID redundancy is an actionable data-loss risk, not a routine warning, and
+# must reach the default "critical" alert threshold. storcli abbreviates VD states
+# (Dgrd, Pdgd, OfLn) with inconsistent casing, so states are compared case-insensitively.
+_VD_CRITICAL_STATES = frozenset(
+    {"degraded", "dgrd", "partially degraded", "pdgd", "failed", "offline", "offln", "ofln"}
+)
+
+
 def virtual_drive_state_severity(state: str) -> str:
-    if state in {"Optl", "Optimal"}:
+    normalized = state.strip().casefold()
+    if normalized in _VD_INFO_STATES:
         return "info"
-    if state in {"Failed", "Offline", "Offln", "Partially Degraded", "Pdgd"}:
+    if normalized in _VD_CRITICAL_STATES:
         return "critical"
     return "warning"
 

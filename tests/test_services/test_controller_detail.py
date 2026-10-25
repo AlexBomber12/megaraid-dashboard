@@ -488,7 +488,8 @@ def test_operation_and_schedule_helper_fallbacks() -> None:
         == "128 KB"
     )
     assert controller_detail_module._vd_state_severity("Failed") == "critical"
-    assert controller_detail_module._vd_state_severity("Dgrd") == "warning"
+    assert controller_detail_module._vd_state_severity("Dgrd") == "critical"
+    assert controller_detail_module._vd_state_severity("Rec") == "warning"
 
 
 def _load(

@@ -12,9 +12,15 @@ from megaraid_dashboard.db import (
     VirtualDriveSnapshot,
     clear_temp_state_for_slot,
     get_temp_state,
+    record_event,
     upsert_temp_state,
 )
-from megaraid_dashboard.services.event_detector import DetectedEvent, EventDetector
+from megaraid_dashboard.services.event_detector import (
+    DetectedEvent,
+    EventDetector,
+    virtual_drive_state_severity,
+)
+from megaraid_dashboard.services.notifier import run_notifier_cycle
 from megaraid_dashboard.storcli import (
     CacheVault,
     ControllerInfo,
@@ -22,6 +28,7 @@ from megaraid_dashboard.storcli import (
     StorcliSnapshot,
     VirtualDrive,
 )
+from tests.test_services.test_notifier import FakeAlertTransport, _settings
 
 
 def test_alarm_state_change_emits_info_setting_changed_event() -> None:
@@ -67,9 +74,12 @@ def test_stable_alarm_state_emits_no_event_between_snapshots() -> None:
 @pytest.mark.parametrize(
     ("before", "after", "severity"),
     [
-        ("Optl", "Degraded", "warning"),
+        ("Optl", "Degraded", "critical"),
+        ("Optl", "Dgrd", "critical"),
+        ("Optl", "Partially Degraded", "critical"),
         ("Degraded", "Failed", "critical"),
         ("Optl", "Offln", "critical"),
+        ("Optl", "OfLn", "critical"),
         ("Optl", "Pdgd", "critical"),
         ("Failed", "Optl", "info"),
     ],
@@ -89,6 +99,62 @@ def test_virtual_drive_state_changes_emit_expected_severity(
     ]
 
 
+@pytest.mark.parametrize(
+    ("state", "severity"),
+    [
+        ("Optl", "info"),
+        ("Optimal", "info"),
+        ("Dgrd", "critical"),
+        ("Degraded", "critical"),
+        ("DEGRADED", "critical"),
+        ("Pdgd", "critical"),
+        ("Partially Degraded", "critical"),
+        ("Failed", "critical"),
+        ("OfLn", "critical"),
+        ("Offln", "critical"),
+        ("Offline", "critical"),
+        (" Dgrd ", "critical"),
+        ("Rec", "warning"),
+        ("Unknown", "warning"),
+    ],
+)
+def test_virtual_drive_state_severity_classifies_storcli_states(state: str, severity: str) -> None:
+    assert virtual_drive_state_severity(state) == severity
+
+
+@pytest.mark.parametrize("state", ["Dgrd", "Degraded", "Pdgd", "OfLn", "Failed"])
+def test_degraded_virtual_drive_reaches_critical_email_threshold(
+    session: Session,
+    state: str,
+) -> None:
+    events = _detector().detect(_previous(vd_state="Optl"), _current(vd_state=state))
+    for event in events:
+        record_event(
+            session,
+            severity=event.severity,
+            category=event.category,
+            subject=event.subject,
+            summary=event.summary,
+            before=event.before,
+            after=event.after,
+        )
+    session.commit()
+    transport = FakeAlertTransport()
+
+    result = run_notifier_cycle(
+        session,
+        transport,
+        settings=_settings(alert_severity_threshold="critical"),
+        now=datetime.now(UTC),
+    )
+
+    assert result.sent == 1
+    message, to = transport.sent[0]
+    assert to == "ops@example.test"
+    assert message.subject == "[MegaRAID critical] vd_state: VD 0"
+    assert f"VD 0 state changed from Optl to {state}" in message.body_text
+
+
 def test_newly_discovered_healthy_virtual_drive_emits_no_event() -> None:
     previous = _previous()
     previous.virtual_drives = []
@@ -99,7 +165,9 @@ def test_newly_discovered_healthy_virtual_drive_emits_no_event() -> None:
 @pytest.mark.parametrize(
     ("state", "severity"),
     [
-        ("Degraded", "warning"),
+        ("Degraded", "critical"),
+        ("Dgrd", "critical"),
+        ("Partially Degraded", "critical"),
         ("Failed", "critical"),
     ],
 )
@@ -194,7 +262,7 @@ def test_baseline_snapshot_emits_existing_fault_events() -> None:
     )
 
     assert [(event.severity, event.category, event.summary) for event in events] == [
-        ("warning", "vd_state", "VD 0 state is Degraded"),
+        ("critical", "vd_state", "VD 0 state is Degraded"),
         ("critical", "pd_state", "PD e252:s4 state is Failed"),
         ("critical", "media_errors", "Media error count is 5"),
         ("warning", "other_errors", "Other error count is 1"),
