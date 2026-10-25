@@ -67,7 +67,9 @@ def test_stable_alarm_state_emits_no_event_between_snapshots() -> None:
 @pytest.mark.parametrize(
     ("before", "after", "severity"),
     [
-        ("Optl", "Degraded", "warning"),
+        ("Optl", "Degraded", "critical"),
+        ("Optl", "Dgrd", "critical"),
+        ("Optl", "Partially Degraded", "critical"),
         ("Degraded", "Failed", "critical"),
         ("Optl", "Offln", "critical"),
         ("Optl", "Pdgd", "critical"),
@@ -99,7 +101,9 @@ def test_newly_discovered_healthy_virtual_drive_emits_no_event() -> None:
 @pytest.mark.parametrize(
     ("state", "severity"),
     [
-        ("Degraded", "warning"),
+        ("Degraded", "critical"),
+        ("Dgrd", "critical"),
+        ("Partially Degraded", "critical"),
         ("Failed", "critical"),
     ],
 )
@@ -194,7 +198,7 @@ def test_baseline_snapshot_emits_existing_fault_events() -> None:
     )
 
     assert [(event.severity, event.category, event.summary) for event in events] == [
-        ("warning", "vd_state", "VD 0 state is Degraded"),
+        ("critical", "vd_state", "VD 0 state is Degraded"),
         ("critical", "pd_state", "PD e252:s4 state is Failed"),
         ("critical", "media_errors", "Media error count is 5"),
         ("warning", "other_errors", "Other error count is 1"),
