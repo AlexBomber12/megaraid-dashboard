@@ -672,7 +672,17 @@ class EventDetector:
 def virtual_drive_state_severity(state: str) -> str:
     if state in {"Optl", "Optimal"}:
         return "info"
-    if state in {"Failed", "Offline", "Offln", "Partially Degraded", "Pdgd"}:
+    # Losing RAID redundancy is an actionable data-loss risk, not a routine warning.
+    # The production SMTP notifier filters at "critical", so include all degraded variants.
+    if state in {
+        "Degraded",
+        "Dgrd",
+        "Partially Degraded",
+        "Pdgd",
+        "Failed",
+        "Offline",
+        "Offln",
+    }:
         return "critical"
     return "warning"
 
