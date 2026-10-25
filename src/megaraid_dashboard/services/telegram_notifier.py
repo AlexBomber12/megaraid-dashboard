@@ -9,11 +9,13 @@ prolonged-monitoring-outage events immediately, and sustained temperature warnin
 confirmation delay. Info events (recoveries, routine changes) and every other warning are
 never sent. One incident produces one message: repeats of the same incident within 24 hours
 are skipped, while a worse state (e.g. ``Dgrd`` -> ``OfLn``) or a different failure of the
-same object (CacheVault replacement required, then missing) is a new incident.
+same object (CacheVault replacement required, then missing; a replacement disk in the
+same slot) is a new incident.
 """
 
 from __future__ import annotations
 
+import re
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,7 +34,12 @@ from megaraid_dashboard.alerts.telegram import (
 )
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.dao import TELEGRAM_CHANNEL, get_maintenance_state
-from megaraid_dashboard.db.models import Event, EventDelivery
+from megaraid_dashboard.db.models import (
+    ControllerSnapshot,
+    Event,
+    EventDelivery,
+    PhysicalDriveSnapshot,
+)
 from megaraid_dashboard.services.notifier import _record_telegram_health, _to_aware_utc
 from megaraid_dashboard.services.telegram_messages import build_telegram_text, incident_key
 from megaraid_dashboard.web.metrics import TELEGRAM_ALERTS_TOTAL
@@ -68,6 +75,7 @@ _IMMEDIATE_CRITICAL_CATEGORIES = frozenset(
     }
 )
 _CONFIRMED_WARNING_CATEGORIES = frozenset({"temperature", "controller_temperature"})
+_DRIVE_SUBJECT = re.compile(r"PD e(\d+):s(\d+)")
 
 
 class TelegramSender(Protocol):
@@ -257,7 +265,33 @@ def _same_incident_sent_since(session: Session, event: Event, *, since: datetime
         )
     )
     key = incident_key(event)
-    return any(incident_key(other) == key for other in session.scalars(statement))
+    drive_serial = _drive_serial_at(session, event)
+    return any(
+        incident_key(other) == key and _drive_serial_at(session, other) == drive_serial
+        for other in session.scalars(statement)
+    )
+
+
+def _drive_serial_at(session: Session, event: Event) -> str | None:
+    """Serial of the disk in the event's slot when it was recorded.
+
+    Drive subjects name only the slot; comparing serials keeps a replacement disk's first
+    failure from being taken as a repeat of the old disk's alert.
+    """
+    match = _DRIVE_SUBJECT.fullmatch(event.subject)
+    if match is None:
+        return None
+    return session.scalar(
+        select(PhysicalDriveSnapshot.serial_number)
+        .join(ControllerSnapshot, PhysicalDriveSnapshot.snapshot_id == ControllerSnapshot.id)
+        .where(
+            PhysicalDriveSnapshot.enclosure_id == int(match.group(1)),
+            PhysicalDriveSnapshot.slot_id == int(match.group(2)),
+            ControllerSnapshot.captured_at <= event.occurred_at,
+        )
+        .order_by(ControllerSnapshot.captured_at.desc())
+        .limit(1)
+    )
 
 
 def _claim(

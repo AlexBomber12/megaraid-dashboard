@@ -18,7 +18,12 @@ from megaraid_dashboard.alerts.telegram import (
     TelegramTransport,
 )
 from megaraid_dashboard.config import Settings
-from megaraid_dashboard.db.dao import record_event, set_maintenance_state, set_state
+from megaraid_dashboard.db.dao import (
+    insert_snapshot,
+    record_event,
+    set_maintenance_state,
+    set_state,
+)
 from megaraid_dashboard.db.models import Event, EventDelivery
 from megaraid_dashboard.services import notifier, telegram_notifier
 from megaraid_dashboard.services.event_detector import EventDetector
@@ -384,6 +389,60 @@ def test_different_cachevault_failures_are_separate_incidents(session: Session) 
 
     assert result.sent == 1
     assert len(sender.sent) == 2
+
+
+def _store_slot0_serial(
+    session: Session,
+    snapshot: StorcliSnapshot,
+    *,
+    serial: str,
+    captured_at: datetime,
+) -> None:
+    drives = list(snapshot.physical_drives)
+    slot0 = next(i for i, d in enumerate(drives) if (d.enclosure_id, d.slot_id) == (252, 0))
+    drives[slot0] = drives[slot0].model_copy(update={"serial_number": serial})
+    insert_snapshot(
+        session,
+        snapshot.model_copy(update={"physical_drives": drives, "captured_at": captured_at}),
+    )
+    session.commit()
+
+
+@pytest.mark.parametrize(("second_serial", "expected_sent"), [("SERIAL-OLD", 1), ("SERIAL-NEW", 2)])
+def test_media_error_dedup_resets_for_replacement_disk(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    second_serial: str,
+    expected_sent: int,
+) -> None:
+    _store_slot0_serial(
+        session, sample_snapshot, serial="SERIAL-OLD", captured_at=NOW - timedelta(minutes=3)
+    )
+    _add_event(
+        session,
+        category="media_errors",
+        subject="PD e252:s0",
+        summary="Media error count increased from 0 to 4",
+        after={"media_errors": 4},
+        occurred_at=NOW - timedelta(minutes=2),
+    )
+    sender = FakeSender()
+    _cycle(session, sender)
+    _store_slot0_serial(
+        session, sample_snapshot, serial=second_serial, captured_at=NOW + timedelta(hours=2)
+    )
+    _add_event(
+        session,
+        category="media_errors",
+        subject="PD e252:s0",
+        summary="Media error count is 1",
+        after={"media_errors": 1},
+        occurred_at=NOW + timedelta(hours=2, seconds=1),
+    )
+
+    _cycle(session, sender, now=NOW + timedelta(hours=2, minutes=1))
+
+    assert len(sender.sent) == expected_sent
 
 
 # ---------------------------------------------------------------------------

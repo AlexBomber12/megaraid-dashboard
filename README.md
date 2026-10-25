@@ -543,8 +543,8 @@ A single failed collection is a `warning` event and is not sent on either channe
 
 One incident produces one message: the same category, object, severity, and state (or
 failure flag such as `replacement_required` / `present`) is not repeated within 24 hours,
-while a worse state or a different failure is a new message. Growing error counters stay
-one incident. Events recorded during
+while a worse state, a different failure, or a replacement disk in the same slot (compared
+by serial number) is a new message. Growing error counters stay one incident. Events recorded during
 maintenance mode are skipped permanently for Telegram (SMTP keeps its existing
 pause-then-send behaviour). Events that existed before migration `0009` are never sent.
 
