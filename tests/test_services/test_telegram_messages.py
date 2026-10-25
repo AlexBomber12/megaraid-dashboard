@@ -10,6 +10,7 @@ from megaraid_dashboard.services.telegram_messages import (
     RUNBOOK_URL,
     build_telegram_text,
     build_test_telegram_text,
+    incident_key,
     incident_state,
 )
 
@@ -130,3 +131,17 @@ def test_build_test_telegram_text_is_clearly_marked_synthetic() -> None:
 )
 def test_incident_state(after: dict[str, Any] | None, expected: str | None) -> None:
     assert incident_state(_event(category="vd_state", after=after)) == expected
+
+
+@pytest.mark.parametrize(
+    ("after", "expected"),
+    [
+        ({"state": "Dgrd", "present": True}, (("state", "dgrd"),)),
+        ({"present": False}, (("present", False),)),
+        ({"replacement_required": True}, (("replacement_required", True),)),
+        ({"media_errors": 7}, (("media_errors", None),)),
+        (None, ()),
+    ],
+)
+def test_incident_key(after: dict[str, Any] | None, expected: tuple[object, ...]) -> None:
+    assert incident_key(_event(category="cv_state", after=after)) == expected

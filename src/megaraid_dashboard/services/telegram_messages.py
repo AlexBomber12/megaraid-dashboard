@@ -31,6 +31,25 @@ def incident_state(event: Event) -> str | None:
     return None
 
 
+def incident_key(event: Event) -> tuple[tuple[str, bool | str | None], ...]:
+    """Identify the incident an event belongs to, to tell a repeat from a new failure.
+
+    The object state wins when present. Otherwise flag fields such as ``present`` or
+    ``replacement_required`` name the failure, while numeric fields (error counters) keep
+    only their name so that a growing counter stays one incident.
+    """
+    state = incident_state(event)
+    if state is not None:
+        return (("state", state),)
+    after = event.after_json if isinstance(event.after_json, dict) else {}
+    return tuple(
+        sorted(
+            (str(name), value if isinstance(value, bool | str) else None)
+            for name, value in after.items()
+        )
+    )
+
+
 @dataclass(frozen=True)
 class _Explanation:
     headline: str

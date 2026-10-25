@@ -8,7 +8,8 @@ Only actionable risks are sent: critical array, drive, SMART, CacheVault, temper
 prolonged-monitoring-outage events immediately, and sustained temperature warnings after a
 confirmation delay. Info events (recoveries, routine changes) and every other warning are
 never sent. One incident produces one message: repeats of the same incident within 24 hours
-are skipped, while a worse state (e.g. ``Dgrd`` -> ``OfLn``) is a new incident.
+are skipped, while a worse state (e.g. ``Dgrd`` -> ``OfLn``) or a different failure of the
+same object (CacheVault replacement required, then missing) is a new incident.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.dao import TELEGRAM_CHANNEL, get_maintenance_state
 from megaraid_dashboard.db.models import Event, EventDelivery
 from megaraid_dashboard.services.notifier import _record_telegram_health, _to_aware_utc
-from megaraid_dashboard.services.telegram_messages import build_telegram_text, incident_state
+from megaraid_dashboard.services.telegram_messages import build_telegram_text, incident_key
 from megaraid_dashboard.web.metrics import TELEGRAM_ALERTS_TOTAL
 
 _LOG = structlog.get_logger(__name__)
@@ -255,8 +256,8 @@ def _same_incident_sent_since(session: Session, event: Event, *, since: datetime
             Event.id != event.id,
         )
     )
-    state = incident_state(event)
-    return any(incident_state(other) == state for other in session.scalars(statement))
+    key = incident_key(event)
+    return any(incident_key(other) == key for other in session.scalars(statement))
 
 
 def _claim(

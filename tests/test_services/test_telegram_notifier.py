@@ -350,6 +350,7 @@ def test_duplicates_in_same_cycle_produce_one_message(session: Session) -> None:
             category="media_errors",
             subject="PD e252:s4",
             summary=f"Media error count increased to {offset}",
+            after={"media_errors": 10 - offset},
             occurred_at=NOW - timedelta(minutes=offset),
         )
     sender = FakeSender()
@@ -357,6 +358,32 @@ def test_duplicates_in_same_cycle_produce_one_message(session: Session) -> None:
     result = _cycle(session, sender)
 
     assert result == TelegramCycleResult(sent=1, failed=0, skipped=1, deferred=0)
+
+
+def test_different_cachevault_failures_are_separate_incidents(session: Session) -> None:
+    _add_event(
+        session,
+        category="cv_state",
+        subject="CacheVault",
+        summary="CacheVault replacement required",
+        after={"replacement_required": True},
+        occurred_at=NOW - timedelta(minutes=2),
+    )
+    sender = FakeSender()
+    _cycle(session, sender)
+    _add_event(
+        session,
+        category="cv_state",
+        subject="CacheVault",
+        summary="CacheVault no longer detected",
+        after={"present": False},
+        occurred_at=NOW + timedelta(hours=1),
+    )
+
+    result = _cycle(session, sender, now=NOW + timedelta(hours=1, minutes=1))
+
+    assert result.sent == 1
+    assert len(sender.sent) == 2
 
 
 # ---------------------------------------------------------------------------
