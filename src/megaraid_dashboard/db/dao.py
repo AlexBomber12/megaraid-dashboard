@@ -18,12 +18,15 @@ from megaraid_dashboard.db.models import (
     CacheVaultSnapshot,
     ControllerSnapshot,
     Event,
+    EventDelivery,
     PhysicalDriveSnapshot,
     PhysicalDriveTempState,
     SystemState,
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.storcli import StorcliSnapshot
+
+TELEGRAM_CHANNEL = "telegram"
 
 
 def insert_snapshot(
@@ -139,8 +142,29 @@ def record_event(
     )
     session.add(event)
     session.flush()
+    if severity in {"warning", "critical"} and _maintenance_active(session, now=event.occurred_at):
+        # Persist the suppression now: maintenance may end before the next notifier tick, and
+        # operator-induced events must never reach Telegram afterwards. SMTP is unaffected.
+        session.add(
+            EventDelivery(
+                event_id=event.id,
+                channel=TELEGRAM_CHANNEL,
+                status="skipped",
+                attempts=0,
+                detail="maintenance",
+            )
+        )
+        session.flush()
     stage_event_metric(session, severity=severity, category=category)
     return event
+
+
+def _maintenance_active(session: Session, *, now: datetime) -> bool:
+    try:
+        return get_maintenance_state(session, now=now).active
+    except (ValueError, TypeError, AttributeError):
+        # A malformed maintenance row must never prevent an event from being recorded.
+        return False
 
 
 _SEVERITY_RANK: dict[str, int] = {"info": 0, "warning": 1, "critical": 2}

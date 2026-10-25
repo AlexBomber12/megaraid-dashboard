@@ -30,15 +30,13 @@ from megaraid_dashboard.alerts.telegram import (
     load_telegram_config,
 )
 from megaraid_dashboard.config import Settings
-from megaraid_dashboard.db.dao import get_maintenance_state
+from megaraid_dashboard.db.dao import TELEGRAM_CHANNEL, get_maintenance_state
 from megaraid_dashboard.db.models import Event, EventDelivery
 from megaraid_dashboard.services.notifier import _record_telegram_health, _to_aware_utc
 from megaraid_dashboard.services.telegram_messages import build_telegram_text, incident_state
 from megaraid_dashboard.web.metrics import TELEGRAM_ALERTS_TOTAL
 
 _LOG = structlog.get_logger(__name__)
-
-TELEGRAM_CHANNEL = "telegram"
 
 STATUS_SENDING = "sending"
 STATUS_RETRY = "retry"

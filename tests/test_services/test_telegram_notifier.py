@@ -18,7 +18,7 @@ from megaraid_dashboard.alerts.telegram import (
     TelegramTransport,
 )
 from megaraid_dashboard.config import Settings
-from megaraid_dashboard.db.dao import record_event, set_maintenance_state
+from megaraid_dashboard.db.dao import record_event, set_maintenance_state, set_state
 from megaraid_dashboard.db.models import Event, EventDelivery
 from megaraid_dashboard.services import notifier, telegram_notifier
 from megaraid_dashboard.services.event_detector import EventDetector
@@ -405,6 +405,66 @@ def test_pending_retry_is_skipped_when_maintenance_starts(session: Session) -> N
     assert delivery is not None
     assert (delivery.status, delivery.attempts, delivery.detail) == ("skipped", 1, "maintenance")
     assert delivery.next_attempt_at is None
+
+
+def test_event_recorded_during_maintenance_stays_skipped_after_it_ends(session: Session) -> None:
+    set_maintenance_state(
+        session,
+        active=True,
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        started_by="admin",
+    )
+    event = record_event(
+        session,
+        severity="critical",
+        category="pd_state",
+        subject="PD e252:s4",
+        summary="PD e252:s4 state changed from Onln to Offln",
+        after={"state": "Offln"},
+    )
+    info = record_event(
+        session,
+        severity="info",
+        category="pd_state",
+        subject="PD e252:s4",
+        summary="PD e252:s4 state changed from Offln to Onln",
+    )
+    set_maintenance_state(session, active=False, expires_at=None, started_by=None)
+    session.commit()
+    sender = FakeSender()
+
+    result = run_telegram_cycle(
+        session,
+        settings=_settings(),
+        now=datetime.now(UTC),
+        transport_factory=lambda _settings: sender,
+    )
+
+    assert result == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=0)
+    assert sender.sent == []
+    delivery = _delivery(session, event)
+    assert delivery is not None
+    assert (delivery.status, delivery.detail) == ("skipped", "maintenance")
+    assert _delivery(session, info) is None
+
+
+@pytest.mark.parametrize("raw_state", ['{"active": true, "expires_at": 5}', "[]", "not json"])
+def test_malformed_maintenance_state_never_blocks_event_recording(
+    session: Session,
+    raw_state: str,
+) -> None:
+    set_state(session, "maintenance_mode", raw_state)
+
+    event = record_event(
+        session,
+        severity="critical",
+        category="vd_state",
+        subject="VD 0",
+        summary="VD 0 state changed from Optl to Dgrd",
+    )
+
+    assert event.id is not None
+    assert _delivery(session, event) is None
 
 
 # ---------------------------------------------------------------------------
