@@ -65,8 +65,11 @@
     const output = root.querySelector("[data-replace-output]");
     let rebuildProgress = root.querySelector("[data-rebuild-progress]");
     const openButton = root.querySelector('[data-replace-action="open"]');
+    const identityWarning = root.querySelector("[data-replace-identity-warning]");
     let inFlight = false;
     let topology = null;
+    let identityChanged = false;
+    let currentSerial = expectedSerial;
 
     function show(name) {
       Object.keys(stages).forEach(function (key) {
@@ -80,7 +83,8 @@
     }
 
     function updateRunButton() {
-      runButton.disabled = inFlight || serialInput.value.trim() !== expectedSerial.trim();
+      runButton.disabled = inFlight || identityChanged ||
+        serialInput.value.trim() !== expectedSerial.trim();
     }
 
     function updateRunStep3Button() {
@@ -88,6 +92,7 @@
       const serialOk =
         newSerialInput &&
         newSerialInput.value.trim() !== "" &&
+        (!identityChanged || newSerialInput.value.trim() === currentSerial) &&
         newSerialInput.value.trim() !== expectedSerial.trim();
       runStep3Button.disabled = inFlight || topology === null || !serialOk;
     }
@@ -134,6 +139,12 @@
       topology = null;
       updateRunButton();
       updateRunStep3Button();
+      if (identityChanged) {
+        // Closing the workflow is an explicit exit; load the new disk's metadata.
+        window.location.reload();
+      } else {
+        openButton.focus();
+      }
     }
 
     function appendResult(label, result) {
@@ -156,6 +167,16 @@
 
     serialInput.addEventListener("input", updateRunButton);
     if (newSerialInput) newSerialInput.addEventListener("input", updateRunStep3Button);
+    document.addEventListener("live:identity-changed", function (event) {
+      identityChanged = true;
+      currentSerial = event.detail.current;
+      openButton.disabled = true;
+      updateRunButton();
+      updateRunStep3Button();
+      identityWarning.textContent = "Drive changed. Actions on the old drive are blocked. " +
+        "You can continue inserting the replacement, or close the wizard to reload.";
+      identityWarning.hidden = false;
+    });
 
     async function loadTopology() {
       if (!topologyUrl || !dgCell || !arrayCell || !rowCell) return;
@@ -206,6 +227,7 @@
       if (inFlight) return;
 
       if (action === "open") {
+        if (identityChanged) return;
         openButton.hidden = true;
         show("confirm");
       }
@@ -216,6 +238,7 @@
         show("serial");
       }
       if (action === "run-step1") {
+        if (runButton.disabled) return;
         setInFlight(true);
         show("result");
 
@@ -228,6 +251,11 @@
           const offline = await postJson(offlineUrl, body);
           appendResult("set offline response", offline);
           if (!offline.ok) return;
+          if (identityChanged) {
+            output.textContent += "Drive changed; set missing was not sent. " +
+              "Close the wizard to reload.\n";
+            return;
+          }
 
           output.textContent += "Running set missing...\n";
           const missing = await postJson(missingUrl, body);
@@ -246,7 +274,7 @@
         await loadTopology();
       }
       if (action === "run-step3") {
-        if (topology === null) return;
+        if (topology === null || runStep3Button.disabled) return;
         setInFlight(true);
         show("result");
 

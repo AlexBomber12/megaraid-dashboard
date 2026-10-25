@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
@@ -37,6 +38,30 @@ def test_celsius_formats_temperature_with_degree_symbol() -> None:
 
 def test_celsius_returns_na_for_none() -> None:
     assert templates.celsius(None) == "N/A"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, "Unknown"),
+        (0, "0 B"),
+        (1023, "1023 B"),
+        (1024, "1.00 KiB"),
+        (5 * 1024**2, "5.00 MiB"),
+        (4000787030016, "3.64 TiB"),
+        (1024**5, "1.00 PiB"),
+        (2048 * 1024**5, "2048.00 PiB"),
+    ],
+)
+def test_bytes_iec_formats_binary_sizes(value: int | None, expected: str) -> None:
+    assert templates.bytes_iec(value) == expected
+
+
+def test_bytes_iec_is_registered_as_template_filter(tmp_path: Path) -> None:
+    (tmp_path / "size.html").write_text("{{ size | bytes_iec }}", encoding="utf-8")
+    environment = templates.create_templates(tmp_path).env
+
+    assert environment.get_template("size.html").render(size=4000787030016) == "3.64 TiB"
 
 
 def test_utc_to_cest_formats_aware_utc_datetime() -> None:

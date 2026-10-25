@@ -54,8 +54,8 @@ def test_drives_page_renders_mobile_data_labels(sample_snapshot: StorcliSnapshot
         "State",
         "Temp",
         "Size",
-        "Media Err",
-        "Other Err",
+        "Media Errors",
+        "Other Errors",
         "Predictive",
         "SMART",
     ):
@@ -75,13 +75,14 @@ def test_header_nav_renders_primary_navigation() -> None:
 def test_v2_header_nav_has_mobile_overflow_handling() -> None:
     stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text()
 
-    compact_header_rules = stylesheet.split("@media (max-width: 760px)", maxsplit=1)[1]
-    narrow_header_rules = stylesheet.split("@media (max-width: 560px)", maxsplit=1)[1]
+    base_rules, compact_rules = stylesheet.split("@media (max-width: 760px)", maxsplit=1)
+    compact_header_rules = compact_rules.split("@media", maxsplit=1)[0]
 
-    assert ".site-nav-v2 {\n    grid-column: 1 / -1;" in compact_header_rules
-    assert "overflow-x: auto;" in compact_header_rules
-    assert ".site-nav-v2 {\n    flex-wrap: wrap;" in narrow_header_rules
-    assert ".site-nav-v2__link {\n    flex: 1 1 calc(50% - var(--space-2));" in narrow_header_rules
+    # The nav scrolls horizontally inside itself instead of widening the page.
+    assert ".site-nav-v2 {\n  display: flex;" in base_rules
+    assert "overflow-x: auto;" in base_rules.split(".site-nav-v2 {", maxsplit=1)[1].split("}")[0]
+    assert ".site-nav-v2 { grid-column: 1 / -1; grid-row: 2;" in compact_header_rules
+    assert ".site-nav-v2__link { min-height: 40px; }" in compact_header_rules
 
 
 def test_mobile_layout_does_not_require_new_javascript() -> None:
@@ -100,11 +101,13 @@ def test_mobile_table_keeps_sort_headers_visible() -> None:
     stylesheet = Path("src/megaraid_dashboard/static/css/app.css").read_text()
 
     mobile_rules = stylesheet.split("@media (max-width: 720px)", maxsplit=1)[1]
+    mobile_rules = mobile_rules.split("@media", maxsplit=1)[0]
 
-    assert ".data-table thead {\n    display: block;" in mobile_rules
-    assert ".data-table th[data-sort-key]" in mobile_rules
-    assert ".data-table tbody tr {\n    display: block;" in mobile_rules
-    assert ".data-table thead {\n    display: none;" not in mobile_rules
+    assert ".data-table thead { display: block;" in mobile_rules
+    assert ".data-table th[data-sort-key] {\n    display: inline-flex;" in mobile_rules
+    assert ".data-table th[data-sort-key] .sort-button {\n    min-height: 44px;" in mobile_rules
+    assert ".data-table tbody tr {\n    display: grid;" in mobile_rules
+    assert ".data-table thead { display: none;" not in mobile_rules
 
 
 def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) -> None:

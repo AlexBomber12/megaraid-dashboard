@@ -1,26 +1,36 @@
+{% set buzzer_on = (view_model.buzzer.current_setting | string | lower) in ("enabled", "on", "true") %}
 <section class="section" data-controller-section="buzzer-control" aria-labelledby="buzzer-control-heading">
   <div class="section-title">
-    <h2 id="buzzer-control-heading">Buzzer Control</h2>
+    <h2 id="buzzer-control-heading">Alarm Buzzer</h2>
+    {% if not maintenance_state.active %}
+      <p class="action-hint">Changes require <a href="#maintenance">maintenance mode</a>.</p>
+    {% endif %}
   </div>
-  <div class="card buzzer-card">
+  <div class="card card--split buzzer-card" data-action-scope>
     <div>
-      <span class="text-label">Current setting</span>
+      <span class="text-label">Current Setting</span>
       <strong>{{ view_model.buzzer.current_setting }}</strong>
-      <p>{{ view_model.buzzer.explainer_text }}</p>
+      <p class="muted">{{ view_model.buzzer.explainer_text }}</p>
     </div>
     <div class="button-row">
+      <div class="segmented" role="group" aria-label="Buzzer setting">
+        <form method="post" action="{{ view_model.buzzer.enable_url }}" class="inline-form" data-csrf-form data-buzzer-action="enable">
+          <input type="hidden" name="csrf_token" value="">
+          <button type="submit" class="button" aria-pressed="{{ 'true' if buzzer_on else 'false' }}" {% if not view_model.buzzer.can_enable %}disabled{% endif %}>Enabled</button>
+        </form>
+        <form method="post" action="{{ view_model.buzzer.disable_url }}" class="inline-form" data-csrf-form data-buzzer-action="disable">
+          <input type="hidden" name="csrf_token" value="">
+          <button type="submit" class="button" aria-pressed="{{ 'false' if buzzer_on else 'true' }}" {% if not view_model.buzzer.can_disable %}disabled{% endif %}>Disabled</button>
+        </form>
+      </div>
       <form method="post" action="{{ view_model.buzzer.silence_url }}" class="inline-form" data-csrf-form data-buzzer-action="silence">
         <input type="hidden" name="csrf_token" value="">
-        <button type="submit" class="button" {% if not view_model.buzzer.can_silence %}disabled{% endif %}>Silence</button>
-      </form>
-      <form method="post" action="{{ view_model.buzzer.disable_url }}" class="inline-form" data-csrf-form data-buzzer-action="disable">
-        <input type="hidden" name="csrf_token" value="">
-        <button type="submit" class="button" {% if not view_model.buzzer.can_disable %}disabled{% endif %}>Disable</button>
-      </form>
-      <form method="post" action="{{ view_model.buzzer.enable_url }}" class="inline-form" data-csrf-form data-buzzer-action="enable">
-        <input type="hidden" name="csrf_token" value="">
-        <button type="submit" class="button" {% if not view_model.buzzer.can_enable %}disabled{% endif %}>Enable</button>
+        <button type="submit" class="button button--warning" {% if not view_model.buzzer.can_silence %}disabled{% endif %}>
+          <svg class="button__icon" aria-hidden="true"><use href="{{ request.url_for('static', path='icons.svg').path }}#icon-bell-off"/></svg>
+          Silence Now
+        </button>
       </form>
     </div>
+    <div class="form-error" data-controller-action-error hidden role="alert"></div>
   </div>
 </section>

@@ -95,11 +95,14 @@ def test_refresh_indicator_dot_is_green() -> None:
     assert "background: var(--color-optimal);" in stylesheet
 
 
-def test_utc_clock_element_is_present() -> None:
+def test_header_renders_live_refresh_status_instead_of_clock() -> None:
     response = _get_overview()
 
-    assert 'class="utc-clock"' in response.text
-    assert "data-local-time-clock" in response.text
+    assert '<div class="refresh-status" data-live-status data-state="static">' in response.text
+    assert "data-live-status-text" in response.text
+    assert 'data-live-refresh aria-label="Refresh now"' in response.text
+    assert 'class="utc-clock"' not in response.text
+    assert "data-local-time-clock" not in response.text
 
 
 def test_header_uses_sticky_css_class() -> None:
@@ -115,9 +118,8 @@ def test_header_nav_has_v2_mobile_overflow_handling() -> None:
 
     assert ".site-nav-v2 {" in stylesheet
     assert "overflow-x: auto;" in stylesheet
-    assert "-webkit-overflow-scrolling: touch;" in stylesheet
+    assert "@media (max-width: 760px)" in stylesheet
     assert "@media (max-width: 560px)" in stylesheet
-    assert "flex-wrap: wrap;" in stylesheet
 
 
 def _get_overview() -> object:

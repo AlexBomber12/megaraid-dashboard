@@ -1,5 +1,5 @@
 <div id="chart-area" class="chart-area" data-range-days="{{ view_model.active_range_days }}">
-  <section class="chart-panel" aria-labelledby="temperature-history-heading">
+  <section class="card chart-card" aria-labelledby="temperature-history-heading">
     <div class="section-heading">
       <h2 id="temperature-history-heading">Temperature History</h2>
     </div>
@@ -7,8 +7,8 @@
     <script id="temperature-history-data" type="application/json">{{ view_model.temperature_chart | tojson }}</script>
     <noscript>
       {% if view_model.temperature_rows %}
-        <div class="table-frame table-frame--compact">
-          <table class="history-table">
+        <div class="table-frame">
+          <table class="data-table data-table--compact">
             <thead>
               <tr>
                 <th scope="col">Timestamp</th>
@@ -35,7 +35,7 @@
     </noscript>
   </section>
 
-  <section class="chart-panel" aria-labelledby="error-history-heading">
+  <section class="card chart-card" aria-labelledby="error-history-heading">
     <div class="section-heading">
       <h2 id="error-history-heading">Error Counter History</h2>
     </div>
@@ -43,8 +43,8 @@
     <script id="error-history-data" type="application/json">{{ view_model.error_chart | tojson }}</script>
     <noscript>
       {% if view_model.error_rows %}
-        <div class="table-frame table-frame--compact">
-          <table class="history-table">
+        <div class="table-frame">
+          <table class="data-table data-table--compact">
             <thead>
               <tr>
                 <th scope="col">Timestamp</th>

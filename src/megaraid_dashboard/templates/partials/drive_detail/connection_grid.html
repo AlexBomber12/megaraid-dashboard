@@ -2,14 +2,14 @@
   <div class="section-title">
     <h2 id="drive-connection-heading">Connection</h2>
   </div>
-  <dl class="card conn-row">
+  <dl class="card kv-grid">
     <div><dt>Interface</dt><dd>{{ view_model.connection.interface_text }}</dd></div>
-    <div><dt>Device speed</dt><dd>{{ view_model.connection.device_speed_text }}</dd></div>
-    <div><dt>Link speed</dt><dd class="{% if view_model.connection.link_speed_is_degraded %}status-text status-text--warning{% endif %}">{{ view_model.connection.link_speed_text }}</dd></div>
+    <div><dt>Device Speed</dt><dd>{{ view_model.connection.device_speed_text }}</dd></div>
+    <div><dt>Link Speed</dt><dd class="{% if view_model.connection.link_speed_is_degraded %}status-text--warning{% endif %}">{{ view_model.connection.link_speed_text }}</dd></div>
     <div><dt>NCQ</dt><dd>{{ view_model.connection.ncq_enabled_text }}</dd></div>
-    <div><dt>SAS address</dt><dd class="mono">{{ view_model.connection.sas_address }}</dd></div>
+    <div><dt>SAS Address</dt><dd class="mono">{{ view_model.connection.sas_address }}</dd></div>
     <div><dt>Connector</dt><dd>{{ view_model.connection.connector_text }}</dd></div>
-    <div><dt>Sequence number</dt><dd class="mono">{{ view_model.connection.sequence_number }}</dd></div>
-    <div><dt>Wide port</dt><dd>{{ view_model.connection.wide_port_text }}</dd></div>
+    <div><dt>Sequence Number</dt><dd class="mono">{{ view_model.connection.sequence_number }}</dd></div>
+    <div><dt>Wide Port</dt><dd>{{ view_model.connection.wide_port_text }}</dd></div>
   </dl>
 </section>

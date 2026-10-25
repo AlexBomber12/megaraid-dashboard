@@ -1,25 +1,57 @@
-<section class="maintenance-start" aria-label="Start maintenance">
-  <h2 class="maintenance-start__title">Start maintenance window</h2>
-  <form
-    hx-post="{{ request.url_for('maintenance_start').path }}"
-    hx-ext="json-enc"
-    hx-swap="none"
-    hx-on::after-request="if (event.detail.successful) window.location.reload()"
-  >
-    <label class="maintenance-start__field">
-      <span>Duration</span>
-      <select class="input" name="duration_minutes">
-        <option value="15">15 minutes</option>
-        <option value="30">30 minutes</option>
-        <option value="60" selected>1 hour</option>
-        <option value="240">4 hours</option>
-        <option value="1440">24 hours</option>
-      </select>
-    </label>
-    <label class="maintenance-start__field">
-      <span>Reason</span>
-      <input class="input" type="text" name="reason" maxlength="200" required>
-    </label>
-    <button type="submit" class="button">Start maintenance</button>
-  </form>
+{# Rendered on the Controller page (section id="maintenance"). #}
+<section class="section" id="maintenance" aria-labelledby="maintenance-heading">
+  <div class="section-title">
+    <h2 id="maintenance-heading">Maintenance Mode</h2>
+  </div>
+  {% if maintenance_state.active %}
+    <div class="card card--warning card--split">
+      <div>
+        <h3 class="status-text--warning">Active</h3>
+        <p class="muted">
+          Started by {{ maintenance_state.started_by or "unknown" }}
+          {% if maintenance_state.expires_at %}
+            &middot; expires
+            <time datetime="{{ maintenance_state.expires_at | iso_utc }}" data-local-time>{{ maintenance_state.expires_at | iso_utc }} UTC</time>
+          {% endif %}
+        </p>
+      </div>
+      <button
+        type="button"
+        class="button button--warning"
+        hx-post="{{ request.url_for('maintenance_stop').path }}"
+        hx-swap="none"
+        hx-on::after-request="if (event.detail.successful) window.location.reload()"
+      >Stop Maintenance</button>
+    </div>
+  {% else %}
+    <div class="card maintenance-start">
+      <p class="action-hint">
+        Controller operations, buzzer and drive actions are only allowed during a maintenance window.
+        Alerts are suppressed while it is active.
+      </p>
+      <form
+        class="form-grid"
+        hx-post="{{ request.url_for('maintenance_start').path }}"
+        hx-ext="json-enc"
+        hx-swap="none"
+        hx-on::after-request="if (event.detail.successful) window.location.reload()"
+      >
+        <label class="field">
+          <span class="field__label">Duration</span>
+          <select class="input" name="duration_minutes">
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60" selected>1 hour</option>
+            <option value="240">4 hours</option>
+            <option value="1440">24 hours</option>
+          </select>
+        </label>
+        <label class="field field--grow">
+          <span class="field__label">Reason (required)</span>
+          <input class="input" type="text" name="reason" maxlength="200" required placeholder="e.g. Replace drive 252:3">
+        </label>
+        <button type="submit" class="button button--warning">Start Maintenance</button>
+      </form>
+    </div>
+  {% endif %}
 </section>

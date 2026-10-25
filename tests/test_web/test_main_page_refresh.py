@@ -58,7 +58,10 @@ def test_main_page_refresh_returns_swap_safe_partial(sample_snapshot: StorcliSna
     assert "Updated:" not in response.text
     assert "data-local-time hidden" not in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
-    assert '<section class="activity-v2" aria-label="Recent activity">' in response.text
+    assert (
+        '<section class="activity-v2" aria-labelledby="recent-activity-heading">' in response.text
+    )
+    assert '<h2 id="recent-activity-heading">Recent Activity</h2>' in response.text
     assert response.text.count('class="activity-item-v2"') == 10
 
 

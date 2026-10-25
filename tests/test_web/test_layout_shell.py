@@ -45,7 +45,8 @@ def test_layout_shell_renders_landmarks_and_status_bar_version_label() -> None:
     assert response.status_code == 200
     assert '<header class="site-header-v2">' in response.text
     assert '<main class="page-content">' in response.text
-    assert '<div class="status-bar" role="status">' in response.text
+    assert '<footer id="site-status" class="status-bar" data-live-region>' in response.text
+    assert '<div class="status-bar-v2">' in response.text
     assert '<footer class="site-footer">' not in response.text
     assert "Version " in response.text
     assert "Build " not in response.text
@@ -59,19 +60,29 @@ def test_layout_shell_content_uses_page_content_container() -> None:
 
     assert response.status_code == 200
     assert '<main class="page-content">' in response.text
-    assert "SERVER RAID Status" in response.text
+    assert "<title>Overview - MegaRAID Dashboard</title>" in response.text
+    assert "<h1>Overview</h1>" in response.text
 
 
-def test_status_bar_block_renders_only_when_populated() -> None:
+def test_status_bar_renders_health_only_when_system_health_is_available() -> None:
     rendered_empty = _render_child_template("{% block content %}Body{% endblock %}")
     rendered_populated = _render_child_template(
-        "{% block content %}Body{% endblock %}"
-        "{% block status_bar %}<span>Collector online</span>{% endblock %}"
+        "{% block content %}Body{% endblock %}",
+        system_health=SimpleNamespace(
+            notifier_ok=True,
+            collector_last_run_text="2 minutes ago",
+            db_size_human="1.2 MB",
+            app_version="9.9.9",
+        ),
     )
 
-    assert 'class="status-bar"' not in rendered_empty
-    assert '<div class="status-bar" role="status">' in rendered_populated
-    assert "<span>Collector online</span>" in rendered_populated
+    assert '<footer id="site-status" class="status-bar" data-live-region></footer>' in (
+        rendered_empty
+    )
+    assert "status-bar-v2" not in rendered_empty
+    assert '<div class="status-bar-v2">' in rendered_populated
+    assert "Collector <strong>2 minutes ago</strong>" in rendered_populated
+    assert "Version <strong>9.9.9</strong>" in rendered_populated
 
 
 def test_maintenance_banner_still_renders_when_active() -> None:
@@ -81,26 +92,28 @@ def test_maintenance_banner_still_renders_when_active() -> None:
     )
 
     assert 'class="maintenance-banner"' in rendered
-    assert "Maintenance mode active" in rendered
+    assert "Maintenance Mode Active" in rendered
 
 
 def _render_child_template(
     source: str,
     *,
     maintenance_state: SimpleNamespace | None = None,
+    system_health: SimpleNamespace | None = None,
 ) -> str:
     template = create_templates(TEMPLATE_DIR).env.from_string(
         '{% extends "layouts/base.html" %}' + source
     )
-    return template.render(
-        {
-            "active_nav": "overview",
-            "request": _StaticRequest(),
-            "current_utc_label": "2026-05-04T00:00:00Z",
-            "maintenance_state": maintenance_state or SimpleNamespace(active=False),
-            "static_asset_version": "asset123",
-        }
-    )
+    context: dict[str, object] = {
+        "active_nav": "overview",
+        "request": _StaticRequest(),
+        "current_utc_label": "2026-05-04T00:00:00Z",
+        "maintenance_state": maintenance_state or SimpleNamespace(active=False),
+        "static_asset_version": "asset123",
+    }
+    if system_health is not None:
+        context["system_health"] = system_health
+    return template.render(context)
 
 
 class _StaticRequest:

@@ -1,14 +1,14 @@
 {% if maintenance_state.active %}
-  <div class="maintenance-banner" role="status" aria-live="polite">
+  <div class="maintenance-banner" role="status">
     <svg class="maintenance-banner__icon" aria-hidden="true">
       <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-alert-triangle"/>
     </svg>
     <div class="maintenance-banner__body">
-      <strong>Maintenance mode active</strong>
-      <span>started by {{ maintenance_state.started_by or "unknown" }}</span>
+      <strong>Maintenance Mode Active</strong>
+      <span>Started by {{ maintenance_state.started_by or "unknown" }}</span>
       {% if maintenance_state.expires_at %}
         <span>
-          expires
+          Expires
           <time datetime="{{ maintenance_state.expires_at | iso_utc }}" data-local-time>
             {{ maintenance_state.expires_at | iso_utc }} UTC
           </time>
@@ -25,6 +25,6 @@
       hx-post="{{ request.url_for('maintenance_stop').path }}"
       hx-swap="none"
       hx-on::after-request="if (event.detail.successful) window.location.reload()"
-    >Stop maintenance</button>
+    >Stop Maintenance</button>
   </div>
 {% endif %}

@@ -1,38 +1,34 @@
-{% set health_class = "crit" if view_model.health.state == "CRITICAL" else ("warn" if view_model.health.state == "WARNING" else ("optimal" if view_model.health.state == "OPTIMAL" else "unknown")) %}
+{% set health_state = (view_model.health.state or "") | upper %}
+{% set health_class = {"OPTIMAL": "optimal", "WARNING": "warning", "DEGRADED": "warning", "CRITICAL": "critical"}.get(health_state, "unknown") %}
 <section class="section" data-controller-section="health-snapshot" aria-labelledby="controller-health-heading">
   <div class="section-title">
-    <h2 id="controller-health-heading">Health snapshot</h2>
+    <h2 id="controller-health-heading">Health Snapshot</h2>
   </div>
-  <div class="health-snapshot {{ health_class }}">
-    <div class="health-row1">
-      <div class="health-state {{ health_class }}">{{ view_model.health.state }}</div>
-      <div class="health-summary">{{ view_model.health.summary_text }}</div>
+  <div class="health-card health-card--{{ health_class }}">
+    <div class="health-card__summary">
+      <span class="text-label">Controller State</span>
+      <strong class="health-card__state status-text--{{ health_class }}">{{ view_model.health.state }}</strong>
+      <span class="health-card__detail">{{ view_model.health.summary_text }}</span>
     </div>
-    <div class="metrics-row">
-      <div class="metric-item">
-        <span class="metric-label">RoC Temp</span>
-        <span class="metric-value">{% if view_model.health.roc_temperature_celsius is not none %}{{ view_model.health.roc_temperature_celsius }}&deg;C{% else %}N/A{% endif %}</span>
+    <dl class="kv-grid">
+      <div>
+        <dt>RoC Temp</dt>
+        <dd>{% if view_model.health.roc_temperature_celsius is not none %}{{ view_model.health.roc_temperature_celsius }}&deg;C{% else %}N/A{% endif %}</dd>
       </div>
-      <div class="metric-item">
-        <span class="metric-label">CacheVault</span>
-        <span class="metric-value">{% if view_model.health.cv_capacitance_percent is not none %}{{ view_model.health.cv_capacitance_percent }}%{% else %}N/A{% endif %}</span>
+      <div>
+        <dt>CacheVault</dt>
+        <dd>{% if view_model.health.cv_capacitance_percent is not none %}{{ view_model.health.cv_capacitance_percent }}%{% else %}N/A{% endif %}</dd>
       </div>
-      <div class="metric-item">
-        <span class="metric-label">BBU</span>
-        <span class="metric-value">{{ view_model.health.bbu_status }}</span>
+      <div><dt>BBU</dt><dd>{{ view_model.health.bbu_status }}</dd></div>
+      <div>
+        <dt>Mem ECC Errors</dt>
+        <dd class="{% if view_model.health.memory_ecc_errors_total in (0, '0') %}is-zero{% else %}status-text--warning{% endif %}">{{ view_model.health.memory_ecc_errors_total }}</dd>
       </div>
-      <div class="metric-item">
-        <span class="metric-label">Mem ECC Errors</span>
-        <span class="metric-value">{{ view_model.health.memory_ecc_errors_total }}</span>
+      <div>
+        <dt>Errors (24h)</dt>
+        <dd class="{% if view_model.health.errors_24h in (0, '0') %}is-zero{% else %}status-text--warning{% endif %}">{{ view_model.health.errors_24h }}</dd>
       </div>
-      <div class="metric-item">
-        <span class="metric-label">Errors (24h)</span>
-        <span class="metric-value">{{ view_model.health.errors_24h }}</span>
-      </div>
-      <div class="metric-item">
-        <span class="metric-label">Uptime</span>
-        <span class="metric-value">{{ view_model.health.uptime_text }}</span>
-      </div>
-    </div>
+      <div><dt>Uptime</dt><dd>{{ view_model.health.uptime_text }}</dd></div>
+    </dl>
   </div>
 </section>
