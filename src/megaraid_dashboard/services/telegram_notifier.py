@@ -364,7 +364,8 @@ def _same_incident_sent_since(session: Session, event: Event, *, since: datetime
     return any(
         incident_key(other) == key
         and drive_serial_at(session, other) == drive_serial
-        and not incident_superseded(session, other, before_id=event.id)
+        # Include this event: a flag's false-to-true edge itself proves a new episode.
+        and not incident_superseded(session, other, before_id=event.id + 1)
         for other in session.scalars(statement)
     )
 

@@ -15,6 +15,9 @@
 
 ### Fixed
 
+- Preserve recurring SMART and CacheVault replacement-required alerts by using their
+  durable false-to-true transition metadata as an incident boundary; unchanged baseline
+  observations still deduplicate, without adding SMTP recovery events.
 - Preserve temperature-warning confirmation across repeated same-incident warnings.
 - Bound Telegram response handling with a 10-second absolute deadline, 64 KiB byte cap
   and rejection of compressed bodies; keep 429 cooldown on unreadable responses.

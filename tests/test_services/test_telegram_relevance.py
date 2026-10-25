@@ -703,3 +703,102 @@ def test_repeated_controller_warning_still_cancels_on_clear_or_escalation(
     _cycle(session, sender)
     assert _delivery(session, warning).detail == "not_confirmed"
     assert all("🟠" not in text for text in sender.sent)
+
+
+@pytest.mark.parametrize("category", ["smart_alert", "cv_state"])
+@pytest.mark.parametrize("first_delivered", [True, False])
+def test_flag_recurrence_uses_persisted_rising_edge_after_recovery(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    category: str,
+    first_delivered: bool,
+) -> None:
+    detector = EventDetector(
+        temp_warning=100,
+        temp_critical=110,
+        temp_hysteresis=5,
+        roc_temp_warning=95,
+        roc_temp_critical=105,
+        roc_temp_hysteresis=5,
+    )
+    sender = FakeSender()
+    field = "smart_alert" if category == "smart_alert" else "replacement_required"
+
+    def current(flag: bool, at: datetime) -> StorcliSnapshot:
+        if category == "smart_alert":
+            return sample_snapshot.model_copy(
+                update={
+                    "captured_at": at,
+                    "physical_drives": [
+                        d.model_copy(update={"smart_alert": flag})
+                        if (d.enclosure_id, d.slot_id) == (252, 0)
+                        else d
+                        for d in sample_snapshot.physical_drives
+                    ],
+                }
+            )
+        assert sample_snapshot.cachevault is not None
+        return sample_snapshot.model_copy(
+            update={
+                "captured_at": at,
+                "cachevault": sample_snapshot.cachevault.model_copy(
+                    update={"replacement_required": flag}
+                ),
+            }
+        )
+
+    previous = insert_snapshot(session, current(False, NOW - timedelta(minutes=2)))
+    session.commit()
+    alerts: list[Event] = []
+    for index, flag in enumerate((True, False, True)):
+        at = NOW + timedelta(minutes=index)
+        snapshot = current(flag, at)
+        detected = [e for e in detector.detect(previous, snapshot) if e.category == category]
+        # No recovery event is introduced; SMTP sees the same original event stream.
+        assert len(detected) == (1 if flag else 0)
+        previous = insert_snapshot(session, snapshot)
+        if flag:
+            alert = detected[0]
+            event = _add_event(
+                session,
+                occurred_at=at,
+                category=category,
+                subject=alert.subject,
+                after=alert.after,
+                summary=alert.summary,
+            )
+            event.before_json = alert.before
+            session.commit()
+            assert event.before_json == {field: False}
+            alerts.append(event)
+            if index == 0 and first_delivered:
+                assert _cycle(session, sender, now=at).sent == 1
+        else:
+            session.commit()
+    # Remove raw history: transition metadata must remain enough to separate incidents.
+    session.execute(delete(ControllerSnapshot).where(ControllerSnapshot.id != previous.id))
+    session.commit()
+    result = _cycle(session, sender, now=NOW + timedelta(minutes=2))
+    assert result.sent == 1
+    assert len(sender.sent) == (2 if first_delivered else 1)
+    assert f"событие #{alerts[-1].id}" in sender.sent[-1]
+    if not first_delivered:
+        assert _delivery(session, alerts[0]).detail == "obsolete"
+
+
+@pytest.mark.parametrize("category", ["smart_alert", "cv_state"])
+def test_flag_baseline_without_a_clear_is_still_deduplicated(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    category: str,
+) -> None:
+    field = "smart_alert" if category == "smart_alert" else "replacement_required"
+    after = {field: True, **({"serial_number": "ORIGINAL"} if category == "smart_alert" else {})}
+    subject = "PD e252:s0" if category == "smart_alert" else "CacheVault"
+    _save(session, sample_snapshot, drive={"smart_alert": True}, cv={"replacement_required": True})
+    _add_event(session, category=category, subject=subject, after=after)
+    sender = FakeSender()
+    assert _cycle(session, sender).sent == 1
+    _add_event(session, category=category, subject=subject, after=after)
+    assert _cycle(session, sender).skipped == 1
+    assert len(sender.sent) == 1

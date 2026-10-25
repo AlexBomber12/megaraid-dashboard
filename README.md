@@ -549,7 +549,12 @@ One incident produces one message: the same category, object, severity, and stat
 failure flag such as `replacement_required` / `present`) is not repeated within 24 hours,
 while a worse state, a different failure, or a replacement disk in the same slot (compared
 by serial number) is a new message. Recovery ends an incident, so a subsequent recurrence
-is eligible again. Growing error counters stay one incident. Events recorded during
+is eligible again. For SMART and CacheVault replacement-required flags, a recorded
+`before=false` / `after=true` transition proves a new incident even without a separate
+recovery event. This evidence survives raw-snapshot pruning. Baseline observations with
+no prior clear still deduplicate; an older queued flag incident is skipped when a new
+rising edge supersedes it. No additional SMTP events are introduced.
+Growing error counters stay one incident. Events recorded during
 maintenance mode are skipped permanently for Telegram (SMTP keeps its existing
 pause-then-send behaviour). Events that existed before migration `0009` are never sent.
 

@@ -53,6 +53,21 @@ def drive_serial_at(session: Session, event: Event) -> str | None:
     )
 
 
+def _flag_incident_started(event: Event) -> bool:
+    """False-to-true metadata proves a recovery since an older flag incident.
+
+    SMART and replacement-required clears do not have separate events. Their next
+    rising edge still carries a durable before=false observation, even after the
+    intervening raw snapshots have expired. A baseline (before=None) proves no reset.
+    """
+    field = {"smart_alert": "smart_alert", "cv_state": "replacement_required"}.get(event.category)
+    return (
+        field is not None
+        and (event.before_json or {}).get(field) is False
+        and (event.after_json or {}).get(field) is True
+    )
+
+
 def incident_superseded(session: Session, event: Event, *, before_id: int | None = None) -> bool:
     """A clear/change ends an incident, even if the same state recurs later.
 
@@ -69,7 +84,11 @@ def incident_superseded(session: Session, event: Event, *, before_id: int | None
     fields = set(event.after_json or {}) - {"serial_number"}
     return any(
         fields.intersection(other.after_json or {})
-        and (other.severity != event.severity or incident_key(other) != incident_key(event))
+        and (
+            other.severity != event.severity
+            or incident_key(other) != incident_key(event)
+            or _flag_incident_started(other)
+        )
         for other in session.scalars(statement)
     )
 

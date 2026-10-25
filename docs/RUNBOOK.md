@@ -175,6 +175,11 @@ state, and runs as the `raid-monitor` service user.
     preserve the first warning's confirmation deadline. Only clear/escalation resets it.
     Later candidates are revalidated after each unlocked HTTP phase, including current
     maintenance and snapshot freshness. A message already in flight cannot be recalled.
+12. For recurring SMART / CacheVault replacement-required alerts, inspect the event's
+    `before_json` / `after_json`: a false-to-true flag transition proves a new episode,
+    including after snapshot pruning. An older queued episode is obsolete; a repeat
+    baseline without a recorded clear still deduplicates. This adds no recovery events
+    and does not alter SMTP selection or delivery.
 
 ### Collection failure; what now?
 
