@@ -19,6 +19,7 @@ _LOG = structlog.get_logger(__name__)
 
 TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+TELEGRAM_RETRY_AFTER_MAX_SECONDS = 3600
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _TOTAL_TIMEOUT_SECONDS = 10.0
 _RESPONSE_MAX_BYTES = 64 * 1024
@@ -40,7 +41,20 @@ class TelegramSendError(Exception):
     def __init__(self, reason: str, *, retry_after_seconds: int | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
-        self.retry_after_seconds = retry_after_seconds
+        # Validate before any timedelta/float conversion. Untrusted JSON integers
+        # can exceed platform or datetime ranges; bool is not a duration.
+        if retry_after_seconds is None:
+            self.retry_after_seconds = None
+        elif (
+            isinstance(retry_after_seconds, int)
+            and not isinstance(retry_after_seconds, bool)
+            and retry_after_seconds > 0
+        ):
+            self.retry_after_seconds = min(retry_after_seconds, TELEGRAM_RETRY_AFTER_MAX_SECONDS)
+            if retry_after_seconds > TELEGRAM_RETRY_AFTER_MAX_SECONDS:
+                _LOG.warning("telegram_retry_after_clamped", max_seconds=3600)
+        else:
+            self.retry_after_seconds = 60
 
 
 @dataclass(frozen=True)

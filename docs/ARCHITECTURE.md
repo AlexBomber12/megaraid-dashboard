@@ -111,7 +111,11 @@ compression before decoding. Collection/disk checks/retention can progress durin
 the process notifier lock remains held across the entire cycle. Later candidates recheck
 current time, snapshots and maintenance after the unlocked phase. SMTP keeps its existing
 locking and delivery behavior. Channel-wide HTTP 429 cooldown lives in `system_state`,
-without an additional migration. Interrupted `sending` claims retry after revalidation,
+without an additional migration. Provider hints are validated as positive integers and
+capped at 3600 seconds in `TelegramSendError`, before either deadline is computed. The
+notifier durably repairs older channel/attempted-retry deadlines beyond one hour; the
+persisted repair does not slide on subsequent cycles or restart. A provider requesting
+a longer wait may be retried early; repeated 429s renew the cooldown. Interrupted `sending` claims retry after revalidation,
 accepting possible duplicates after an ambiguous remote acceptance rather than silently
 losing an unsent critical alert. Candidate batches and sends per cycle are bounded.
 Collection persists two monotonic RoC recovery timestamps in existing `system_state`,

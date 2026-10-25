@@ -204,9 +204,9 @@ def test_channel_cooldown_survives_restart_and_removal_of_rate_limited_event(
 ) -> None:
     first = _add_event(session)
     _save(session, sample_snapshot)
-    sender = FakeSender(failures=[TelegramSendError("rate limited", retry_after_seconds=14400)])
+    sender = FakeSender(failures=[TelegramSendError("rate limited", retry_after_seconds=3600)])
     assert _cycle(session, sender).failed == 1
-    assert get_state(session, "telegram_not_before") == (NOW + timedelta(hours=4)).isoformat()
+    assert get_state(session, "telegram_not_before") == (NOW + timedelta(hours=1)).isoformat()
     session.delete(first)
     session.commit()
     second = _add_event(session, subject="VD 1")
@@ -221,10 +221,10 @@ def test_channel_cooldown_survives_restart_and_removal_of_rate_limited_event(
         delivery = _delivery(restarted, third)
         assert delivery is not None and delivery.attempts == 0
         assert not get_notifier_health()
-        almost = NOW + timedelta(hours=4, seconds=-1)
+        almost = NOW + timedelta(hours=1, seconds=-1)
         _save(restarted, sample_snapshot, now=almost)
         assert _cycle(restarted, sender, now=almost).sent == 0
-        due = NOW + timedelta(hours=4, minutes=1)
+        due = NOW + timedelta(hours=1, minutes=1)
         _save(restarted, sample_snapshot, now=due)
         assert _cycle(restarted, sender, now=due).sent == 1
     assert len(sender.sent) == 1

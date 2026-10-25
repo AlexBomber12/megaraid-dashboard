@@ -15,6 +15,10 @@
 
 ### Fixed
 
+- Cap untrusted Telegram retry hints at 3600 seconds before per-event/global deadline
+  arithmetic, safely handling overflow-sized integers and invalid values. Durably repair
+  older excessive channel/attempted-retry deadlines without extending them on restart.
+
 - Recognize controller-temperature recoveries missed by adjacent-sample event detection;
   persist two bounded recovery timestamps atomically with collection, including while
   Telegram is disabled. New episodes remain eligible after raw-history pruning, without

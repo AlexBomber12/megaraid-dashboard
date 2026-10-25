@@ -152,7 +152,14 @@ state, and runs as the `raid-monitor` service user.
    outage marker, not merely critical severity.
 7. Check `system_state` for key `telegram_not_before`: its ISO UTC value is the durable
    channel cooldown after HTTP 429. All events wait; waiting does not consume attempts.
-   Do not clear it or run `telegram-test` to bypass a provider cooldown.
+   Provider hints are capped at 3600 seconds before computing either deadline; invalid
+   hints use 60 seconds. `telegram_retry_after_clamped` identifies an oversized hint,
+   without logging its untrusted value. `telegram_cooldown_clamped` identifies repair
+   of a previously persisted channel deadline beyond an hour. The next successful
+   notifier cycle durably shortens such channel/attempted Telegram retry deadlines to
+   one hour from that cycle; later cycles/restarts do not slide it. No manual SQL edit
+   is needed. Longer provider requests may be retried early, with new 429s renewing the
+   bounded cooldown. Do not clear it or run `telegram-test` to bypass a cooldown.
 8. For `awaiting_fresh_data`, compare the latest `controller_snapshots.captured_at` with
    `max(60 seconds, 2 × METRICS_INTERVAL_SECONDS)`. `awaiting_temperature` means the
    sensor reading is missing; `awaiting_drive_identity` means the original/current
@@ -273,6 +280,8 @@ state, and runs as the `raid-monitor` service user.
    by the fixed notifier; preserve it when temporarily disabling Telegram. The two
    `telegram_roc_*_cleared_at` rows are also harmless to older code; keep them. Older
    revisions ignore this recovery evidence and can suppress recurring overheating.
+   Versions before the retry-hint cap can again persist oversized cooldowns or overflow;
+   disabling Telegram with the fixed code is safer than reverting this security fix.
 3. Restore the prior source tree under `/opt/megaraid-dashboard/src`.
    Expected output: the application code matches the intended prior revision.
 4. Reinstall the package in the service virtual environment if needed.

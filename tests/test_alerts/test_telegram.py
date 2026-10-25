@@ -487,3 +487,28 @@ def test_redirect_is_never_followed_even_if_injected_client_allows_it() -> None:
     with pytest.raises(TelegramSendError, match=r"^HTTP 302$"):
         sender.send("hello")
     assert len(requests) == 1 and requests[0].url.host == "api.telegram.org"
+
+
+@pytest.mark.parametrize("hint", [1, 3599, 3600, 3601, 315360000, 10**400])
+def test_http_429_caps_hint_before_any_duration_conversion(hint: int) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"parameters": {"retry_after": hint}})
+
+    with pytest.raises(TelegramSendError) as caught:
+        _transport(handler).send("hello")
+    assert caught.value.reason == "rate limited"
+    assert caught.value.retry_after_seconds == min(hint, 3600)
+
+
+def test_http_429_integer_beyond_json_parser_limit_uses_safe_fallback() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, content=b'{"parameters":{"retry_after":' + b"9" * 5000 + b"}}")
+
+    with pytest.raises(TelegramSendError) as caught:
+        _transport(handler).send("hello")
+    assert caught.value.retry_after_seconds == 60
+
+
+@pytest.mark.parametrize("hint", [0, -1, True, False, "3600", 1.5, float("inf")])
+def test_invalid_injected_retry_hint_uses_safe_fallback(hint: Any) -> None:
+    assert TelegramSendError("rate limited", retry_after_seconds=hint).retry_after_seconds == 60

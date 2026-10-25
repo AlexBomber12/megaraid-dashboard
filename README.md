@@ -581,7 +581,16 @@ An HTTP 429 persists a channel-wide UTC deadline in `system_state.telegram_not_b
 in the same transaction as the event retry. It survives cycles, restarts, and deletion of
 the affected event. No event may send before the deadline. `retry_after` starts when the
 response is received (including elapsed time within the cycle); an unusable/missing value
-uses 60 seconds. The per-event backoff can delay that event further. The synthetic CLI
+uses 60 seconds. Positive provider hints are capped at **3600 seconds** before any
+duration conversion, for both per-event retry and channel cooldown. Huge integers cannot
+overflow or silence the channel for years. Values above an hour may be retried earlier
+than the provider requested; repeated 429 responses renew the bounded cooldown.
+Previously stored channel deadlines and attempted Telegram retry deadlines more than an
+hour ahead are shortened once to one hour from the next notifier cycle and persisted,
+so restarts do not slide that repair indefinitely. This does not change unattempted
+warning confirmation, terminal records, or other channels. Clamping logs
+`telegram_retry_after_clamped` / `telegram_cooldown_clamped`.
+The per-event backoff can delay that event further. The synthetic CLI
 command is outside this scheduled outbox and should not be used during a cooldown.
 
 Before **every** send (initial or retry), hardware incidents need a snapshot no older than

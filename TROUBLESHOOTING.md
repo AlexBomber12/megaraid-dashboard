@@ -133,7 +133,11 @@ produce a duplicate with the same event ID if Telegram already accepted the requ
 Telegram also enforces a 10 s absolute request deadline and 64 KiB response cap.
 `timeout`, `response too large`, `unexpected response encoding` and sanitized
 `network error: <type>` use normal durable retry. A 429 with an unreadable body falls
-back to a 60 s channel cooldown. Do not raise limits just to accept an unexpected response;
+back to a 60 s channel cooldown. Provider hints are capped at 3600 s before persistence;
+`telegram_retry_after_clamped` signals an oversized hint. `telegram_cooldown_clamped`
+signals repair of an old channel deadline; attempted Telegram retry deadlines more than
+an hour ahead are repaired as well. Repairs persist once, so restarts do not extend them.
+A legitimate hint over an hour may be retried early, with another 429 renewing the pause. Do not raise limits just to accept an unexpected response;
 check the trusted API path, connectivity and TLS first. Network waits do not hold the
 collector's shared write lock. Repeated controller warning crossings inside hysteresis
 preserve the first confirmation deadline; only a clear or escalation cancels it.

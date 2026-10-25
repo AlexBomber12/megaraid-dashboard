@@ -25,10 +25,11 @@ from time import monotonic
 from typing import Protocol
 
 import structlog
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.alerts.telegram import (
+    TELEGRAM_RETRY_AFTER_MAX_SECONDS,
     TelegramConfigError,
     TelegramSendError,
     TelegramTransport,
@@ -148,6 +149,23 @@ async def run_telegram_cycle_async(
     async with lock:
         cooldown_raw = get_state(session, _COOLDOWN_KEY)
         cooldown = _to_aware_utc(datetime.fromisoformat(cooldown_raw)) if cooldown_raw else now_utc
+        # Repair deadlines written before provider hints were bounded. Persist the
+        # repair once; recalculating it without saving would slide the wait forever.
+        latest_retry = now_utc + timedelta(seconds=TELEGRAM_RETRY_AFTER_MAX_SECONDS)
+        if cooldown > latest_retry:
+            cooldown = latest_retry
+            set_state(session, _COOLDOWN_KEY, cooldown.isoformat())
+            _LOG.warning("telegram_cooldown_clamped")
+        session.execute(
+            update(EventDelivery)
+            .where(
+                EventDelivery.channel == TELEGRAM_CHANNEL,
+                EventDelivery.status == STATUS_RETRY,
+                EventDelivery.attempts > 0,
+                EventDelivery.next_attempt_at > latest_retry,
+            )
+            .values(next_attempt_at=latest_retry)
+        )
         channel_blocked = cooldown > now_utc
         candidates = _load_candidates(session, now=now_utc)
         session.commit()
