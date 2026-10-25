@@ -83,12 +83,12 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     assert authenticated_page.evaluate("1 + 1") == 2
 
 
-def test_destructive_drive_action_requires_typed_slot(
+def test_destructive_drive_action_requires_typed_serial(
     authenticated_page: Page,
     live_server: str,
     snapshot_with_drives: str,
 ) -> None:
-    """Mark as UBad is only submitted after the operator types the drive's enclosure:slot."""
+    """Mark as UBad requires the drive's serial; its slot and other serials are rejected."""
     _set_drive_state(snapshot_with_drives, slot_id=7, state="UGood")
     login_and_navigate(authenticated_page, f"{live_server}/drives/252:7")
     posted: list[str] = []
@@ -112,9 +112,12 @@ def test_destructive_drive_action_requires_typed_slot(
     authenticated_page.get_by_role("button", name="Mark as UBad").click()
     expect(dialog).to_be_visible()
     expect(dialog).to_contain_text("Mark as UBad on drive 252:7?")
+    expect(dialog.locator("[data-cd-phrase]")).to_have_text("WCA275678007")
     expect(phrase_input).to_be_visible()
     expect(confirm).to_be_disabled()
-    phrase_input.fill("252:6")
+    phrase_input.fill("252:7")
+    expect(confirm).to_be_disabled()
+    phrase_input.fill("WCA275678006")
     expect(confirm).to_be_disabled()
     dialog.get_by_role("button", name="Cancel").click()
     expect(dialog).to_be_hidden()
@@ -122,7 +125,7 @@ def test_destructive_drive_action_requires_typed_slot(
 
     authenticated_page.get_by_role("button", name="Mark as UBad").click()
     expect(phrase_input).to_have_value("")
-    phrase_input.fill("252:7")
+    phrase_input.fill("WCA275678007")
     expect(confirm).to_be_enabled()
     with authenticated_page.expect_response(lambda response: "/actions/mark-ubad" in response.url):
         confirm.click()

@@ -137,7 +137,7 @@ def test_foreign_config_page_renders_status_bar_without_live_refresh(
     assert '<body data-live-refresh="off">' in response.text
 
 
-def test_destructive_advanced_actions_require_typed_slot_phrase(
+def test_destructive_advanced_actions_require_typed_serial_phrase(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     forms = _parse(_get(sample_snapshot, "/drives/252/4").text).advanced_action_forms
@@ -148,7 +148,7 @@ def test_destructive_advanced_actions_require_typed_slot_phrase(
     assert safe
     assert len(destructive) + len(safe) == len(forms)
     for form in destructive:
-        assert form["data-confirm-phrase"] == "252:4"
+        assert form["data-confirm-phrase"] == "WD-WM00000005"
         assert form["data-confirm-title"].endswith("on drive 252:4?")
     for form in safe:
         assert "data-confirm-phrase" not in form

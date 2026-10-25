@@ -14,7 +14,7 @@
     data-confirm-body="{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}"
     data-confirm-label="{{ action.label }}"
     data-confirm-tone="{{ 'danger' if action.is_destructive else 'warning' }}"
-    {% if action.is_destructive %}data-confirm-phrase="{{ slot_ref }}"{% endif %}
+    {% if action.is_destructive %}data-confirm-phrase="{{ view_model.identity.serial_number }}"{% endif %}
   >
     <input type="hidden" name="csrf_token" value="">
     {% if action.label == "Hot Spare" %}

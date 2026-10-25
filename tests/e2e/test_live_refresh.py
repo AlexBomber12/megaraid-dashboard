@@ -192,7 +192,7 @@ def test_confirmation_opened_during_fetch_keeps_connected_form_and_blocks_stale_
     _hold_refresh(page)
     page.get_by_role("button", name="Mark as UBad", exact=True).click()
     dialog = page.locator("dialog.confirm-dialog")
-    dialog.locator("[data-cd-input]").fill("252:0")
+    dialog.locator("[data-cd-input]").fill(NEW_SERIAL)
     _release_refresh(page)
 
     expect(page.locator("#drive-live-details")).to_have_attribute("data-original", "yes")
