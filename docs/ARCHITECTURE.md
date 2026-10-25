@@ -101,7 +101,13 @@ duplicate the other. Telegram applies its own policy instead of
 `ALERT_SEVERITY_THRESHOLD`: critical data-risk events immediately, sustained temperature
 warnings after confirmation, nothing else. A single failed collection is a warning; the
 collector records one critical `Monitoring stale` event only after persistent failure.
-See the README "Alerts (Telegram)" section for the full policy.
+Every attempt revalidates against fresh saved snapshots, disk serial identity and current
+incident state. Active incidents survive long transport outages at a capped retry rate;
+obsolete incidents are skipped. Channel-wide HTTP 429 cooldown lives in `system_state`,
+without an additional migration. Interrupted `sending` claims retry after revalidation,
+accepting possible duplicates after an ambiguous remote acceptance rather than silently
+losing an unsent critical alert. Candidate batches and sends per cycle are bounded.
+See the README "Alerts (Telegram)" section for the full policy and delivery guarantees.
 
 ### Web app
 

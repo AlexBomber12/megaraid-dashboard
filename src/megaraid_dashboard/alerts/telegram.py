@@ -143,7 +143,7 @@ class TelegramTransport:
         if response.status_code == 429:
             raise TelegramSendError(
                 "rate limited",
-                retry_after_seconds=_retry_after_seconds(body),
+                retry_after_seconds=_retry_after_seconds(body) or 60,
             )
         reason = f"HTTP {response.status_code}"
         if description:

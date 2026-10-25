@@ -13,6 +13,17 @@
 - A single critical `Monitoring stale` event after persistent collection failure
   (`COLLECTOR_STALE_ALERT_MINUTES`, at least 3 failed polls).
 
+### Fixed
+
+- Persist channel-wide Telegram HTTP 429 cooldown across cycles and restarts.
+- Revalidate fresh data, original disk serial and current incident state before delivery;
+  removed, replaced and recovered incidents never produce delayed warnings.
+- Retain active critical alerts beyond three hours and eight failures, with bounded
+  candidate batches, sends per cycle and capped retry backoff.
+- Retry interrupted claims after validation; document possible duplicate delivery after
+  ambiguous acceptance. Keep notifier health unhealthy while failed attempts await retry.
+- Restrict monitoring-outage Telegram text to explicitly marked collector outage events.
+
 ### Changed
 
 - A single failed collection is now a `warning` event instead of `critical`, so it no

@@ -122,7 +122,7 @@ class CollectorService:
                                 subject="Controller",
                                 summary="Collection recovered",
                                 before=None,
-                                after=None,
+                                after={"monitoring_outage": False},
                             )
                         )
                     for event in events:
@@ -383,6 +383,7 @@ class CollectorService:
                             category="system",
                             subject="Controller",
                             summary=stale_summary,
+                            after={"monitoring_outage": True},
                         )
                     session.commit()
         except Exception:

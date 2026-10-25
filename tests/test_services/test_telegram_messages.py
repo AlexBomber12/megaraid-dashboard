@@ -52,7 +52,7 @@ def _event(
         ("temperature", "warning", None, "диск долго перегревается"),
         ("controller_temperature", "critical", None, "критическая температура RAID-контроллера"),
         ("controller_temperature", "warning", None, "RAID-контроллер долго перегревается"),
-        ("system", "critical", None, "мониторинг RAID не получает данные"),
+        ("system", "critical", None, "событие RAID требует внимания"),
         ("other_errors", "warning", None, "событие RAID требует внимания"),
     ],
 )
@@ -96,7 +96,10 @@ def test_build_telegram_text_keeps_machine_identifiers_in_details_line() -> None
 
 
 def test_build_telegram_text_says_monitoring_state_is_unknown_not_failed() -> None:
-    text = build_telegram_text(_event(category="system", subject="Controller"), hostname="h")
+    text = build_telegram_text(
+        _event(category="system", subject="Controller", after={"monitoring_outage": True}),
+        hostname="h",
+    )
 
     assert "НЕИЗВЕСТНО" in text
     assert "не означает, что диски сломались" in text

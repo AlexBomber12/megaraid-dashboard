@@ -73,6 +73,14 @@ def _reset_health_and_metrics() -> Iterator[None]:
     notifier._record_notifier_health(True)
 
 
+@pytest.fixture(autouse=True)
+def _active_incident(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These unit tests isolate delivery, backoff and dedup. Fresh-data / hardware
+    # relevance is exercised without mocks in test_telegram_relevance.py.
+    monkeypatch.setattr(telegram_notifier, "delivery_relevance", lambda *args, **kwargs: "active")
+    monkeypatch.setattr(telegram_notifier, "monotonic", lambda: 0)
+
+
 def _settings(**overrides: object) -> Settings:
     base: dict[str, object] = {
         "alert_smtp_host": "smtp.example.test",
@@ -160,7 +168,7 @@ def _metric(result: str) -> float:
         ("critical", "cv_state", True),
         ("critical", "temperature", True),
         ("critical", "controller_temperature", True),
-        ("critical", "system", True),
+        ("critical", "system", False),
         ("warning", "temperature", True),
         ("warning", "controller_temperature", True),
         ("critical", "disk_space", False),
@@ -229,14 +237,14 @@ def test_non_actionable_events_are_never_sent(session: Session) -> None:
     assert session.scalars(select(EventDelivery)).all() == []
 
 
-def test_events_older_than_delivery_window_are_ignored(session: Session) -> None:
+def test_active_events_older_than_three_hours_are_still_delivered(session: Session) -> None:
     old = _add_event(session, occurred_at=NOW - timedelta(hours=3, seconds=1))
     sender = FakeSender()
 
     result = _cycle(session, sender)
 
-    assert result.sent == 0
-    assert _delivery(session, old) is None
+    assert result.sent == 1
+    assert _delivery(session, old) is not None
 
 
 def test_naive_now_is_rejected(session: Session) -> None:
@@ -572,7 +580,8 @@ def test_failure_schedules_backoff_and_later_retry_succeeds(session: Session) ->
     assert _metric("failed") == 1
 
     not_due = _cycle(session, sender, now=NOW + timedelta(seconds=59))
-    assert not_due == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=1)
+    assert not_due == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=0)
+    assert get_notifier_health() is False
 
     retried = _cycle(session, sender, now=NOW + timedelta(seconds=60))
     session.refresh(delivery)
@@ -601,7 +610,7 @@ def test_backoff_doubles_and_respects_rate_limit_retry_after(session: Session) -
     assert delivery.next_attempt_at == NOW + timedelta(seconds=60 + 600)
 
 
-def test_gives_up_after_bounded_attempts(session: Session) -> None:
+def test_retries_continue_at_bounded_rate_after_eight_failures(session: Session) -> None:
     event = _add_event(session)
     sender = FakeSender(failures=[TelegramSendError("HTTP 500") for _ in range(8)])
     now = NOW
@@ -614,10 +623,10 @@ def test_gives_up_after_bounded_attempts(session: Session) -> None:
             now = delivery.next_attempt_at
 
     assert delivery is not None
-    assert (delivery.status, delivery.attempts, delivery.detail) == ("failed", 8, "HTTP 500")
+    assert (delivery.status, delivery.attempts, delivery.detail) == ("retry", 8, "HTTP 500")
     final = _cycle(session, sender, now=now + timedelta(hours=1))
-    assert final == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=0)
-    assert sender.sent == []
+    assert final.sent == 1
+    assert len(sender.sent) == 1
 
 
 def test_one_failure_stops_further_sends_in_the_cycle(session: Session) -> None:
@@ -634,7 +643,7 @@ def test_one_failure_stops_further_sends_in_the_cycle(session: Session) -> None:
     result = _cycle(session, sender)
 
     assert result == TelegramCycleResult(sent=0, failed=1, skipped=0, deferred=1)
-    assert _delivery(session, second) is None
+    assert _delivery(session, second) is not None
     retried = _cycle(session, sender, now=NOW + timedelta(minutes=1))
     assert retried.sent == 2
     first_delivery = _delivery(session, first)
@@ -660,7 +669,7 @@ def test_sends_are_capped_per_cycle(session: Session) -> None:
     assert second.sent == 2
 
 
-def test_interrupted_send_is_never_repeated(session: Session) -> None:
+def test_interrupted_send_is_retried(session: Session) -> None:
     event = _add_event(session)
     sender = FakeSender(failures=[RuntimeError("process killed mid-send")])
 
@@ -674,8 +683,8 @@ def test_interrupted_send_is_never_repeated(session: Session) -> None:
     result = _cycle(session, FakeSender(), now=NOW + timedelta(minutes=1))
 
     session.refresh(delivery)
-    assert result == TelegramCycleResult(sent=0, failed=1, skipped=0, deferred=0)
-    assert (delivery.status, delivery.detail) == ("failed", "outcome unknown: interrupted send")
+    assert result == TelegramCycleResult(sent=1, failed=0, skipped=0, deferred=0)
+    assert (delivery.status, delivery.attempts) == ("sent", 2)
 
 
 def test_invalid_config_fails_closed_and_keeps_events_pending(session: Session) -> None:

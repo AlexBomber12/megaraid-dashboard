@@ -536,7 +536,7 @@ red, and SMTP continues normally.
 | --- | --- |
 | Critical `vd_state` (`Dgrd`, `Pdgd`, `OfLn`, `Failed`), `pd_state` (`Failed`, `Missing`, `Offln`), `media_errors`, `predictive_failures`, `smart_alert`, `cv_state`, `temperature`, `controller_temperature` | Immediately |
 | Critical `system` (`Monitoring stale`: collection has failed persistently, RAID state unknown) | Immediately |
-| Warning `temperature`, `controller_temperature` | After `TELEGRAM_WARNING_CONFIRM_MINUTES`, and only if no newer event (clear or escalation) exists for the same object |
+| Warning `temperature`, `controller_temperature` | After `TELEGRAM_WARNING_CONFIRM_MINUTES`, with fresh readings confirming the same disk and active temperature state; a newer clear/escalation cancels it |
 | Everything else (info, other warnings, `disk_space`) | Never |
 
 A single failed collection is a `warning` event and is not sent on either channel.
@@ -544,20 +544,56 @@ A single failed collection is a `warning` event and is not sent on either channe
 One incident produces one message: the same category, object, severity, and state (or
 failure flag such as `replacement_required` / `present`) is not repeated within 24 hours,
 while a worse state, a different failure, or a replacement disk in the same slot (compared
-by serial number) is a new message. Growing error counters stay one incident. Events recorded during
+by serial number) is a new message. Recovery ends an incident, so a subsequent recurrence
+is eligible again. Growing error counters stay one incident. Events recorded during
 maintenance mode are skipped permanently for Telegram (SMTP keeps its existing
 pause-then-send behaviour). Events that existed before migration `0009` are never sent.
 
 ### Delivery
 
 Per-event Telegram state lives in `event_deliveries` (`channel='telegram'`), independent of
-SMTP. Each send is committed as `sending` before the HTTP call and as `sent` after it, so
-a crash in between is recorded as `failed` (outcome unknown) instead of being re-sent.
-Failures retry with exponential backoff (1, 2, 4, ... minutes, capped at 60, honouring
-Telegram `retry_after`) for at most 8 attempts; only events from the last 3 hours are
-attempted. One failure ends the cycle's Telegram sends, at most 5 messages go out per
-cycle, and the HTTP client uses a 5 s connect / 10 s total timeout. The Telegram phase runs
-before SMTP, and an exception in either phase never skips the other.
+SMTP. Active incidents have no three-hour expiry or terminal retry limit. Retries back off
+1, 2, 4, ... minutes, capped at 60 minutes; failure eight and later also log
+`telegram_delivery_prolonged_failure`. A cycle examines at most 100 due candidates and
+attempts at most 5 sends. The first transport failure stops further sends that cycle.
+Candidates deferred for unavailable data do not consume attempts, and due-time ordering
+prevents those rows from hiding unexamined backlog.
+
+An HTTP 429 persists a channel-wide UTC deadline in `system_state.telegram_not_before`,
+in the same transaction as the event retry. It survives cycles, restarts, and deletion of
+the affected event. No event may send before the deadline. `retry_after` starts when the
+response is received (including elapsed time within the cycle); an unusable/missing value
+uses 60 seconds. The per-event backoff can delay that event further. The synthetic CLI
+command is outside this scheduled outbox and should not be used during a cooldown.
+
+Before **every** send (initial or retry), hardware incidents need a snapshot no older than
+`max(60 seconds, 2 × METRICS_INTERVAL_SECONDS)`. Drive identity must match the serial saved
+with the event. Legacy events fall back to the exact latest snapshot at their event time;
+if identity is unavailable, delivery waits. Recovered states, removed/replaced disks,
+cleared SMART flags and error counters reset below the event value become `skipped` /
+`obsolete`. Temperature warnings also check the current reading and persisted drive
+hysteresis state; missing readings wait. Controller temperature uses its thresholds and
+hysteresis. No extra storcli request is made. Missing/stale data retain a durable retry
+with `awaiting_*` diagnostics, without a lifetime cutoff. An outage alert itself needs no
+fresh hardware snapshot; a successful collection after its event makes it obsolete.
+Only the collector's explicit `monitoring_outage=true` system event is eligible; arbitrary
+critical system events cannot produce the monitoring-outage message.
+
+Each send is committed as `sending` before HTTP and as `sent` after acceptance. Interrupted
+`sending` rows and legacy `failed` rows are revalidated and retried. This provides eventual
+**at-least-once attempts while the incident is active**, assuming the scheduler, DB and
+transport recover. A crash before HTTP no longer silently loses a critical alert. A crash
+or timeout after Telegram accepts but before the DB commit can duplicate it: the Bot API
+has no idempotency key for `sendMessage`. The event ID in the message helps identify such
+copies. Exactly-once receipt, delivery after recovery, or delivery during permanent config,
+network or data failures is not guaranteed. Event/delivery records must be retained; disk
+serial metadata survives raw-snapshot pruning. Disabling and later enabling Telegram may
+send an older **still-active** incident, after revalidation; it never replays resolved ones.
+
+Pending attempted retries keep notifier health unhealthy even between attempts. SMTP's
+marker, selection, dedup and transport are unchanged. Telegram runs before SMTP and an
+exception in either phase never skips the other. HTTPS uses 5 s connect / 10 s operation
+timeouts. There are no new privileges or RAID commands.
 
 ### CLI
 

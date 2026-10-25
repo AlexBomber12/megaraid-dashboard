@@ -21,6 +21,15 @@ _VD_UNAVAILABLE_STATES = frozenset({"failed", "offline", "offln", "ofln"})
 _TEST_PREFIX = "🧪 ТЕСТ: проверочное сообщение, реальной аварии нет.\n\n"
 
 
+def is_monitoring_outage(event: Event) -> bool:
+    """Only the collector's explicit outage event may describe monitoring as unavailable."""
+    return (
+        event.category == "system"
+        and event.subject == "Controller"
+        and (event.after_json or {}).get("monitoring_outage") is True
+    )
+
+
 def incident_state(event: Event) -> str | None:
     """Normalized object state after the event, used to tell a repeat from a worse state."""
     after = event.after_json
@@ -46,6 +55,7 @@ def incident_key(event: Event) -> tuple[tuple[str, bool | str | None], ...]:
         sorted(
             (str(name), value if isinstance(value, bool | str) else None)
             for name, value in after.items()
+            if name != "serial_number"
         )
     )
 
@@ -213,4 +223,6 @@ def _explain(event: Event) -> _Explanation:
         if incident_state(event) in _VD_UNAVAILABLE_STATES:
             return _VD_UNAVAILABLE
         return _VD_DEGRADED
+    if event.category == "system" and not is_monitoring_outage(event):
+        return _GENERIC
     return _EXPLANATIONS.get((event.category, event.severity), _GENERIC)

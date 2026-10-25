@@ -280,6 +280,27 @@ async def test_prolonged_collection_outage_reports_stale_monitoring_once(
     stale_summary = events[3][1]
     assert stale_summary.startswith("Monitoring stale: no successful collection for 2")
     assert stale_summary.endswith("min (3 failed polls); RAID state is unknown")
+    from megaraid_dashboard.services.telegram_notifier import is_telegram_alert, run_telegram_cycle
+    from tests.test_services.test_telegram_notifier import FakeSender
+
+    sender = FakeSender()
+    with service_session_factory() as session:
+        system_events = list(session.scalars(select(Event).where(Event.category == "system")))
+        assert [is_telegram_alert(event) for event in system_events] == [
+            False,
+            False,
+            False,
+            True,
+            False,
+        ]
+        result = run_telegram_cycle(
+            session,
+            settings=service.settings,
+            now=datetime.now(UTC),
+            transport_factory=lambda _: sender,
+        )
+        assert result.sent == 1
+        assert "НЕИЗВЕСТНО" in sender.sent[0]
 
     async def successful_collect(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
         del settings

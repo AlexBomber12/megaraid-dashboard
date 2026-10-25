@@ -115,12 +115,22 @@ sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key
 
 For Telegram, check the per-channel delivery state and the Telegram log events
 (`telegram_config_invalid`, `telegram_event_failed`, `telegram_event_sent`,
-`telegram_delivery_outcome_unknown`). Log lines never contain the bot token.
+`telegram_delivery_requeued`, `telegram_delivery_prolonged_failure`).
+Log lines never contain the bot token.
 
 ```bash
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select event_id,status,attempts,next_attempt_at,delivered_at,detail from event_deliveries where channel='telegram' order by id desc limit 20;"
 journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i telegram
 ```
+
+The UTC `system_state` value `telegram_not_before` is the channel-wide 429 deadline:
+all scheduled Telegram sends wait for it, across restarts. `retry` / `awaiting_*` retains
+an incident whose fresh data, temperature or disk identity cannot yet be verified.
+`obsolete` means positive evidence of recovery/removal/replacement. Active incidents
+retry beyond three hours and eight attempts (at most hourly after backoff); pending
+attempted retries keep the health flag unhealthy. A requeued interrupted claim can
+produce a duplicate with the same event ID if Telegram already accepted the request.
+See [Telegram delivery](README.md#delivery) and [missed alerts](docs/RUNBOOK.md#missed-alerts-what-now).
 
 ### Fixes
 

@@ -144,8 +144,27 @@ state, and runs as the `raid-monitor` service user.
    Expected output: SMTP or throttling errors are visible if delivery failed.
 6. For Telegram, check the `event_deliveries` row for the event (`channel='telegram'`).
    Expected output: `status` and `detail` explain the outcome (`sent`, `retry` with the
-   last error, `skipped` with `duplicate`/`maintenance`/`not_confirmed`/`pre_migration`,
-   or `failed`). Info events and non-thermal warnings are never sent to Telegram.
+   last error or `awaiting_*`/`channel_deferred`, `skipped` with
+   `duplicate`/`maintenance`/`not_confirmed`/`pre_migration`/`obsolete`). `sending` means
+   a committed claim with an uncertain outcome; it will be revalidated and retried.
+   Legacy `failed` rows are also retried after revalidation. Info events and non-thermal
+   warnings are never sent. Critical `system` messages require the explicit collector
+   outage marker, not merely critical severity.
+7. Check `system_state` for key `telegram_not_before`: its ISO UTC value is the durable
+   channel cooldown after HTTP 429. All events wait; waiting does not consume attempts.
+   Do not clear it or run `telegram-test` to bypass a provider cooldown.
+8. For `awaiting_fresh_data`, compare the latest `controller_snapshots.captured_at` with
+   `max(60 seconds, 2 × METRICS_INTERVAL_SECONDS)`. `awaiting_temperature` means the
+   sensor reading is missing; `awaiting_drive_identity` means the original/current
+   serial cannot be verified. Repair collection/configuration, rather than marking a
+   queued alert sent. `detail` holds the latest reason; logs retain transport failures.
+   Active incidents retry with a capped one-hour delay, without an age cutoff or terminal
+   attempt budget. `telegram_delivery_prolonged_failure` logs failures from attempt 8.
+   Notifier health remains unhealthy while attempted deliveries await retry.
+9. A process crash/timeout after acceptance can produce a duplicate with the same event ID;
+   a crash before HTTP is retried. Recovered/replaced/removed incidents are skipped after
+   fresh-state validation. Keep the events and delivery tables in database backups.
+   Disabling Telegram preserves this queue; re-enabling can send an old still-active risk.
 
 ### Collection failure; what now?
 
@@ -222,7 +241,12 @@ state, and runs as the `raid-monitor` service user.
    If the prior version predates migration `0009_event_deliveries`, first run
    `alembic downgrade 0008_cleanup_false_controller_alarm_events` with the *current* code
    as the service user. It only drops `event_deliveries`; events and SMTP `notified_at` are
-   kept. Without it the older code fails with "Can't locate revision".
+   kept. Without it the older code fails with "Can't locate revision". These delivery
+   fixes add no further migration. Rolling back only these fixes to an earlier PR #122
+   revision is unsafe: it restores the three-hour cutoff and interrupted-send loss.
+   Prefer `TELEGRAM_ENABLED=false` with this code, preserving the queue and SMTP. The
+   `telegram_not_before` system-state row is harmless to older code but is only enforced
+   by the fixed notifier; preserve it when temporarily disabling Telegram.
 3. Restore the prior source tree under `/opt/megaraid-dashboard/src`.
    Expected output: the application code matches the intended prior revision.
 4. Reinstall the package in the service virtual environment if needed.

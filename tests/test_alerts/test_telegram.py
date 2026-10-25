@@ -307,7 +307,7 @@ def test_send_rate_limit_without_usable_retry_after(body: dict[str, Any]) -> Non
     with pytest.raises(TelegramSendError) as exc_info:
         _transport(handler).send("hello")
 
-    assert exc_info.value.retry_after_seconds is None
+    assert exc_info.value.retry_after_seconds == 60
 
 
 def test_send_api_error_redacts_token_from_description() -> None:
