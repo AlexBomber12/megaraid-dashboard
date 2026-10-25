@@ -69,7 +69,7 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
     assert parsed.wizard_roots == [
         {
             "class": "replace-wizard",
-            "aria-label": "Replace drive",
+            "aria-labelledby": "replace-drive-heading",
             "data-replace-wizard": "",
             "data-enclosure": "252",
             "data-slot": "4",
@@ -81,7 +81,7 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
             "data-replace-rebuild-status-url": "/drives/252:4/replace/rebuild-status",
         }
     ]
-    assert "Replace drive" in response.text
+    assert 'id="replace-drive-heading">Replace Drive</h2>' in response.text
     assert "252:4" in response.text
     assert "WDC WD30EFRX-68EUZN0" in response.text
     assert "WD-WM00000005" in response.text
@@ -97,7 +97,7 @@ def test_drive_detail_renders_replace_serial_controls(
     assert dry_run["type"] == "checkbox"
     assert "checked" in dry_run
     run_button = _button_by_action(parsed, "run-step1")
-    assert run_button["class"] == "button button--warning"
+    assert run_button["class"] == "button button--danger"
     assert "disabled" in run_button
 
 
@@ -155,7 +155,7 @@ def test_drive_detail_renders_step3_insert_controls(
     assert dry_run_step3["type"] == "checkbox"
     assert "checked" in dry_run_step3
     run_step3 = _button_by_action(parsed, "run-step3")
-    assert run_step3["class"] == "button button--warning"
+    assert run_step3["class"] == "button button--danger"
     assert "disabled" in run_step3
     continue_to_insert = _button_by_action(parsed, "continue-to-insert")
     assert continue_to_insert["class"] == "button button--warning"
@@ -189,7 +189,7 @@ def test_replace_wizard_js_step3_posts_insert_without_client_topology() -> None:
     assert "newSerialInput.value.trim() !== expectedSerial.trim()" in source
     assert 'show("physical-swap");' in source
     assert "await loadTopology();" in source
-    assert "if (topology === null) return;" in source
+    assert "if (topology === null || runStep3Button.disabled) return;" in source
     assert "dry_run: dryRunStep3Input.checked," in source
     # Topology is server-derived; the client must NOT send dg/array/row in
     # the insert request body (otherwise a crafted request could overwrite

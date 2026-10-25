@@ -25,12 +25,17 @@
   <div class="controller-ops {% if controller.active_operations %}running{% else %}idle{% endif %}">
     {% if controller.active_operations %}
       {% for operation in controller.active_operations %}
-        <span class="op-segment" data-tooltip="{{ operation.tooltip }}">{{ operation.name | title }}{% if operation.progress_percent is not none %} {{ operation.progress_percent }}%{% endif %}</span>
+        <span class="op-segment">
+          <strong>{{ operation.name | title }}{% if operation.progress_percent is not none %} {{ operation.progress_percent }}%{% endif %}</strong>
+          {% if operation.tooltip %}<span class="op-segment__detail">{{ operation.tooltip }}</span>{% endif %}
+        </span>
       {% endfor %}
     {% else %}
       <span>No active operations</span>
-      <span style="color: var(--color-muted); margin-left: auto;">
-        {% if controller.last_patrol_read_completed_text or controller.last_patrol_read_duration_text or controller.next_patrol_read_in_text %}Last patrol read {% if controller.last_patrol_read_completed_text %}{{ controller.last_patrol_read_completed_text }}{% else %}unknown{% endif %}{% if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}{% if controller.next_patrol_read_in_text %} &middot; Next in {{ controller.next_patrol_read_in_text }}{% endif %}{% else %}Last patrol read unknown{% endif %}
+      <span class="controller-ops__meta">
+        Last patrol read {{ controller.last_patrol_read_completed_text or "unknown" }}
+        {%- if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}
+        {%- if controller.next_patrol_read_in_text %} &middot; Next in {{ controller.next_patrol_read_in_text }}{% endif %}
       </span>
     {% endif %}
   </div>

@@ -37,14 +37,16 @@ def test_backplane_diagram_marks_current_slot() -> None:
 def test_backplane_diagram_uses_severity_tint() -> None:
     parsed = _parse(_render(slots=_slots(critical_slot=5)))
 
-    assert "backplane-slot--crit" in parsed.slot_links[5]["class"]
+    assert "backplane-slot--critical" in parsed.slot_links[5]["class"].split()
 
 
-def test_backplane_diagram_preserves_neutral_severity() -> None:
+def test_backplane_diagram_maps_unrecognized_severity_to_unknown() -> None:
     parsed = _parse(_render(slots=_slots(neutral_slot=2)))
 
-    assert "backplane-slot--neutral" in parsed.slot_links[2]["class"]
-    assert "backplane-slot--optimal" not in parsed.slot_links[2]["class"]
+    classes = parsed.slot_links[2]["class"].split()
+    assert "backplane-slot--unknown" in classes
+    assert "backplane-slot--optimal" not in classes
+    assert not any(name.startswith("position-slot") for name in classes)
 
 
 def test_backplane_diagram_compact_variant_marks_container() -> None:

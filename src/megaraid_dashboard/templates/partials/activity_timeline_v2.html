@@ -1,21 +1,16 @@
-<section class="activity-v2" aria-label="Recent activity">
+<section class="activity-v2" aria-labelledby="recent-activity-heading">
   <div class="section-heading">
-    <h2>Recent activity</h2>
-    <a href="{{ request.url_for('events').path }}">All events -&gt;</a>
+    <h2 id="recent-activity-heading">Recent Activity</h2>
+    <a href="{{ request.url_for('events').path }}">All Events →</a>
   </div>
 
   {% if view_model.recent_activity %}
     <ol class="activity-list-v2">
       {% for event in view_model.recent_activity %}
-        <li>
-          <a class="activity-item-v2" href="{{ request.url_for('events').path }}">
-            <time datetime="{{ event.occurred_at | iso_utc }}" data-local-time>
-              {{ event.occurred_at | iso_utc }} UTC
-            </time>
-            <span class="status-badge status-badge--{{ event.severity }}">{{ event.severity }}</span>
-            <span class="activity-item-v2__summary">{{ event.message }}</span>
-            <span class="activity-item-v2__age">{{ event.age_text }}</span>
-          </a>
+        <li class="activity-item-v2">
+          <span class="status-badge status-badge--{{ event.severity }}">{{ event.severity }}</span>
+          <span class="activity-item-v2__summary">{{ event.message | slot_link | safe }}</span>
+          <time class="activity-item-v2__age" datetime="{{ event.occurred_at | iso_utc }}" title="{{ event.occurred_at | iso_utc }} UTC">{{ event.age_text }}</time>
         </li>
       {% endfor %}
     </ol>

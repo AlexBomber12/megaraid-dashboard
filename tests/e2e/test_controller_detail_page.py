@@ -6,7 +6,7 @@ from playwright.sync_api import Page, expect
 from sqlalchemy import select
 
 from megaraid_dashboard.db import Event, get_engine, get_sessionmaker
-from tests.e2e.conftest import login_and_navigate
+from tests.e2e.conftest import assert_chart_height_within, login_and_navigate
 
 
 def _event_category_exists(database_url: str, category: str) -> bool:
@@ -77,3 +77,4 @@ def test_controller_detail_sections_buzzer_and_roc_chart(
         "aria-selected",
         "true",
     )
+    assert_chart_height_within(authenticated_page, "#roc-history-chart", 280)

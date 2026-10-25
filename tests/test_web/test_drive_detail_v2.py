@@ -45,13 +45,15 @@ class _DriveDetailV2Parser(HTMLParser):
             self.current_data_section = attr_map["data-drive-detail-section"]
         if tag == "dl":
             self.current_class = attr_map.get("class", "")
-        if tag == "div" and "id-grid" in self.current_class:
-            self.id_fields += 1
-        if tag == "div" and "conn-row" in self.current_class:
-            self.conn_fields += 1
-        if tag == "a" and "position-slot" in attr_map.get("class", ""):
+        if tag == "div" and "kv-grid" in self.current_class:
+            if self.current_data_section == "identity":
+                self.id_fields += 1
+            if self.current_data_section == "connection":
+                self.conn_fields += 1
+        slot_classes = attr_map.get("class", "").split()
+        if tag == "a" and "backplane-slot" in slot_classes:
             self.position_slots += 1
-            if "this" in attr_map["class"]:
+            if "backplane-slot--this" in slot_classes:
                 self.highlighted_position_slots += 1
         if tag == "canvas" and "chart-canvas-v2" in attr_map.get("class", ""):
             self.chart_canvas_v2 = True
@@ -110,6 +112,9 @@ def test_drive_detail_v2_prev_next_nav_states(sample_snapshot: StorcliSnapshot) 
     assert _nav_labels(first) == ["Next drive"]
     assert _nav_labels(middle) == ["Previous drive", "Next drive"]
     assert _nav_labels(last) == ["Previous drive"]
+    assert _disabled_nav_labels(first) == ["Previous drive"]
+    assert _disabled_nav_labels(middle) == []
+    assert _disabled_nav_labels(last) == ["Next drive"]
 
 
 def test_drive_detail_v2_precomputed_urls_include_forwarded_prefix(
@@ -193,7 +198,7 @@ def test_drive_detail_v2_replace_card_and_disabled_ubad(
     assert "destructive-card" in html
     assert "Begin Replacement" in html
     assert "disabled" in mark_ubad
-    assert mark_ubad["title"] == "Only UGood drives can be marked UBad."
+    assert "<li><strong>Mark as UBad</strong> — Only UGood drives can be marked UBad.</li>" in html
 
 
 def test_drive_charts_v2_compat_returns_404_without_snapshot() -> None:
@@ -255,7 +260,21 @@ def _parse(html: str) -> _DriveDetailV2Parser:
 
 
 def _nav_labels(parsed: _DriveDetailV2Parser) -> list[str]:
-    return [link["aria-label"] for link in parsed.links if link.get("class") == "drive-nav__link"]
+    return [
+        link["aria-label"]
+        for link in parsed.links
+        if link.get("class") == "drive-nav__link" and "href" in link
+    ]
+
+
+def _disabled_nav_labels(parsed: _DriveDetailV2Parser) -> list[str]:
+    return [
+        link["aria-label"]
+        for link in parsed.links
+        if link.get("class") == "drive-nav__link"
+        and "href" not in link
+        and link.get("aria-disabled") == "true"
+    ]
 
 
 def _button_by_text_attrs(parsed: _DriveDetailV2Parser, action: str) -> dict[str, str]:

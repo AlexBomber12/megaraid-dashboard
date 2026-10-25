@@ -59,7 +59,7 @@ def test_events_empty_database_renders_empty_state_without_load_more() -> None:
     assert response.status_code == 200
     assert "Waiting for first metrics collection" in response.text
     assert "No events recorded yet." in response.text
-    assert "Load more" not in response.text
+    assert "Load Older Events" not in response.text
     assert 'id="events-data"' in response.text
     assert 'id="events-pagination"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
@@ -98,8 +98,8 @@ def test_events_page_renders_timeline_and_load_more_state(
     assert 'id="events-list"' in response.text
     assert "<thead>" not in response.text
     assert "drive-table" not in response.text
-    assert expected_subject in response.text
-    assert ("Load more" in response.text) is expect_load_more
+    assert f">{expected_subject}<" in response.text
+    assert ("Load Older Events" in response.text) is expect_load_more
     assert response.text.count('id="events-pagination"') == 1
     assert 'id="events-poller"' in response.text
     assert 'hx-trigger="every 30s"' in response.text
@@ -135,8 +135,8 @@ def test_events_partial_without_cursor_returns_auto_refresh_fragment() -> None:
     assert response.status_code == 200
     assert response.text.lstrip().startswith("<div")
     assert 'id="events-data"' in response.text
-    assert "event-50" in response.text
-    assert "Load more" in response.text
+    assert ">event-50<" in response.text
+    assert "Load Older Events" in response.text
     assert 'id="events-pagination"' in response.text
     assert 'hx-swap-oob="true"' in response.text
     assert "/partials/events" in response.text
@@ -183,9 +183,10 @@ def test_events_partial_with_valid_cursor_returns_load_more_fragment() -> None:
     assert "<thead>" not in response.text
     assert "<li" in response.text
     assert "<!doctype html>" not in response.text
-    assert "event-50" in response.text
-    assert "event-51" not in response.text
-    assert 'id="events-pagination" hx-swap-oob="true"' in response.text
+    # Subjects are rendered as element text; ids like id="event-51" are DB ids.
+    assert ">event-50<" in response.text
+    assert ">event-51<" not in response.text
+    assert 'id="events-pagination" class="events-pagination" hx-swap-oob="true"' in response.text
     assert 'hx-target="#events-list"' in response.text
     assert 'hx-swap="beforeend"' in response.text
 

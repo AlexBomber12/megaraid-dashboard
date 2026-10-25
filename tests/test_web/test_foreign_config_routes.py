@@ -117,8 +117,11 @@ def test_get_foreign_config_html_renders_page(
         response = client.get("/controller/foreign-config", headers={"Accept": "text/html"})
 
         assert response.status_code == 200
-        assert "Foreign configuration" in response.text
+        assert '<h1 id="foreign-config-title">Foreign Configuration</h1>' in response.text
         assert "FC-DG1-PD4-" in response.text
+        assert 'data-live-refresh="off"' in response.text
+        assert 'action="/controller/foreign-config/import"' in response.text
+        assert 'action="/controller/foreign-config/clear"' in response.text
 
 
 def test_import_dry_run_returns_argv_and_skips_runner(

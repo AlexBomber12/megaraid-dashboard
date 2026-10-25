@@ -68,8 +68,8 @@ def test_maintenance_banner_is_visible_when_active(
 
     assert response.status_code == 200
     assert 'class="maintenance-banner"' in response.text
-    assert "Maintenance mode active" in response.text
-    assert "started by admin" in response.text
+    assert "Maintenance Mode Active" in response.text
+    assert "Started by admin" in response.text
     assert "data-maintenance-countdown" in response.text
 
 
@@ -85,11 +85,30 @@ def test_maintenance_banner_stop_button_posts_to_stop(
 
     assert response.status_code == 200
     assert 'hx-post="/maintenance/stop"' in response.text
-    assert "Stop maintenance" in response.text
+    assert "Stop Maintenance" in response.text
     assert "window.location.reload()" in response.text
 
 
-def test_overview_hides_start_form_when_maintenance_active(
+@pytest.mark.parametrize("active", [False, True])
+def test_overview_never_renders_maintenance_section(
+    active: bool,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        if active:
+            _set_active_maintenance(test_app)
+
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="maintenance"' not in response.text
+    assert 'class="card maintenance-start"' not in response.text
+    assert 'hx-post="/maintenance/start"' not in response.text
+
+
+def test_controller_hides_start_form_when_maintenance_active(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
@@ -97,26 +116,31 @@ def test_overview_hides_start_form_when_maintenance_active(
         _insert_app_snapshot(test_app, sample_snapshot)
         _set_active_maintenance(test_app)
 
-        response = client.get("/")
+        response = client.get("/controller")
 
     assert response.status_code == 200
-    assert 'class="maintenance-start"' not in response.text
+    assert 'id="maintenance"' in response.text
+    assert 'class="card maintenance-start"' not in response.text
     assert 'hx-post="/maintenance/start"' not in response.text
+    assert response.text.count('hx-post="/maintenance/stop"') == 2
 
 
-def test_overview_shows_start_form_when_maintenance_inactive(
+def test_controller_shows_start_form_when_maintenance_inactive(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
 
-        response = client.get("/")
+        response = client.get("/controller")
 
     assert response.status_code == 200
-    assert 'class="maintenance-start"' in response.text
+    assert '<section class="section" id="maintenance"' in response.text
+    assert 'class="card maintenance-start"' in response.text
     assert 'hx-post="/maintenance/start"' in response.text
     assert 'hx-ext="json-enc"' in response.text
+    assert 'name="reason" maxlength="200" required' in response.text
+    assert ">Start Maintenance</button>" in response.text
     for duration in ("15", "30", "60", "240", "1440"):
         assert f'<option value="{duration}"' in response.text
 

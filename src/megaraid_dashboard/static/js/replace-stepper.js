@@ -10,7 +10,8 @@
     const stage = visible ? visible.dataset.stage : null;
     if (stage === "result") return; // keep the current step while showing output
     const current = stage ? STEP_FOR_STAGE[stage] || 0 : 0;
-    stepper.hidden = current === 0;
+    // Only write on change: re-setting `hidden` queues another mutation and loops the observer.
+    if (stepper.hidden !== (current === 0)) stepper.hidden = current === 0;
     stepper.querySelectorAll("li").forEach(function (li, index) {
       const step = index + 1;
       if (step === current) li.setAttribute("aria-current", "step");

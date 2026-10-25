@@ -36,7 +36,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     get_settings.cache_clear()
 
 
-def test_main_page_refresh_region_has_htmx_polling_attributes(
+def test_main_page_overview_is_a_live_region(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     test_app = create_app()
@@ -50,10 +50,12 @@ def test_main_page_refresh_region_has_htmx_polling_attributes(
     refresh_region = _find_refresh_region(response.text)
     assert response.status_code == 200
     assert refresh_region is not None
-    assert refresh_region["tag"] == "section"
-    assert refresh_region["hx-get"] == "/partials/main-page"
-    assert refresh_region["hx-trigger"] == "every 30s"
-    assert refresh_region["hx-swap"] == "innerHTML"
+    assert refresh_region["tag"] == "div"
+    assert "data-live-region" in refresh_region
+    # live-refresh.js re-fetches the page itself; the region no longer polls via htmx.
+    assert "hx-get" not in refresh_region
+    assert 'hx-trigger="every 30s"' not in response.text
+    assert "/js/live-refresh.js?v=" in response.text
     assert response.text.count("<main") == 1
 
 
@@ -69,8 +71,6 @@ class _RefreshRegionParser(HTMLParser):
         self.refresh_region: dict[str, str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "section":
-            return
         attr_map = {key: value or "" for key, value in attrs}
-        if attr_map.get("class") == "main-page-v2__refresh":
+        if attr_map.get("id") == "overview-live":
             self.refresh_region = {"tag": tag, **attr_map}

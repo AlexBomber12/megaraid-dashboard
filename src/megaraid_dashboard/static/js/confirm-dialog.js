@@ -2,7 +2,7 @@
 // Put on a <form> (or its submit button):
 //   data-confirm-title="Set drive 252:3 offline?"
 //   data-confirm-body="The array becomes degraded until rebuild."
-//   data-confirm-phrase="252:3"        (optional — user must type it)
+//   data-confirm-phrase="WD-WM00000005" (optional — user must type it)
 //   data-confirm-label="Set Offline"   (confirm button text)
 //   data-confirm-tone="danger|warning"
 // The dialog intercepts submit in the capture phase, so existing submit
