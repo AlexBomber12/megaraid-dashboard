@@ -1,0 +1,37 @@
+<section class="section" data-controller-section="raid-config" aria-labelledby="raid-config-heading">
+  <div class="section-title">
+    <h2 id="raid-config-heading">RAID Configuration</h2>
+  </div>
+  <div class="table-frame">
+    <table class="data-table data-table--compact">
+      <thead>
+        <tr>
+          <th scope="col">VD</th>
+          <th scope="col">Name</th>
+          <th scope="col">RAID</th>
+          <th scope="col" class="numeric">Size</th>
+          <th scope="col">State</th>
+          <th scope="col">Access</th>
+          <th scope="col">Cache</th>
+          <th scope="col" class="numeric">Strip</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in view_model.raid_config %}
+          <tr data-row-state="{{ row.state_severity }}">
+            <td class="mono" data-label="VD">{{ row.vd_id }}</td>
+            <td data-label="Name">{{ row.name }}</td>
+            <td data-label="RAID">{{ row.raid_level }}</td>
+            <td class="numeric" data-label="Size">{{ row.size_text }}</td>
+            <td data-label="State"><span class="status-badge status-badge--{{ row.state_severity }}">{{ row.state }}</span></td>
+            <td data-label="Access">{{ row.access }}</td>
+            <td data-label="Cache">{{ row.cache_policy }}</td>
+            <td class="numeric" data-label="Strip">{{ row.strip_size_text }}</td>
+          </tr>
+        {% else %}
+          <tr><td class="data-table__empty" colspan="8">No virtual drives in the latest snapshot.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

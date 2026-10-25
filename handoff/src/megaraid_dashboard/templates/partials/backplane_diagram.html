@@ -1,0 +1,15 @@
+{% set is_compact = compact|default(false) %}
+<div
+  class="backplane-diagram{% if is_compact %} backplane-diagram--compact{% endif %}"
+  aria-label="Backplane slots"
+>
+  {% for slot in slots|default([]) %}
+    {% set severity_class = {"critical": "critical", "crit": "critical", "warning": "warning", "warn": "warning", "degraded": "warning", "optimal": "optimal", "ok": "optimal"}.get(slot.severity, "unknown") %}
+    <a
+      class="backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}"
+      href="{{ slot.detail_url }}"
+      title="Slot {{ slot.slot_label }} · {{ severity_class | title }}"
+      {% if slot.is_this %}aria-current="page"{% endif %}
+    >{{ slot.slot_label }}</a>
+  {% endfor %}
+</div>

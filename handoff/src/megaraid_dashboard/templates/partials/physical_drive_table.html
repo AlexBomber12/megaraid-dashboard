@@ -1,0 +1,63 @@
+{% macro sort_th(key, label, numeric=false, default=false) -%}
+  <th scope="col" data-sort-key="{{ key }}"{% if numeric %} class="numeric"{% endif %}{% if default %} data-sort-direction="asc" aria-sort="ascending"{% endif %}>
+    <button type="button" class="sort-button">{{ label }}</button>
+  </th>
+{%- endmacro %}
+{% macro count_cell(value, label, severity="warning") -%}
+  <td class="numeric{% if value in (0, '0') %} is-zero{% else %} status-text--{{ severity }}{% endif %}" data-label="{{ label }}" data-sort-value="{{ value }}">{{ value }}</td>
+{%- endmacro %}
+<div class="data-table-container">
+  <table class="data-table" id="physical-drives-table">
+    <thead>
+      <tr>
+        {{ sort_th("slot", "Slot", default=true) }}
+        {{ sort_th("model", "Model") }}
+        <th scope="col">Serial</th>
+        {{ sort_th("state", "State") }}
+        {{ sort_th("temperature", "Temp", numeric=true) }}
+        {{ sort_th("size", "Size", numeric=true) }}
+        {{ sort_th("media_errors", "Media Errors", numeric=true) }}
+        {{ sort_th("other_errors", "Other Errors", numeric=true) }}
+        {{ sort_th("predictive", "Predictive", numeric=true) }}
+        <th scope="col">SMART</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for drive in drives %}
+        <tr data-row-state="{{ drive.row_state }}">
+          <td class="mono" data-label="Slot" data-sort-value="{{ drive.slot }}">
+            {% if drive.slot_url %}<a href="{{ drive.slot_url }}">{{ drive.slot }}</a>{% else %}{{ drive.slot }}{% endif %}
+          </td>
+          <td data-label="Model" data-sort-value="{{ drive.model }}">{{ drive.model }}</td>
+          <td class="mono" data-label="Serial">{{ drive.serial_number }}</td>
+          <td data-label="State" data-sort-value="{{ drive.state }}">
+            <span class="status-badge status-badge--{{ drive.row_state }}">
+              <svg class="status-badge__icon" aria-hidden="true">
+                <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ drive.status_icon }}"/>
+              </svg>
+              {{ drive.state }}
+            </span>
+          </td>
+          <td
+            class="numeric status-text--{{ drive.temperature_severity }}"
+            data-label="Temp"
+            data-sort-value="{{ drive.temperature_sort }}"
+            {% if drive.temperature_tooltip %}title="{{ drive.temperature_tooltip }}"{% endif %}
+          >
+            <span class="temperature-inline">
+              <span class="temperature-inline__dot" aria-hidden="true"></span>
+              {{ drive.temperature }}
+            </span>
+          </td>
+          <td class="numeric" data-label="Size" data-sort-value="{{ drive.size_bytes }}">{{ drive.size }}</td>
+          {{ count_cell(drive.media_errors, "Media Errors") }}
+          {{ count_cell(drive.other_errors, "Other Errors") }}
+          {{ count_cell(drive.predictive_failures, "Predictive", "critical") }}
+          <td class="smart--{{ drive.smart_severity }}" data-label="SMART">{{ drive.smart_label }}</td>
+        </tr>
+      {% else %}
+        <tr><td class="data-table__empty" colspan="10">No physical drives in the latest snapshot.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

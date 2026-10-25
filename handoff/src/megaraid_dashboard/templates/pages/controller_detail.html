@@ -1,0 +1,113 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ view_model.page_title }} - MegaRAID Dashboard{% endblock %}
+
+{% block extra_scripts %}
+  <script
+    src="{{ request.url_for('static', path='vendor/chart.min.js').path }}?v={{ static_asset_version }}"
+    defer
+  ></script>
+{% endblock %}
+
+{% block content %}
+  <div class="controller-detail-page">
+    <header class="page-header">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="{{ request.url_for('overview').path }}">Overview</a>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">Controller</span>
+      </nav>
+      <h1>{{ view_model.hardware.model }}</h1>
+      <p>{{ view_model.page_subtitle }}</p>
+    </header>
+
+    <div id="controller-live-status" class="live-group" data-live-region>
+      {% include "partials/controller_detail/health_snapshot.html" %}
+    </div>
+
+    {% include "partials/maintenance_start_form.html" %}
+
+    <div id="controller-live-ops" class="live-group" data-live-region>
+      {% include "partials/controller_detail/live_operations.html" %}
+      {% include "partials/controller_detail/raid_config_table.html" %}
+    </div>
+
+    {% include "partials/controller_detail/roc_history_chart.html" %}
+
+    <div id="controller-live-details" class="live-group" data-live-region>
+      {% include "partials/controller_detail/cachevault.html" %}
+      {% include "partials/controller_detail/scheduled_tasks.html" %}
+      {% include "partials/controller_detail/buzzer_control.html" %}
+      {% include "partials/controller_detail/foreign_config.html" %}
+      {% include "partials/controller_detail/hardware_identity.html" %}
+    </div>
+  </div>
+  <script>
+    (function () {
+      function getCookie(name) {
+        const match = document.cookie.match(
+          new RegExp("(?:^|; )" + name.replace(/[$()*+./?[\\\]^{|}-]/g, "\\$&") + "=([^;]*)")
+        );
+        return match ? decodeURIComponent(match[1]) : "";
+      }
+
+      function errorContainerFor(form) {
+        const scope = form.closest("[data-action-scope]") || form.parentElement;
+        return scope ? scope.querySelector("[data-controller-action-error]") : null;
+      }
+
+      function showFormError(form, message) {
+        const container = errorContainerFor(form);
+        if (!container) return;
+        container.textContent = message;
+        container.hidden = false;
+      }
+
+      function clearFormError(form) {
+        const container = errorContainerFor(form);
+        if (!container) return;
+        container.textContent = "";
+        container.hidden = true;
+      }
+
+      function responseErrorMessage(payload, fallback) {
+        if (payload && typeof payload === "object") return payload.detail || payload.error || fallback;
+        if (typeof payload === "string" && payload.trim()) return payload.trim();
+        return fallback;
+      }
+
+      // Delegated so it keeps working after live-refresh swaps the sections.
+      document.addEventListener("submit", function (event) {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-csrf-form")) return;
+        if (form.hasAttribute("data-drive-advanced-action")) return;
+        event.preventDefault();
+        clearFormError(form);
+        const isModeForm = form.hasAttribute("data-operation-mode-form");
+        const jsonPayload = isModeForm ? JSON.stringify({ mode: new FormData(form).get("mode") || "" }) : null;
+        fetch(form.action, {
+          method: "POST",
+          headers: {
+            "X-CSRF-Token": getCookie("__Host-csrf"),
+            ...(jsonPayload ? { "Content-Type": "application/json" } : {}),
+          },
+          body: jsonPayload,
+        }).then((response) => {
+          if (response.redirected) {
+            window.location.assign(response.url);
+            return;
+          }
+          if (response.ok) {
+            window.location.reload();
+            return;
+          }
+          response.text().then((body) => {
+            let payload = body;
+            try { payload = JSON.parse(body); } catch { payload = body; }
+            showFormError(form, responseErrorMessage(payload, "Controller action failed."));
+          });
+        }).catch(() => showFormError(form, "Controller action failed."));
+      });
+    })();
+  </script>
+{% endblock %}

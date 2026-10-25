@@ -1,0 +1,14 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Overview - MegaRAID Dashboard{% endblock %}
+
+{% block content %}
+  <div class="page-stack">
+    <header class="page-header">
+      <h1>Overview</h1>
+    </header>
+    <div id="overview-live" class="main-page-v2" data-live-region>
+      {% include "partials/main_page_refresh.html" %}
+    </div>
+  </div>
+{% endblock %}

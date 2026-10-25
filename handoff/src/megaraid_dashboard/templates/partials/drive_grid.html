@@ -1,0 +1,36 @@
+{% set tiles = view_model.drive_grid.tiles %}
+{% set critical_count = tiles | selectattr("tile_severity", "equalto", "critical") | list | length %}
+{% set warning_count = tiles | selectattr("tile_severity", "equalto", "warning") | list | length %}
+{% set optimal_count = tiles | selectattr("tile_severity", "equalto", "optimal") | list | length %}
+{% set root_path = request.scope.get("root_path", "") if request is defined else "" %}
+<section class="drive-grid-section-v2" aria-labelledby="drive-backplane-heading">
+  <div class="section-heading">
+    <h2 id="drive-backplane-heading">Drive Backplane</h2>
+    <div class="summary-chips">
+      {% if critical_count %}<span class="status-badge status-badge--critical">{{ critical_count }} Critical</span>{% endif %}
+      {% if warning_count %}<span class="status-badge status-badge--warning">{{ warning_count }} Warning</span>{% endif %}
+      {% if optimal_count %}<span class="status-badge status-badge--optimal">{{ optimal_count }} Optimal</span>{% endif %}
+      <a href="{{ request.url_for('drives').path }}">{{ tiles | length }} Drives →</a>
+    </div>
+  </div>
+
+  <div class="drive-grid-v2">
+    {% for tile in tiles %}
+      <a
+        class="drive-tile-v2 drive-tile-v2--{{ tile.tile_severity }}"
+        href="{{ root_path }}{{ tile.detail_url }}"
+      >
+        <span class="drive-tile-v2__slot"><span class="visually-hidden">Slot </span>{{ tile.slot_label }}</span>
+        <span class="drive-tile-v2__state status-text--{{ tile.state_severity }}">{{ tile.state_text }}</span>
+        <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
+          {% if tile.temperature_celsius is not none %}{{ tile.temperature_celsius | celsius }}{% else %}Temp unknown{% endif %}
+        </span>
+        {% if tile.error_badge_count is not none %}
+          <span class="drive-error-badge-v2" title="{{ tile.error_badge_count }} drive errors">
+            {{ tile.error_badge_count }}<span class="visually-hidden"> errors</span>
+          </span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</section>

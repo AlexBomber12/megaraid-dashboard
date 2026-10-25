@@ -1,0 +1,11 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ "Audit Log" if active_nav | default("") == "audit" else "Events" }} - MegaRAID Dashboard{% endblock %}
+
+{% block content %}
+  <div class="page-stack">
+    {% with render_events_load_more_container=true %}
+      {% include "partials/events_data.html" %}
+    {% endwith %}
+  </div>
+{% endblock %}

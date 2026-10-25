@@ -1,0 +1,26 @@
+<section class="section" data-controller-section="scheduled-tasks" aria-labelledby="scheduled-tasks-heading">
+  <div class="section-title">
+    <h2 id="scheduled-tasks-heading">Scheduled Tasks</h2>
+  </div>
+  <div class="card">
+    <div class="schedule-list">
+      {% for task in view_model.scheduled_tasks %}
+        <div class="schedule-item">
+          <div>
+            <h3>{{ task.name }}</h3>
+            <p class="muted">{{ task.schedule_text }}</p>
+          </div>
+          {% if task.is_enabled is sameas true %}
+            <span class="status-badge status-badge--optimal">Enabled</span>
+          {% elif task.is_enabled is sameas false %}
+            <span class="status-badge status-badge--neutral">Disabled</span>
+          {% else %}
+            <span class="status-badge status-badge--unknown">Unknown</span>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="muted">No scheduled tasks reported by the controller.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>

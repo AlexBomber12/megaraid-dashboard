@@ -1,0 +1,154 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Foreign Configuration - MegaRAID Dashboard{% endblock %}
+
+{% block content %}
+  {% set icons = request.url_for('static', path='icons.svg').path %}
+  <section class="foreign-config" aria-labelledby="foreign-config-title">
+    <header class="page-header">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="{{ request.url_for('overview').path }}">Overview</a>
+        <span aria-hidden="true">/</span>
+        <a href="{{ request.url_for('controller_detail').path }}">Controller</a>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">Foreign Configuration</span>
+      </nav>
+      <h1 id="foreign-config-title">Foreign Configuration</h1>
+      <p>Live query of the controller. Both actions require maintenance mode and destructive mode.</p>
+    </header>
+
+    {% if error %}
+      <div class="alert alert--critical" role="alert">
+        <svg class="alert__icon" aria-hidden="true"><use href="{{ icons }}#icon-x-circle"/></svg>
+        <strong>{{ error }}</strong>
+        {% if detail %}<p>{{ detail }}</p>{% endif %}
+      </div>
+    {% elif foreign_config and foreign_config.present %}
+      <div class="alert alert--warning" role="alert">
+        <svg class="alert__icon" aria-hidden="true"><use href="{{ icons }}#icon-alert-triangle"/></svg>
+        <strong>Foreign Configuration Detected</strong>
+        <p>
+          The controller reports {{ foreign_config.dg_count }} foreign disk group(s)
+          with {{ foreign_config.drive_count }} drive(s).
+        </p>
+      </div>
+
+      {% if not maintenance_state.active %}
+        <p class="action-hint action-hint--warning">
+          Start <a href="{{ request.url_for('controller_detail').path }}#maintenance">maintenance mode</a> before running import or clear.
+        </p>
+      {% endif %}
+
+      <div class="section">
+        <div class="section-title"><h2>Summary</h2></div>
+        <div class="card">
+          <dl class="kv-grid">
+            <div><dt>Disk Groups</dt><dd>{{ foreign_config.dg_count }}</dd></div>
+            <div><dt>Drives</dt><dd>{{ foreign_config.drive_count }}</dd></div>
+            <div>
+              <dt>Total Size</dt>
+              <dd {% if foreign_config.total_size_bytes %}title="{{ foreign_config.total_size_bytes }} bytes"{% endif %}>
+                {{ foreign_config.total_size_bytes | bytes_iec }}
+              </dd>
+            </div>
+            <div class="kv-grid__wide"><dt>Digest</dt><dd><span class="foreign-config__digest">{{ foreign_config.digest }}</span></dd></div>
+          </dl>
+        </div>
+      </div>
+
+      {% if foreign_config.disk_groups %}
+        <div class="section">
+          <div class="section-title"><h2>Disk Groups</h2></div>
+          <div class="table-frame">
+            <table class="data-table data-table--compact">
+              <thead>
+                <tr><th scope="col">DG</th><th scope="col" class="numeric">Drives</th><th scope="col" class="numeric">Size</th></tr>
+              </thead>
+              <tbody>
+                {% for dg in foreign_config.disk_groups %}
+                  <tr>
+                    <td class="mono" data-label="DG">{{ dg.dg_id }}</td>
+                    <td class="numeric" data-label="Drives">{{ dg.drive_count }}</td>
+                    <td class="numeric" data-label="Size" {% if dg.size_bytes is not none %}title="{{ dg.size_bytes }} bytes"{% endif %}>{{ dg.size_bytes | bytes_iec }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="section">
+        <div class="section-title"><h2>Actions</h2></div>
+
+        <details class="disclosure disclosure--warning" id="foreign-import">
+          <summary>Import Foreign Configuration — High Risk</summary>
+          <div class="disclosure__body">
+            <p class="muted">
+              Importing adopts the foreign configuration onto this controller. This is irreversible.
+              Type the digest shown above exactly to confirm.
+            </p>
+            <form
+              class="form-grid foreign-config__form"
+              data-foreign-config-form="import"
+              method="post"
+              action="{{ request.url_for('controller_foreign_config_import').path }}"
+              hx-post="{{ request.url_for('controller_foreign_config_import').path }}"
+              hx-ext="json-enc"
+              hx-target="#foreign-config-import-result"
+              hx-swap="innerHTML"
+            >
+              <label class="field field--grow foreign-config__field">
+                <span class="field__label">Confirmation Digest</span>
+                <input class="input mono" type="text" name="confirmation" required autocomplete="off" spellcheck="false">
+              </label>
+              <label class="checkbox">
+                <input type="checkbox" name="dry_run" value="true" checked>
+                Dry run (validate without executing)
+              </label>
+              <button type="submit" class="button button--warning">Import Foreign Configuration</button>
+            </form>
+            <pre id="foreign-config-import-result" class="foreign-config__result" aria-live="polite"></pre>
+          </div>
+        </details>
+
+        <details class="disclosure disclosure--danger" id="foreign-clear">
+          <summary>Clear Foreign Configuration — Destructive</summary>
+          <div class="disclosure__body">
+            <p class="muted">
+              Clearing tells the controller to forget the foreign metadata. This is the most destructive
+              operation in the application: the metadata may be the only path back to the data on those drives.
+            </p>
+            <form
+              class="form-grid foreign-config__form"
+              data-foreign-config-form="clear"
+              method="post"
+              action="{{ request.url_for('controller_foreign_config_clear').path }}"
+              hx-post="{{ request.url_for('controller_foreign_config_clear').path }}"
+              hx-ext="json-enc"
+              hx-target="#foreign-config-clear-result"
+              hx-swap="innerHTML"
+            >
+              <label class="field field--grow foreign-config__field">
+                <span class="field__label">Type <code>{{ clear_confirmation_phrase }}</code> to confirm</span>
+                <input class="input mono" type="text" name="confirmation" required autocomplete="off" spellcheck="false" pattern="{{ clear_confirmation_phrase }}">
+              </label>
+              <label class="checkbox">
+                <input type="checkbox" name="dry_run" value="true" checked>
+                Dry run (validate without executing)
+              </label>
+              <button type="submit" class="button button--danger">Clear Foreign Configuration</button>
+            </form>
+            <pre id="foreign-config-clear-result" class="foreign-config__result" aria-live="polite"></pre>
+          </div>
+        </details>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <h2>No Foreign Configuration</h2>
+        <p>The controller does not report any foreign metadata.</p>
+        <p><a href="{{ request.url_for('controller_detail').path }}">← Back to Controller</a></p>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

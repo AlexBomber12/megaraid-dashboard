@@ -1,0 +1,75 @@
+{% set icons = request.url_for('static', path='icons.svg').path %}
+{% set enc = view_model.position.enclosure %}
+{% set slot = view_model.position.slot %}
+<section class="section" data-drive-detail-section="health-snapshot" aria-labelledby="drive-health-heading">
+  <div class="section-title">
+    <h2 id="drive-health-heading">Health Snapshot</h2>
+    <div class="drive-actions" data-locate-state="{% if view_model.health.locate_active %}start{% else %}stop{% endif %}">
+      <div class="drive-actions__controls">
+        <button
+          type="button"
+          class="button button--primary"
+          hx-post="{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}"
+          hx-swap="none"
+          hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+          hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+          data-locate-action="start"
+          {% if not view_model.health.can_locate_start %}disabled{% endif %}
+        >
+          <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
+          <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
+          {% if view_model.health.locate_active %}Locate LED On{% else %}Blink Locate LED{% endif %}
+        </button>
+        <button
+          type="button"
+          class="button"
+          hx-post="{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}"
+          hx-swap="none"
+          hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+          hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+          data-locate-action="stop"
+          {% if not view_model.health.can_locate_stop %}disabled{% endif %}
+        >
+          <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
+          <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
+          Stop Locate
+        </button>
+        <span class="drive-actions__feedback" data-action-feedback aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
+  <div class="health-card health-card--{{ view_model.health.state_severity }}">
+    <div class="health-card__summary">
+      <span class="text-label">Drive State</span>
+      <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.state }}</strong>
+      <p>{{ view_model.health.summary_text }}</p>
+      {% if view_model.health.state_subtitle %}<p class="muted">{{ view_model.health.state_subtitle }}</p>{% endif %}
+    </div>
+    <dl class="kv-grid health-metrics">
+      <div>
+        <dt>Temperature</dt>
+        <dd class="status-text--{{ view_model.health.temperature_severity }}">
+          {% if view_model.health.temperature_celsius is not none %}{{ view_model.health.temperature_celsius | celsius }}{% else %}N/A{% endif %}
+        </dd>
+      </div>
+      <div>
+        <dt>SMART</dt>
+        <dd class="status-text--{{ view_model.health.smart_severity }}">{{ view_model.health.smart_status }}</dd>
+      </div>
+      {% for label, value, severity in [
+        ("Predictive Failures", view_model.health.predictive_failure_count, "critical"),
+        ("Media Errors", view_model.error_sparkline.media_errors, "warning"),
+        ("Other Errors", view_model.error_sparkline.other_errors, "warning"),
+      ] %}
+        <div>
+          <dt>{{ label }}</dt>
+          <dd class="{% if value in (0, '0') %}is-zero{% else %}status-text--{{ severity }}{% endif %}">{{ value }}</dd>
+        </div>
+      {% endfor %}
+      <div class="kv-grid__wide sparkline-metric">
+        <dt>Error Trend</dt>
+        <dd>{% include "partials/drive_detail/error_sparkline.html" %}</dd>
+      </div>
+    </dl>
+  </div>
+</section>

@@ -1,0 +1,30 @@
+{% set icons = request.url_for('static', path='icons.svg').path %}
+<header class="site-header-v2">
+  <div class="site-header-v2__inner">
+    <a class="brand brand-v2" href="{{ request.url_for('overview').path }}">MegaRAID Dashboard</a>
+    <nav class="site-nav-v2" aria-label="Primary navigation">
+      {% for key, label, endpoint in [
+        ('overview', 'Overview', 'overview'),
+        ('controller', 'Controller', 'controller_detail'),
+        ('drives', 'Drives', 'drives'),
+        ('events', 'Events', 'events'),
+        ('audit', 'Audit', 'audit_log'),
+      ] %}
+        <a
+          class="site-nav-v2__link{% if nav_active == key %} site-nav-v2__link--active{% endif %}"
+          href="{{ request.url_for(endpoint).path }}"
+          {% if nav_active == key %}aria-current="page"{% endif %}
+        >{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="site-header-v2__meta">
+      <div class="refresh-status" data-live-status data-state="static">
+        <span class="refresh-dot" aria-hidden="true"></span>
+        <span class="refresh-status__text" data-live-status-text aria-live="polite">{{ current_utc_label }}</span>
+        <button type="button" class="icon-button" data-live-refresh aria-label="Refresh now" title="Refresh now">
+          <svg class="icon" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
