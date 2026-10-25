@@ -53,6 +53,9 @@ packages = ["src/megaraid_dashboard"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Historic task briefs contain illustrative Python snippets, not maintained source.
+# Ruff versions that format Markdown must not rewrite this archival specification.
+extend-exclude = ["tasks/*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "PGH"]
