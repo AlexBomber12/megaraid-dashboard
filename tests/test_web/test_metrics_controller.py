@@ -49,18 +49,18 @@ def test_controller_health_metric_is_optimal_when_only_buzzer_enabled(
     assert _controller_metric("megaraid_controller_health", 0.0) in response_text
 
 
-def test_controller_health_metric_is_warning_with_degraded_virtual_drive(
+def test_controller_health_metric_is_warning_with_transitional_virtual_drive(
     session_factory: sessionmaker[Session],
 ) -> None:
-    _insert(session_factory, _snapshot(vd_state="Dgrd"))
+    _insert(session_factory, _snapshot(vd_state="Rec"))
 
     response_text = _scrape_metrics(session_factory)
 
     assert _controller_metric("megaraid_controller_health", 1.0) in response_text
 
 
-@pytest.mark.parametrize("state", ["Pdgd", "Partially Degraded"])
-def test_controller_health_metric_is_critical_with_partially_degraded_virtual_drive(
+@pytest.mark.parametrize("state", ["Dgrd", "Degraded", "Pdgd", "Partially Degraded"])
+def test_controller_health_metric_is_critical_with_degraded_virtual_drive(
     session_factory: sessionmaker[Session],
     state: str,
 ) -> None:

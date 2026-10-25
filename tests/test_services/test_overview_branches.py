@@ -210,7 +210,7 @@ def test_drive_temperature_badge_returns_unknown_for_missing_temperature() -> No
         ((), "optimal"),
         (("Failed",), "critical"),
         (("Offln", "Optl"), "critical"),
-        (("Dgrd",), "warning"),
+        (("Dgrd",), "critical"),
         (("Pdgd",), "critical"),
         (("Optl", "Optimal"), "optimal"),
         (("Rbld",), "warning"),
