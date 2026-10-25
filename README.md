@@ -556,6 +556,9 @@ SMTP. Active incidents have no three-hour expiry or terminal retry limit. Retrie
 1, 2, 4, ... minutes, capped at 60 minutes; failure eight and later also log
 `telegram_delivery_prolonged_failure`. A cycle examines at most 100 due candidates and
 attempts at most 5 sends. The first transport failure stops further sends that cycle.
+Eligibility is filtered in SQL before the batch limit, so nonthermal warnings cannot
+fill the batch or starve critical alerts and due retries. Only a JSON boolean `true`
+outage marker qualifies; numeric/string lookalikes do not.
 Candidates deferred for unavailable data do not consume attempts, and due-time ordering
 prevents those rows from hiding unexamined backlog.
 

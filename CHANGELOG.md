@@ -15,6 +15,9 @@
 
 ### Fixed
 
+- Filter Telegram eligibility before limiting the candidate batch, so accumulated
+  nonthermal warnings cannot block critical alerts or due retries. Match the outage
+  marker as a JSON boolean, excluding numeric/string lookalikes.
 - Persist channel-wide Telegram HTTP 429 cooldown across cycles and restarts.
 - Revalidate fresh data, original disk serial and current incident state before delivery;
   removed, replaced and recovered incidents never produce delayed warnings.

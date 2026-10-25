@@ -23,7 +23,7 @@ from time import monotonic
 from typing import Protocol
 
 import structlog
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.alerts.telegram import (
@@ -128,8 +128,6 @@ def run_telegram_cycle(
     channel_blocked = cooldown > now_utc
 
     for event, delivery in _load_candidates(session, now=now_utc):
-        if not is_telegram_alert(event):
-            continue
         if delivery is not None and delivery.status in (STATUS_SENDING, STATUS_FAILED):
             # A claim can survive a crash before HTTP, or after Telegram accepted the
             # request but before the sent commit. Prefer eventual delivery of an active
@@ -256,15 +254,27 @@ def _load_candidates(
         )
         .where(
             Event.occurred_at <= now,
+            # Filter the complete policy before LIMIT. Ineligible rows must never
+            # occupy the batch indefinitely and hide critical alerts or due retries.
             or_(
-                Event.category != "system",
                 and_(
-                    Event.subject == "Controller",
-                    Event.after_json["monitoring_outage"].as_boolean().is_(True),
+                    Event.severity == "critical",
+                    Event.category.in_(_IMMEDIATE_CRITICAL_CATEGORIES),
+                    or_(
+                        Event.category != "system",
+                        and_(
+                            Event.subject == "Controller",
+                            # SQLite JSON booleans otherwise compare equal to integers.
+                            # Match is_monitoring_outage's exact `is True` semantics.
+                            func.json_type(Event.after_json, "$.monitoring_outage") == "true",
+                        ),
+                    ),
+                ),
+                and_(
+                    Event.severity == "warning",
+                    Event.category.in_(_CONFIRMED_WARNING_CATEGORIES),
                 ),
             ),
-            Event.severity.in_(("warning", "critical")),
-            Event.category.in_(_IMMEDIATE_CRITICAL_CATEGORIES | _CONFIRMED_WARNING_CATEGORIES),
             or_(
                 EventDelivery.id.is_(None),
                 EventDelivery.status.in_((STATUS_SENDING, STATUS_RETRY, STATUS_FAILED)),

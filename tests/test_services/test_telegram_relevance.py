@@ -535,3 +535,76 @@ def test_nonthermal_warning_in_hardware_category_stays_ineligible(session: Sessi
     assert _cycle(session, sender).sent == 0
     assert sender.sent == []
     assert _delivery(session, event) is None
+
+
+@pytest.mark.parametrize("warning_category", ["cv_state", "pd_state", "vd_state", "media_errors"])
+@pytest.mark.parametrize("retry", [False, True])
+def test_ineligible_warning_backlog_cannot_hide_critical_delivery(
+    session: Session, sample_snapshot: StorcliSnapshot, warning_category: str, retry: bool
+) -> None:
+    for _ in range(100):
+        _add_event(
+            session,
+            severity="warning",
+            category=warning_category,
+            subject="unrelated warning",
+            occurred_at=NOW - timedelta(minutes=2),
+        )
+    critical = _add_event(session)
+    if retry:
+        session.add(
+            EventDelivery(
+                event_id=critical.id,
+                channel="telegram",
+                status="retry",
+                attempts=1,
+                next_attempt_at=NOW - timedelta(seconds=1),
+            )
+        )
+        session.commit()
+    _save(session, sample_snapshot)
+    sender = FakeSender()
+
+    result = _cycle(session, sender)
+
+    assert result.sent == 1
+    assert len(sender.sent) == 1
+    assert _delivery(session, critical).attempts == (2 if retry else 1)
+    assert _cycle(session, sender, now=NOW + timedelta(minutes=1)).sent == 0
+
+
+def test_candidate_query_matches_complete_alert_policy(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(telegram_notifier, "_MAX_CANDIDATES_PER_CYCLE", 1000)
+    categories = [
+        "vd_state",
+        "pd_state",
+        "media_errors",
+        "predictive_failures",
+        "smart_alert",
+        "cv_state",
+        "temperature",
+        "controller_temperature",
+        "system",
+        "disk_space",
+        "other_errors",
+    ]
+    events = [
+        _add_event(session, severity=severity, category=category)
+        for severity in ("info", "warning", "critical", "unknown")
+        for category in categories
+    ]
+    for subject in ("Controller", "Other"):
+        for marker in (True, False, 1, 0, "true", "false", None):
+            events.append(
+                _add_event(
+                    session,
+                    category="system",
+                    subject=subject,
+                    after={"monitoring_outage": marker},
+                )
+            )
+    expected = {event.id for event in events if is_telegram_alert(event)}
+    actual = {event.id for event, _ in telegram_notifier._load_candidates(session, now=NOW)}
+    assert actual == expected
