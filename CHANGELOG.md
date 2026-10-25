@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased] - Telegram alerts
+
+### Added
+
+- Optional alert-only Telegram channel (`TELEGRAM_ENABLED`, default off) with Russian
+  messages that explain the problem, risk, and one action and link to the runbook.
+- `event_deliveries` table (migration `0009`) for independent per-channel delivery and
+  retry state; existing events are backfilled as already handled for Telegram.
+- `python -m megaraid_dashboard.alerts telegram-test` for a synthetic dry-run message.
+- `megaraid_telegram_alerts_total{result}` metric.
+- A single critical `Monitoring stale` event after persistent collection failure
+  (`COLLECTOR_STALE_ALERT_MINUTES`, at least 3 failed polls).
+
+### Changed
+
+- A single failed collection is now a `warning` event instead of `critical`, so it no
+  longer emails at `ALERT_SEVERITY_THRESHOLD=critical`.
+
 ## [Unreleased] - Dashboard redesign
 
 ### Added

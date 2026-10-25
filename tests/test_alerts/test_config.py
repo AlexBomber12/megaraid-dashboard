@@ -72,3 +72,30 @@ def test_alert_throttle_per_hour_must_be_positive(
 
     with pytest.raises(ValidationError, match="alert_throttle_per_hour"):
         Settings()
+
+
+def test_telegram_defaults_keep_telegram_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_required_env(monkeypatch)
+
+    settings = Settings()
+
+    assert settings.telegram_enabled is False
+    assert settings.telegram_bot_token_file == ""
+    assert settings.telegram_chat_id == ""
+    assert settings.telegram_warning_confirm_minutes == 15
+    assert settings.collector_stale_alert_minutes == 15
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    ["TELEGRAM_WARNING_CONFIRM_MINUTES", "COLLECTOR_STALE_ALERT_MINUTES"],
+)
+def test_telegram_and_stale_minutes_must_be_positive(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+) -> None:
+    set_required_env(monkeypatch)
+    monkeypatch.setenv(env_name, "0")
+
+    with pytest.raises(ValidationError, match=env_name.lower()):
+        Settings()

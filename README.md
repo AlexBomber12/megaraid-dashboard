@@ -509,6 +509,65 @@ consumed by the notifier cycle; `ALERT_THROTTLE_PER_HOUR` acts as a soft cap (wa
 exceed, continue sending) so a multi-event incident is not dropped when dedup already
 collapses repeats.
 
+## Alerts (Telegram)
+
+Telegram is an optional second channel next to email, disabled by default. It is
+alert-only: it sends short Russian messages for actionable risks and stays silent for
+routine changes, recoveries, and successful operations. SMTP behaviour, its
+`ALERT_SEVERITY_THRESHOLD`, and `events.notified_at` are unchanged.
+
+### Configuration
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `TELEGRAM_ENABLED` | bool | `false` | Run the Telegram phase of the notifier cycle. |
+| `TELEGRAM_BOT_TOKEN_FILE` | str | empty | Absolute path to a file holding only the bot token. It must be a regular file (not a symlink), not group-writable and not accessible by others, e.g. `root:raid-monitor 0640`. The token is never read from the environment, `.env`, or Git. |
+| `TELEGRAM_CHAT_ID` | str | empty | Numeric id of the private channel, e.g. `-1001234567890`. |
+| `TELEGRAM_WARNING_CONFIRM_MINUTES` | int | `15` | How long a temperature warning must persist before it is sent. |
+| `COLLECTOR_STALE_ALERT_MINUTES` | int | `15` | Minutes without a successful collection (and at least 3 failed polls) before one critical `Monitoring stale` event is recorded. Applies to both channels. |
+
+Invalid or missing Telegram configuration fails closed: nothing is sent, the error is
+logged as `telegram_config_invalid` without secret values, the notifier health flag turns
+red, and SMTP continues normally.
+
+### What is sent
+
+| Event | When |
+| --- | --- |
+| Critical `vd_state` (`Dgrd`, `Pdgd`, `OfLn`, `Failed`), `pd_state` (`Failed`, `Missing`, `Offln`), `media_errors`, `predictive_failures`, `smart_alert`, `cv_state`, `temperature`, `controller_temperature` | Immediately |
+| Critical `system` (`Monitoring stale`: collection has failed persistently, RAID state unknown) | Immediately |
+| Warning `temperature`, `controller_temperature` | After `TELEGRAM_WARNING_CONFIRM_MINUTES`, and only if no newer event (clear or escalation) exists for the same object |
+| Everything else (info, other warnings, `disk_space`) | Never |
+
+A single failed collection is a `warning` event and is not sent on either channel.
+
+One incident produces one message: the same category, object, severity, and state are not
+repeated within 24 hours, while a worse state is a new message. Events recorded during
+maintenance mode are skipped permanently for Telegram (SMTP keeps its existing
+pause-then-send behaviour). Events that existed before migration `0009` are never sent.
+
+### Delivery
+
+Per-event Telegram state lives in `event_deliveries` (`channel='telegram'`), independent of
+SMTP. Each send is committed as `sending` before the HTTP call and as `sent` after it, so
+a crash in between is recorded as `failed` (outcome unknown) instead of being re-sent.
+Failures retry with exponential backoff (1, 2, 4, ... minutes, capped at 60, honouring
+Telegram `retry_after`) for at most 8 attempts; only events from the last 3 hours are
+attempted. One failure ends the cycle's Telegram sends, at most 5 messages go out per
+cycle, and the HTTP client uses a 5 s connect / 10 s total timeout. The Telegram phase runs
+before SMTP, and an exception in either phase never skips the other.
+
+### CLI
+
+```
+python -m megaraid_dashboard.alerts telegram-test
+python -m megaraid_dashboard.alerts telegram-test --chat-id -1009999999999
+```
+
+`telegram-test` sends one synthetic alert in the real message format, clearly marked
+`ТЕСТ`. It writes nothing to the database and runs no `storcli` command; use `--chat-id`
+to dry-run against a disposable channel first.
+
 ## Roadmap
 
 1. [x] Skeleton and CI.

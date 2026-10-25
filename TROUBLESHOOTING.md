@@ -113,6 +113,15 @@ sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select id,
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from system_state where key='maintenance_mode';"
 ```
 
+For Telegram, check the per-channel delivery state and the Telegram log events
+(`telegram_config_invalid`, `telegram_event_failed`, `telegram_event_sent`,
+`telegram_delivery_outcome_unknown`). Log lines never contain the bot token.
+
+```bash
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select event_id,status,attempts,next_attempt_at,delivered_at,detail from event_deliveries where channel='telegram' order by id desc limit 20;"
+journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i telegram
+```
+
 ### Fixes
 
 - SMTP failure: correct the SMTP settings in `/etc/megaraid-dashboard/env`, restart the

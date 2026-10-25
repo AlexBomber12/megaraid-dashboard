@@ -142,11 +142,18 @@ state, and runs as the `raid-monitor` service user.
    Expected output: credentials, host, port, and STARTTLS settings match the provider.
 5. Check application logs for notifier failures.
    Expected output: SMTP or throttling errors are visible if delivery failed.
+6. For Telegram, check the `event_deliveries` row for the event (`channel='telegram'`).
+   Expected output: `status` and `detail` explain the outcome (`sent`, `retry` with the
+   last error, `skipped` with `duplicate`/`maintenance`/`not_confirmed`/`pre_migration`,
+   or `failed`). Info events and non-thermal warnings are never sent to Telegram.
 
 ### Collection failure; what now?
 
 1. Check the Events page for a system collection-failure event.
    Expected output: the summary shows whether `storcli` failed, timed out, or could not run.
+   A single failure is a `warning` and is not emailed or sent to Telegram; a critical
+   `Monitoring stale` event means collection has failed persistently and the RAID state is
+   unknown, not that a drive failed.
 2. Run the service preflight script.
    Expected output: database writability and migration checks pass.
 3. Verify `storcli64` exists at the configured path.
@@ -212,6 +219,10 @@ state, and runs as the `raid-monitor` service user.
    Expected output: the application is not serving or collecting during rollback.
 2. Back up the current SQLite database and environment file.
    Expected output: both state files can be restored if rollback fails.
+   If the prior version predates migration `0009_event_deliveries`, first run
+   `alembic downgrade 0008_cleanup_false_controller_alarm_events` with the *current* code
+   as the service user. It only drops `event_deliveries`; events and SMTP `notified_at` are
+   kept. Without it the older code fails with "Can't locate revision".
 3. Restore the prior source tree under `/opt/megaraid-dashboard/src`.
    Expected output: the application code matches the intended prior revision.
 4. Reinstall the package in the service virtual environment if needed.

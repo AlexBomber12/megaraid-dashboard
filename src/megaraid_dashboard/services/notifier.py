@@ -35,6 +35,7 @@ _PER_CATEGORY_SUPPRESS_MINUTES: dict[str, int] = {
     "foreign_config_detected": 1440,
 }
 _NOTIFIER_HEALTH = True
+_TELEGRAM_HEALTH = True
 
 
 @dataclass(frozen=True)
@@ -153,12 +154,17 @@ def run_notifier_cycle(
 
 
 def get_notifier_health() -> bool:
-    return _NOTIFIER_HEALTH
+    return _NOTIFIER_HEALTH and _TELEGRAM_HEALTH
 
 
 def _record_notifier_health(ok: bool) -> None:
     global _NOTIFIER_HEALTH
     _NOTIFIER_HEALTH = ok
+
+
+def _record_telegram_health(ok: bool) -> None:
+    global _TELEGRAM_HEALTH
+    _TELEGRAM_HEALTH = ok
 
 
 def _suppress_window_minutes(event: Event, settings: Settings) -> int:

@@ -20,6 +20,7 @@ from megaraid_dashboard.db import (
     get_sessionmaker,
 )
 from megaraid_dashboard.db.dao import upsert_temp_state
+from megaraid_dashboard.services import notifier as notifier_module
 from megaraid_dashboard.services import scheduler as scheduler_module
 from megaraid_dashboard.services.event_detector import EventDetector
 from megaraid_dashboard.services.scheduler import (
@@ -404,6 +405,100 @@ def test_run_notifier_cycle_with_lock_logs_cycle_failure(
     # Should not raise — the inner exception is logged and the lock is released
     service._run_notifier_cycle_with_lock()
     assert released == [fake_fd]
+
+
+def _patch_notifier_phases(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    *,
+    telegram_error: Exception | None = None,
+    smtp_error: Exception | None = None,
+) -> list[int]:
+    monkeypatch.setattr(scheduler_module, "_try_acquire_notifier_lock", lambda _path: 7)
+    released: list[int] = []
+    monkeypatch.setattr(scheduler_module, "_release_notifier_lock", released.append)
+    monkeypatch.setattr(scheduler_module, "SmtpAlertTransport", lambda settings: object())
+
+    def fake_telegram(session: Session, *, settings: Any, now: Any) -> None:
+        del session, settings, now
+        calls.append("telegram")
+        if telegram_error is not None:
+            raise telegram_error
+
+    def fake_smtp(session: Session, transport: Any, *, settings: Any, now: Any) -> None:
+        del session, transport, settings, now
+        calls.append("smtp")
+        if smtp_error is not None:
+            raise smtp_error
+
+    monkeypatch.setattr(scheduler_module, "run_telegram_cycle", fake_telegram)
+    monkeypatch.setattr(scheduler_module, "run_notifier_cycle", fake_smtp)
+    return released
+
+
+def _telegram_service(session_factory: sessionmaker[Session]) -> CollectorService:
+    service = _service(session_factory)
+    service.settings = service.settings.model_copy(update={"telegram_enabled": True})
+    return service
+
+
+def test_notifier_skips_telegram_phase_when_disabled(
+    service_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    released = _patch_notifier_phases(monkeypatch, calls)
+
+    _service(service_session_factory)._run_notifier_cycle_with_lock()
+
+    assert calls == ["smtp"]
+    assert released == [7]
+
+
+def test_notifier_runs_telegram_then_smtp_when_enabled(
+    service_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    released = _patch_notifier_phases(monkeypatch, calls)
+
+    _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
+
+    assert calls == ["telegram", "smtp"]
+    assert released == [7]
+
+
+def test_telegram_phase_crash_does_not_skip_smtp(
+    service_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    released = _patch_notifier_phases(
+        monkeypatch, calls, telegram_error=RuntimeError("telegram exploded")
+    )
+
+    try:
+        _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
+        assert calls == ["telegram", "smtp"]
+        assert released == [7]
+        assert notifier_module.get_notifier_health() is False
+    finally:
+        notifier_module._record_telegram_health(True)
+
+
+def test_smtp_phase_crash_after_telegram_is_contained(
+    service_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    released = _patch_notifier_phases(monkeypatch, calls, smtp_error=RuntimeError("smtp exploded"))
+
+    try:
+        _telegram_service(service_session_factory)._run_notifier_cycle_with_lock()
+        assert calls == ["telegram", "smtp"]
+        assert released == [7]
+    finally:
+        notifier_module._record_notifier_health(True)
 
 
 async def test_run_notifier_once_invokes_cycle_with_lock(

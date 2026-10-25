@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "audit_logs",
     "controller_snapshots",
     "cv_snapshots",
+    "event_deliveries",
     "events",
     "pd_metrics_daily",
     "pd_metrics_hourly",
@@ -294,6 +295,114 @@ def test_alembic_0008_deletes_false_positive_controller_alarm_events() -> None:
                 ),
                 ("vd_state", "VD 0 state is Degraded"),
             ]
+    finally:
+        engine.dispose()
+
+
+def test_alembic_0009_backfills_telegram_state_and_preserves_smtp_marker() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+            command.upgrade(config, "0008_cleanup_false_controller_alarm_events")
+            for severity, notified_at in (
+                ("critical", "2026-10-01 10:00:00"),
+                ("warning", None),
+                ("info", None),
+            ):
+                connection.execute(
+                    sa.text(
+                        """
+                        INSERT INTO events (
+                            occurred_at, severity, category, subject, summary, notified_at
+                        )
+                        VALUES (
+                            '2026-10-01 09:59:00', :severity, 'vd_state', 'VD 0',
+                            'VD 0 state changed', :notified_at
+                        )
+                        """
+                    ),
+                    {"severity": severity, "notified_at": notified_at},
+                )
+
+            command.upgrade(config, "head")
+
+            deliveries = connection.execute(
+                sa.text(
+                    """
+                    SELECT events.severity, channel, status, attempts, detail
+                    FROM event_deliveries JOIN events ON events.id = event_deliveries.event_id
+                    ORDER BY events.id
+                    """
+                )
+            ).all()
+            assert [tuple(row) for row in deliveries] == [
+                ("critical", "telegram", "skipped", 0, "pre_migration"),
+                ("warning", "telegram", "skipped", 0, "pre_migration"),
+            ]
+            notified = connection.execute(
+                sa.text("SELECT notified_at FROM events ORDER BY id")
+            ).scalars()
+            assert [value is not None for value in notified] == [True, False, False]
+            indexes = {
+                index["name"]: index
+                for index in inspect(connection).get_indexes("event_deliveries")
+            }
+            assert indexes["ix_event_deliveries_channel_status"]["column_names"] == [
+                "channel",
+                "status",
+            ]
+            unique_constraints = inspect(connection).get_unique_constraints("event_deliveries")
+            assert [constraint["column_names"] for constraint in unique_constraints] == [
+                ["event_id", "channel"]
+            ]
+
+            command.downgrade(config, "0008_cleanup_false_controller_alarm_events")
+            assert "event_deliveries" not in inspect(connection).get_table_names()
+            assert connection.execute(sa.text("SELECT COUNT(*) FROM events")).scalar_one() == 3
+
+            command.upgrade(config, "head")
+            assert "event_deliveries" in inspect(connection).get_table_names()
+    finally:
+        engine.dispose()
+
+
+def test_alembic_0009_deliveries_cascade_with_events() -> None:
+    engine = get_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            config = _alembic_config(connection)
+            command.upgrade(config, "head")
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO events (occurred_at, severity, category, subject, summary)
+                    VALUES ('2026-10-25 10:00:00', 'critical', 'vd_state', 'VD 0', 'x')
+                    """
+                )
+            )
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO event_deliveries (event_id, channel, status)
+                    SELECT id, 'telegram', 'sent' FROM events
+                    """
+                )
+            )
+            with pytest.raises(sa.exc.IntegrityError):
+                connection.execute(
+                    sa.text(
+                        """
+                        INSERT INTO event_deliveries (event_id, channel, status)
+                        SELECT id, 'telegram', 'retry' FROM events
+                        """
+                    )
+                )
+
+            connection.execute(sa.text("DELETE FROM events"))
+
+            count = connection.execute(sa.text("SELECT COUNT(*) FROM event_deliveries"))
+            assert count.scalar_one() == 0
     finally:
         engine.dispose()
 

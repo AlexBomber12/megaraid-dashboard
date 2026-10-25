@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -172,7 +172,7 @@ async def test_run_once_records_failure_and_recovery(
         )
 
     assert len(system_events) == 2
-    assert system_events[0].severity == "critical"
+    assert system_events[0].severity == "warning"
     assert system_events[0].summary.startswith("Collection failed: StorcliNotAvailable:")
     assert (system_events[1].severity, system_events[1].summary) == (
         "info",
@@ -210,9 +210,139 @@ async def test_run_once_records_persistence_failure(
         events = list(session.scalars(select(Event).order_by(Event.id)))
 
     assert len(events) == 1
-    assert events[0].severity == "critical"
+    assert events[0].severity == "warning"
     assert events[0].category == "system"
     assert events[0].summary.startswith("Collection failed: RuntimeError: database write failed")
+
+
+async def _record_failures(service: CollectorService, count: int) -> None:
+    for _ in range(count):
+        await service._record_collection_failure(StorcliNotAvailable("storcli timed out"))
+
+
+def _store_snapshot_at(
+    session_factory: sessionmaker[Session],
+    snapshot: StorcliSnapshot,
+    captured_at: datetime,
+) -> None:
+    with session_factory() as session:
+        insert_snapshot(session, snapshot.model_copy(update={"captured_at": captured_at}))
+        session.commit()
+
+
+def _system_events(session_factory: sessionmaker[Session]) -> list[tuple[str, str]]:
+    with session_factory() as session:
+        return [
+            (event.severity, event.summary)
+            for event in session.scalars(
+                select(Event).where(Event.category == "system").order_by(Event.id)
+            )
+        ]
+
+
+async def test_single_collection_failure_is_only_a_warning(
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    _store_snapshot_at(
+        service_session_factory, sample_snapshot, datetime.now(UTC) - timedelta(hours=1)
+    )
+    service = _service(service_session_factory)
+
+    await _record_failures(service, 2)
+
+    assert [severity for severity, _summary in _system_events(service_session_factory)] == [
+        "warning",
+        "warning",
+    ]
+
+
+async def test_prolonged_collection_outage_reports_stale_monitoring_once(
+    monkeypatch: pytest.MonkeyPatch,
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    _store_snapshot_at(
+        service_session_factory, sample_snapshot, datetime.now(UTC) - timedelta(minutes=20)
+    )
+    service = _service(service_session_factory)
+
+    await _record_failures(service, 4)
+
+    events = _system_events(service_session_factory)
+    assert [severity for severity, _summary in events] == [
+        "warning",
+        "warning",
+        "warning",
+        "critical",
+        "warning",
+    ]
+    stale_summary = events[3][1]
+    assert stale_summary.startswith("Monitoring stale: no successful collection for 2")
+    assert stale_summary.endswith("min (3 failed polls); RAID state is unknown")
+
+    async def successful_collect(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
+        del settings
+        return sample_snapshot.model_copy(update={"captured_at": datetime.now(UTC)}), {}
+
+    monkeypatch.setattr(
+        "megaraid_dashboard.services.scheduler.collect_storcli_snapshot",
+        successful_collect,
+    )
+    assert await service.run_once() is True
+
+    assert _system_events(service_session_factory)[-1] == ("info", "Collection recovered")
+
+
+async def test_recent_successful_collection_is_not_stale(
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    _store_snapshot_at(
+        service_session_factory, sample_snapshot, datetime.now(UTC) - timedelta(minutes=5)
+    )
+    service = _service(service_session_factory)
+
+    await _record_failures(service, 3)
+
+    assert all(severity == "warning" for severity, _ in _system_events(service_session_factory))
+
+
+async def test_failures_before_last_success_do_not_count_towards_staleness(
+    service_session_factory: sessionmaker[Session],
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    service = _service(service_session_factory)
+    await _record_failures(service, 3)
+    _store_snapshot_at(service_session_factory, sample_snapshot, datetime.now(UTC))
+
+    await _record_failures(service, 2)
+
+    assert all(severity == "warning" for severity, _ in _system_events(service_session_factory))
+
+
+async def test_outage_without_any_snapshot_uses_first_failure_as_reference(
+    service_session_factory: sessionmaker[Session],
+) -> None:
+    with service_session_factory() as session:
+        for minutes_ago in (30, 25):
+            session.add(
+                Event(
+                    occurred_at=datetime.now(UTC) - timedelta(minutes=minutes_ago),
+                    severity="warning",
+                    category="system",
+                    subject="Controller",
+                    summary="Collection failed: StorcliNotAvailable: storcli timed out",
+                )
+            )
+        session.commit()
+    service = _service(service_session_factory)
+
+    await _record_failures(service, 1)
+
+    events = _system_events(service_session_factory)
+    assert events[-1][0] == "critical"
+    assert events[-1][1].startswith("Monitoring stale: no successful collection for 30 min")
 
 
 async def test_run_retention_once_invokes_retention_functions_in_order(

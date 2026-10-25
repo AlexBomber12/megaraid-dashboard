@@ -21,7 +21,7 @@
                 +------+------+        +------+------+
                        |                      |
                        v                      v
-                  Proton SMTP            nginx /raid/
+           Proton SMTP + Telegram        nginx /raid/
                                               |
                                       operator browser
 ```
@@ -91,6 +91,17 @@ same event is not repeatedly sent.
 
 Maintenance mode suppresses notification delivery without suppressing event recording. That
 keeps the audit trail intact during noisy repair work.
+
+Telegram is an optional, alert-only second channel (`services/telegram_notifier.py`,
+transport in `alerts/telegram.py`). It runs as a separate phase of the same 60-second
+notifier job, before SMTP; an exception in either phase never skips the other. Its
+delivery and retry state lives in `event_deliveries` (one row per event and channel), so
+`events.notified_at` stays the SMTP-only marker and neither channel can mark, block, or
+duplicate the other. Telegram applies its own policy instead of
+`ALERT_SEVERITY_THRESHOLD`: critical data-risk events immediately, sustained temperature
+warnings after confirmation, nothing else. A single failed collection is a warning; the
+collector records one critical `Monitoring stale` event only after persistent failure.
+See the README "Alerts (Telegram)" section for the full policy.
 
 ### Web app
 
