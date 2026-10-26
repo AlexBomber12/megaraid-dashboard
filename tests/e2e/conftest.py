@@ -51,7 +51,10 @@ _SERVER_STARTUP_TIMEOUT_SECONDS = 10.0
 _SERVER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 _HEALTH_CHECK_SQLITE_BUSY_TIMEOUT_MS = 250
 _STORCLI_STUB_SCRIPT = (
-    '#!/usr/bin/env bash\nprintf \'{"Controllers": [{"Response Data": {}}]}\\n\'\nexit 0\n'
+    "#!/usr/bin/env bash\n"
+    "printf '%s\\n' "
+    '\'{"Controllers": [{"Command Status": {"Status": "Success"}, "Response Data": {}}]}\'\n'
+    "exit 0\n"
 )
 _STORCLI_STUB_MODE = 0o755
 

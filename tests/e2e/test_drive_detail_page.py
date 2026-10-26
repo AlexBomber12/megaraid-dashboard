@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import Page, Request, expect
+import json
+
+import pytest
+from playwright.sync_api import Page, Request, Route, expect
 from sqlalchemy import select, update
 
 from megaraid_dashboard.db import Event, PhysicalDriveSnapshot, get_engine, get_sessionmaker
@@ -58,8 +61,23 @@ def test_drive_detail_navigation_charts_actions_and_replace(
         lambda response: "/drives/252:0/locate/start" in response.url and response.status == 200
     ):
         authenticated_page.get_by_role("button", name="Blink Locate LED").click()
+    expect(authenticated_page.get_by_role("button", name="Blink command accepted")).to_be_disabled()
+    expect(authenticated_page.get_by_role("button", name="Stop Locate")).to_be_enabled()
+    expect(authenticated_page.locator("[data-action-feedback]")).to_contain_text(
+        "Controller accepted start"
+    )
+    expect(authenticated_page.locator("[data-locate-status]")).to_contain_text(
+        "LED state unverified"
+    )
     assert native_dialogs == []
     assert _operator_event_exists(snapshot_with_drives, "locate start drive 252:0")
+
+    authenticated_page.reload()
+    expect(authenticated_page.get_by_role("button", name="Blink command accepted")).to_be_disabled()
+    expect(authenticated_page.get_by_role("button", name="Stop Locate")).to_be_enabled()
+    expect(authenticated_page.locator("[data-locate-status]")).to_contain_text(
+        "LED state unverified"
+    )
 
     mark_ubad = authenticated_page.get_by_role("button", name="Mark as UBad")
     expect(mark_ubad).to_be_disabled()
@@ -146,3 +164,123 @@ def _set_drive_state(database_url: str, *, slot_id: int, state: str) -> None:
             )
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        (502, '{"message":"Controller busy. Check the drive and retry."}'),
+        (500, '{"message":"Audit could not be saved. Try Stop Locate."}'),
+        (403, "CSRF token missing"),
+        (200, "{}"),
+        (200, "null"),
+        (200, '{"message":{}}'),
+        (502, '{"message":"Unsupported <img src=x onerror=alert(1)>. Retry."}'),
+    ],
+)
+def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    status: int,
+    body: str,
+) -> None:
+    """Exercise HTMX responses with browser-only mocks; no hardware commands run."""
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+    page.evaluate("window.locatePageMarker = 'same page'")
+    start = page.locator('[data-locate-action="start"]')
+    stop = page.locator('[data-locate-action="stop"]')
+    feedback = page.locator("[data-action-feedback]")
+    expect(start).to_be_enabled()
+    expect(stop).to_be_enabled()
+
+    def accept(route: Route) -> None:
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"command_accepted":true,"led_state":"unverified"}',
+        )
+
+    page.route("**/locate/start", accept)
+    start.click()
+    expect(start).to_be_disabled()
+    expect(start).to_contain_text("Blink command accepted")
+    expect(stop).to_be_enabled()
+    expect(feedback).to_contain_text("Controller accepted start")
+    assert "Sent" not in feedback.inner_text()
+    assert "LED On" not in page.locator(".drive-actions").inner_text()
+
+    page.route(
+        "**/locate/stop",
+        lambda route: route.fulfill(status=status, content_type="application/json", body=body),
+    )
+    stop.click()
+    expect(feedback).to_have_class("drive-actions__feedback drive-actions__feedback--error")
+    expect(start).to_be_enabled()
+    expect(stop).to_be_enabled()
+    expect(page.locator(".drive-actions")).to_have_attribute("data-locate-state", "unknown")
+    expect(page.locator("[data-locate-status]")).to_have_text("LED state unverified.")
+    if status == 403:
+        expect(feedback).to_have_text(
+            "CSRF token missing or mismatched. Reload the HTTPS page and retry."
+        )
+        assert "controller access" not in feedback.inner_text().lower()
+    elif '"message"' in body and isinstance(json.loads(body)["message"], str):
+        expect(feedback).to_have_text(json.loads(body)["message"])
+    else:
+        expect(feedback).to_contain_text("Check controller access")
+    expect(feedback.locator("img")).to_have_count(0)
+
+    page.unroute("**/locate/stop")
+    page.route("**/locate/stop", accept)
+    stop.click()
+    expect(feedback).to_contain_text("Controller accepted stop")
+    expect(start).to_be_enabled()
+    expect(start).to_contain_text("Blink Locate LED")
+    expect(stop).to_be_enabled()
+    expect(page.locator("[data-locate-status]")).to_contain_text("Last accepted command: stop")
+    assert page.evaluate("window.locatePageMarker") == "same page"
+
+
+@pytest.mark.parametrize("token", [None, "mismatched-token"])
+@pytest.mark.parametrize("action", ["start", "stop"])
+def test_locate_csrf_refusal_instructs_https_reload_and_keeps_stop_available(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    token: str | None,
+    action: str,
+) -> None:
+    """Use the real CSRF middleware; rejected requests never reach StorCLI."""
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+
+    def change_csrf_header(route: Route) -> None:
+        headers = dict(route.request.headers)
+        headers.pop("x-csrf-token", None)
+        if token is not None:
+            headers["x-csrf-token"] = token
+        route.continue_(headers=headers)
+
+    page.route(f"**/locate/{action}", change_csrf_header)
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/locate/{action}")
+    ) as pending:
+        page.locator(f'[data-locate-action="{action}"]').click()
+    response = pending.value
+    assert response.status == 403
+    assert response.text() == "csrf token missing or mismatched"
+
+    feedback = page.locator("[data-action-feedback]")
+    expect(feedback).to_be_visible()
+    expect(feedback).to_have_text(
+        "CSRF token missing or mismatched. Reload the HTTPS page and retry."
+    )
+    expect(feedback).to_have_class("drive-actions__feedback drive-actions__feedback--error")
+    assert "controller access" not in feedback.inner_text().lower()
+    expect(page.locator('[data-locate-action="stop"]')).to_be_enabled()
+    expect(page.locator('[data-locate-action="start"]')).to_be_enabled()
+    expect(page.locator("[data-locate-status]")).to_have_text("LED state unverified.")
+    expect(page.locator(".drive-actions")).to_have_attribute("data-locate-state", "unknown")
+    assert not _operator_event_exists(snapshot_with_drives, f"locate {action} drive 252:0")

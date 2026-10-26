@@ -109,7 +109,7 @@ def test_drive_detail_locate_buttons_use_htmx_csrf_shim(
     for button in (start, stop):
         assert button["hx-swap"] == "none"
         assert "data-confirm" not in button
-        assert "aria-busy" in button["hx-on::before-request"]
+        assert "window.driveActions.begin(this)" in button["hx-on::before-request"]
         assert "window.driveActions.flash(this, event.detail)" in button["hx-on::after-request"]
 
 

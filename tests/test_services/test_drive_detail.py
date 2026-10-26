@@ -310,14 +310,14 @@ def test_locate_state_tracks_latest_operator_action(session: Session) -> None:
                 severity="info",
                 category="operator_action",
                 subject="Operator action",
-                summary="locate start drive 252:4",
+                summary="locate start drive 252:4 succeeded",
             ),
             Event(
                 occurred_at=captured_at + timedelta(minutes=2),
                 severity="info",
                 category="operator_action",
                 subject="Operator action",
-                summary="locate stop drive 252:4",
+                summary="locate stop drive 252:4 succeeded",
             ),
         ]
     )
@@ -331,9 +331,9 @@ def test_locate_state_tracks_latest_operator_action(session: Session) -> None:
         app_version="test",
     )
 
-    assert view_model.health.locate_active is False
+    assert view_model.health.locate_last_action == "stop"
     assert view_model.health.can_locate_start is True
-    assert view_model.health.can_locate_stop is False
+    assert view_model.health.can_locate_stop is True
 
 
 def test_smart_errors_and_unconfigured_sas_drive_populate_detail_text(session: Session) -> None:
@@ -590,3 +590,37 @@ def _seed_snapshot(
     session.add(snapshot)
     session.commit()
     return snapshot
+
+
+@pytest.mark.parametrize(
+    ("summary", "accepted"),
+    [
+        ("locate start drive 252:4 succeeded", "start"),
+        ("locate start drive 252:4 failed: controller busy", None),
+        ("locate stop drive 252:4 failed: controller busy", None),
+        ("locate start drive 252:4", None),
+        ("locate stop drive 252:4", None),
+        ("locate start drive 252:40 succeeded", None),
+    ],
+)
+def test_locate_history_reports_only_confirmed_acceptance_and_always_allows_stop(
+    session: Session, summary: str, accepted: str | None
+) -> None:
+    captured_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _seed_snapshot(session, captured_at=captured_at)
+    session.add(
+        Event(
+            occurred_at=captured_at,
+            severity="info",
+            category="operator_action",
+            subject="Operator action",
+            summary=summary,
+        )
+    )
+    session.commit()
+    view = load_drive_detail_view_model(
+        session, enclosure_id=252, slot_id=4, settings=get_settings(), app_version="test"
+    )
+    assert view.health.locate_last_action == accepted
+    assert view.health.can_locate_start is (accepted != "start")
+    assert view.health.can_locate_stop is True

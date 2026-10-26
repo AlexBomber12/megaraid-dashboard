@@ -1239,3 +1239,35 @@ def _assert_no_audit_event(test_app: FastAPI) -> None:
     with session_factory() as session:
         assert isinstance(session, Session)
         assert session.scalars(select(Event)).all() == []
+
+
+@pytest.mark.parametrize(("step", "state"), [("offline", "Onln"), ("missing", "Offln")])
+@pytest.mark.parametrize(
+    "status", [{"Status": "Failure", "Description": "Controller busy"}, {}, {"Status": "Unknown"}]
+)
+def test_replace_rejects_exit_zero_without_controller_success(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    step: str,
+    state: str,
+    status: dict[str, str],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state=state)
+        return {"Controllers": [{"Command Status": status}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_DEFAULT_SERIAL, state=state)
+        response = client.post(
+            f"/drives/2:0/replace/{step}",
+            headers=_csrf_request_headers(client, csrf_headers),
+            json={"serial_number": _DEFAULT_SERIAL},
+        )
+        assert response.status_code == 502
+        event = _read_single_event(test_app)
+        assert f"replace step {step}" in event.summary
+        assert "failed:" in event.summary
+        assert "succeeded" not in event.summary

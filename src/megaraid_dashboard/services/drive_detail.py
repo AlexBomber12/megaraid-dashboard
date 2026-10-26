@@ -48,7 +48,7 @@ class DriveHealthSnapshot:
     predictive_failure_count: int
     can_locate_start: bool
     can_locate_stop: bool
-    locate_active: bool
+    locate_last_action: str | None
     locate_start_url: str
     locate_stop_url: str
 
@@ -391,7 +391,6 @@ def _build_health_snapshot(
     state_severity = _drive_state_severity(drive.state)
     smart_status = "ALERT" if drive.smart_alert else "OK"
     latest_locate_action = _latest_locate_action(session, drive)
-    locate_active = latest_locate_action == "start"
     return DriveHealthSnapshot(
         state=drive.state.upper(),
         state_severity=state_severity,
@@ -406,9 +405,9 @@ def _build_health_snapshot(
         smart_status=smart_status,
         smart_severity="critical" if drive.smart_alert else "optimal",
         predictive_failure_count=drive.predictive_failures,
-        can_locate_start=not locate_active,
-        can_locate_stop=locate_active,
-        locate_active=locate_active,
+        can_locate_start=latest_locate_action != "start",
+        can_locate_stop=True,
+        locate_last_action=latest_locate_action,
         locate_start_url=f"/drives/{drive.enclosure_id}:{drive.slot_id}/locate/start",
         locate_stop_url=f"/drives/{drive.enclosure_id}:{drive.slot_id}/locate/stop",
     )
@@ -533,7 +532,12 @@ def _latest_locate_action(session: Session, drive: PhysicalDriveSnapshot) -> str
         select(Event)
         .where(Event.category == "operator_action")
         .where(
-            Event.summary.in_((f"locate start drive {slot_ref}", f"locate stop drive {slot_ref}"))
+            Event.summary.in_(
+                (
+                    f"locate start drive {slot_ref} succeeded",
+                    f"locate stop drive {slot_ref} succeeded",
+                )
+            )
         )
         .order_by(Event.occurred_at.desc(), Event.id.desc())
         .limit(1)

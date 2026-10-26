@@ -460,14 +460,24 @@ def _ensure_inventory_success(payload: dict[str, Any]) -> Mapping[str, Any]:
 
 
 def ensure_command_succeeded(payload: dict[str, Any]) -> None:
-    """Raise StorcliCommandFailed if the controller's Command Status is Failure.
+    """Require explicit controller acceptance for a mutating command.
 
-    `run_storcli` only validates process exit and JSON shape; storcli itself can
-    return a parsed payload with `Command Status.Status = "Failure"`. Call this
-    on responses from destructive commands (e.g. foreign-config import/clear)
-    where a HTTP 200 audited as `succeeded` would mislead operators.
+    Process exit zero only confirms transport success. Read parsers retain their
+    existing compatibility behavior; mutations fail closed on an unknown status.
     """
-    _ensure_success(payload)
+    controller = _first_controller(payload)
+    status = controller.get("Command Status")
+    if not isinstance(status, Mapping):
+        raise StorcliParseError("storcli did not report a valid Command Status")
+    value = status.get("Status")
+    if not isinstance(value, str) or value.strip().casefold() not in {"success", "failure"}:
+        raise StorcliParseError("storcli did not report an explicit Success or Failure status")
+    if value.strip().casefold() == "failure":
+        # Only expose bounded, printable controller detail, never a raw payload.
+        detail = _command_err_msg(controller)
+        detail = " ".join("".join(c for c in detail if c.isprintable() or c.isspace()).split())
+        detail = detail[:300]
+        raise StorcliCommandFailed(f"storcli command failed: {detail}", err_msg=detail)
 
 
 def _optional_command_succeeded(controller: Mapping[str, Any]) -> bool:
