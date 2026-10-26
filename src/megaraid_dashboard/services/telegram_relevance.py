@@ -23,6 +23,7 @@ from megaraid_dashboard.db.models import (
 )
 from megaraid_dashboard.services.notifier import _to_aware_utc
 from megaraid_dashboard.services.telegram_messages import incident_key
+from megaraid_dashboard.storcli.states import normalized_state
 
 DRIVE_SUBJECT = re.compile(r"PD e(\d+):s(\d+)")
 _CONTROLLER_CLEAR_KEYS = {
@@ -179,6 +180,11 @@ def incident_superseded(
             other.severity != event.severity
             or incident_key(other) != incident_key(event)
             or _flag_incident_started(other)
+            or (
+                event.category == "pd_state"
+                and (other.after_json or {}).get("serial_number")
+                != (event.after_json or {}).get("serial_number")
+            )
         )
         for other in session.scalars(statement)
     ) or _controller_temperature_recovered(session, event, settings=settings, until=until)
@@ -198,6 +204,20 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
     freshness = timedelta(seconds=max(60, 2 * settings.metrics_interval_seconds))
     if snapshot is None or _to_aware_utc(snapshot.captured_at) < now - freshness:
         return "awaiting_fresh_data"
+    # A failed/uncertain poll invalidates even a still-young previous snapshot.
+    # Failed polls are durable system events, so this gate survives restarts.
+    failure = session.scalar(
+        select(Event.id)
+        .where(
+            Event.category == "system",
+            Event.summary.startswith("Collection failed:"),
+            Event.occurred_at >= snapshot.captured_at,
+            Event.occurred_at <= now,
+        )
+        .limit(1)
+    )
+    if failure is not None:
+        return "awaiting_fresh_data"
     if incident_superseded(session, event, settings=settings, until=now):
         return "obsolete"
     after = event.after_json or {}
@@ -215,16 +235,22 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
         state = after.get("state")
         if not isinstance(state, str):
             return "awaiting_incident_state"
-        active = drive is not None and drive.state.strip().casefold() == state.strip().casefold()
+        if drive is None:
+            return "active" if normalized_state(state) == "offline" else "obsolete"
+        active = after.get("present") is not False and normalized_state(
+            drive.state
+        ) == normalized_state(state)
         return "active" if active else "obsolete"
     if event.category == "cv_state":
         cv = snapshot.cachevault
+        if cv is None and snapshot.cv_present:
+            return "awaiting_incident_state"
         if "present" in after:
             active = (cv is not None) == after["present"]
         elif cv is None:
             active = False
         elif "state" in after:
-            active = cv.state == after["state"]
+            active = normalized_state(cv.state) == normalized_state(str(after["state"]))
         else:
             active = cv.replacement_required and after.get("replacement_required") is True
         return "active" if active else "obsolete"
@@ -239,9 +265,11 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
         ),
         None,
     )
-    if drive_pd is None:
-        return "obsolete"
     serial = drive_serial_at(session, event)
+    if drive_pd is None:
+        if event.category == "pd_state" and normalized_state(str(after.get("state"))) == "missing":
+            return "active" if serial is not None else "awaiting_drive_identity"
+        return "obsolete"
     if serial is None or not drive_pd.serial_number:
         return "awaiting_drive_identity"
     if drive_pd.serial_number != serial:
@@ -265,7 +293,9 @@ def delivery_relevance(session: Session, event: Event, *, settings: Settings, no
             clear_at_boundary=False,
         )
     if event.category == "pd_state":
-        active = drive_pd.state == after.get("state")
+        active = after.get("present") is not False and normalized_state(
+            drive_pd.state
+        ) == normalized_state(str(after.get("state")))
     elif event.category == "smart_alert":
         active = drive_pd.smart_alert
     else:

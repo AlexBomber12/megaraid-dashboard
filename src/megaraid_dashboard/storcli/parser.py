@@ -17,10 +17,11 @@ from megaraid_dashboard.storcli.models import (
     VirtualDrive,
     size_string_to_bytes,
 )
+from megaraid_dashboard.storcli.states import normalized_state
 
 
 def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
-    controller = _ensure_success(payload)
+    controller = _ensure_inventory_success(payload)
 
     try:
         response = _response_data(controller)
@@ -43,7 +44,7 @@ def parse_controller_show_all(payload: dict[str, Any]) -> ControllerInfo:
 
 
 def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
-    controller = _ensure_success(payload)
+    controller = _ensure_inventory_success(payload)
 
     try:
         response = _response_data(controller)
@@ -91,7 +92,7 @@ def _extract_drive_show(response: Mapping[str, Any]) -> DriveShow:
 
 
 def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:
-    controller = _ensure_success(payload)
+    controller = _ensure_inventory_success(payload)
 
     try:
         response = _response_data(controller)
@@ -108,12 +109,12 @@ def parse_physical_drives(payload: dict[str, Any]) -> list[PhysicalDrive]:
 
 
 def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
-    controller = _first_controller(payload)
-    if not _optional_command_succeeded(controller):
-        return None
+    controller = _ensure_inventory_success(payload)
 
     try:
         response = _response_data(controller)
+        if response.get("Cachevault_Info") == []:
+            return None
         data = _property_lists_to_mapping(response)
         if not data and isinstance(response.get("Cachevault_Info"), list):
             data = dict(_mapping(response["Cachevault_Info"][0]))
@@ -414,14 +415,14 @@ def _parse_physical_drive(
 
 
 def _drive_rows(response: Mapping[str, Any]) -> list[tuple[str, list[Any]]]:
-    return [
-        (key, value)
-        for key, value in response.items()
-        if key.startswith("Drive ")
-        and not key.endswith(" - Detailed Information")
-        and isinstance(value, list)
-        and value
-    ]
+    rows: list[tuple[str, list[Any]]] = []
+    for key, value in response.items():
+        if not key.startswith("Drive ") or key.endswith(" - Detailed Information"):
+            continue
+        if not isinstance(value, list) or len(value) != 1:
+            raise TypeError("Drive summary must contain exactly one row")
+        rows.append((key, value))
+    return rows
 
 
 def _property_lists_to_mapping(response: Mapping[str, Any]) -> dict[str, Any]:
@@ -440,6 +441,21 @@ def _ensure_success(payload: dict[str, Any]) -> Mapping[str, Any]:
     if _command_failed(controller):
         err_msg = _command_err_msg(controller)
         raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
+    return controller
+
+
+def _ensure_inventory_success(payload: dict[str, Any]) -> Mapping[str, Any]:
+    try:
+        controller = _ensure_success(payload)
+        status = _mapping(controller.get("Command Status", {}))
+        if (
+            str(status.get("Status", "")).strip().casefold() != "success"
+            or len(payload["Controllers"]) != 1
+            or status.get("Controller", 0) != 0
+        ):
+            raise StorcliParseError("storcli command success is unproven")
+    except TypeError as exc:
+        raise StorcliParseError("storcli command status is malformed") from exc
     return controller
 
 
@@ -506,7 +522,7 @@ def _response_data(controller: Mapping[str, Any]) -> Mapping[str, Any]:
 
 def _command_failed(controller: Mapping[str, Any]) -> bool:
     status = _mapping(controller.get("Command Status", {}))
-    return str(status.get("Status", "")).lower() == "failure"
+    return str(status.get("Status", "")).strip().casefold() == "failure"
 
 
 def _command_err_msg(controller: Mapping[str, Any]) -> str:
@@ -524,3 +540,63 @@ def _mapping(value: Any) -> Mapping[str, Any]:
         msg = f"expected mapping, got {type(value).__name__}"
         raise TypeError(msg)
     return value
+
+
+def validate_complete_inventory(
+    controller_payload: dict[str, Any],
+    virtual_payload: dict[str, Any],
+    physical_payload: dict[str, Any],
+    virtual_drives: list[VirtualDrive],
+    physical_drives: list[PhysicalDrive],
+) -> None:
+    """Accept only mutually consistent complete inventories from successful commands.
+
+    The controller's explicit counts and identity lists corroborate both detailed
+    commands. Zero counts prove empty inventories, even if firmware omits empty tables.
+    A race between commands is uncertainty: retry rather than invent a hardware loss.
+    """
+    try:
+        for payload in (controller_payload, virtual_payload, physical_payload):
+            _ensure_inventory_success(payload)
+        response = _response_data(_first_controller(controller_payload))
+        vd_count = response["Virtual Drives"]
+        pd_count = response["Physical Drives"]
+        if (
+            type(vd_count) is not int
+            or vd_count != len(virtual_drives)
+            or type(pd_count) is not int
+            or pd_count != len(physical_drives)
+        ):
+            raise ValueError("inventory counts are missing or inconsistent")
+        summary_vds = parse_virtual_drives(controller_payload)
+        summary_pds = response.get("PD LIST", [])
+        if not isinstance(summary_pds, list):
+            raise ValueError("PD LIST is not a list")
+        vd_keys = [(d.vd_id, normalized_state(d.state)) for d in virtual_drives]
+        summary_vd_keys = [(d.vd_id, normalized_state(d.state)) for d in summary_vds]
+        pd_keys = [
+            (d.enclosure_id, d.slot_id, d.device_id, normalized_state(d.state))
+            for d in physical_drives
+        ]
+        summary_pd_keys = []
+        for row in summary_pds:
+            item = _mapping(row)
+            enclosure, slot = str(item["EID:Slt"]).split(":")
+            if not isinstance(item["State"], str):
+                raise TypeError("PD state is not a string")
+            summary_pd_keys.append(
+                (int(enclosure), int(slot), int(item["DID"]), normalized_state(item["State"]))
+            )
+        if (
+            len({d.vd_id for d in virtual_drives}) != vd_count
+            or len({(d.enclosure_id, d.slot_id) for d in physical_drives}) != pd_count
+            or sorted(vd_keys) != sorted(summary_vd_keys)
+            or sorted(pd_keys) != sorted(summary_pd_keys)
+            or any(not d.serial_number for d in physical_drives)
+        ):
+            raise ValueError("inventory identities or states are inconsistent")
+        cv_info = response["Cachevault_Info"]
+        if not isinstance(cv_info, list):
+            raise ValueError("Cachevault_Info must explicitly describe presence or absence")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise StorcliParseError("inventory completeness is unproven") from exc

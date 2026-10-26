@@ -947,3 +947,15 @@ def test_mutation_normalizes_status_and_bounds_controller_detail() -> None:
     with pytest.raises(StorcliCommandFailed) as error:
         ensure_command_succeeded(payload)
     assert error.value.err_msg == "busy " + "x" * 295
+
+
+@pytest.mark.parametrize("rows", [[], {}, [None, None]])
+def test_physical_inventory_never_silently_skips_malformed_drive_blocks(rows: Any) -> None:
+    with pytest.raises(StorcliParseError):
+        parse_physical_drives(success_payload({"Drive /c0/e252/s0": rows}))
+
+
+def test_malformed_command_status_is_monitoring_uncertainty() -> None:
+    payload = {"Controllers": [{"Command Status": None}]}
+    with pytest.raises(StorcliParseError, match="status is malformed"):
+        parse_virtual_drives(payload)

@@ -56,7 +56,9 @@ def _save(
     snapshot = sample.model_copy(
         update={
             "captured_at": now,
-            "controller": sample.controller.model_copy(update={"roc_temperature_celsius": roc}),
+            "controller": sample.controller.model_copy(
+                update={"roc_temperature_celsius": roc, "cv_present": not cv_missing}
+            ),
             "physical_drives": drives,
             "virtual_drives": [
                 d.model_copy(update={"state": vd_state}) for d in sample.virtual_drives
@@ -362,6 +364,7 @@ def test_recovered_monitoring_outage_does_not_page_later(
         ),
         ("cv_state", {"present": False}, {"cv_missing": True}, "active"),
         ("cv_state", {"present": False}, {}, "obsolete"),
+        ("cv_state", {"state": 42}, {}, "obsolete"),
         ("cv_state", {"state": "Degraded"}, {"cv_missing": True}, "obsolete"),
         ("cv_state", {"state": "Degraded"}, {"cv": {"state": "Degraded"}}, "active"),
         (
@@ -822,6 +825,9 @@ def test_unknown_cachevault_data_uses_fallback_without_broadening_policy(
         update={
             "captured_at": NOW,
             "cachevault": sample_snapshot.cachevault.model_copy(update={"state": "Unknown"}),
+            "controller": sample_snapshot.controller.model_copy(
+                update={"roc_temperature_celsius": 80}
+            ),
         }
     )
     detected = detector.detect(None, current)
@@ -838,3 +844,17 @@ def test_unknown_cachevault_data_uses_fallback_without_broadening_policy(
     assert _cycle(session, sender).sent == 0
     assert _delivery(session, unsupported) is None
     assert len(sender.sent) == 1
+
+
+def test_legacy_cv_present_without_detail_remains_unknown(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    event = _add_event(session, category="cv_state", subject="CacheVault", after={"present": False})
+    snapshot = sample_snapshot.model_copy(update={"cachevault": None, "captured_at": NOW})
+    insert_snapshot(session, snapshot)
+    session.commit()
+    assert (
+        delivery_relevance(session, event, settings=_settings(), now=NOW)
+        == "awaiting_incident_state"
+    )

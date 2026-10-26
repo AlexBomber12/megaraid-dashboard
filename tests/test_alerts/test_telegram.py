@@ -14,7 +14,6 @@ from structlog.testing import capture_logs
 
 from megaraid_dashboard.alerts import telegram as telegram_module
 from megaraid_dashboard.alerts.telegram import (
-    RUNBOOK_URL,
     TELEGRAM_MAX_MESSAGE_LENGTH,
     TelegramConfig,
     TelegramConfigError,
@@ -195,7 +194,6 @@ def test_send_posts_plain_text_message() -> None:
         "chat_id": CHAT_ID,
         "text": "hello",
         "disable_web_page_preview": True,
-        "reply_markup": {"inline_keyboard": [[{"text": "Инструкция", "url": RUNBOOK_URL}]]},
     }
     assert request.extensions["timeout"] == {
         "connect": 5.0,
@@ -518,7 +516,7 @@ def test_invalid_injected_retry_hint_uses_safe_fallback(hint: Any) -> None:
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("manual_test", [False, True])
-async def test_actual_message_wire_payload_is_plain_text_with_one_fixed_url_button(
+async def test_actual_message_wire_payload_is_plain_text_without_buttons(
     asynchronous: bool,
     manual_test: bool,
 ) -> None:
@@ -565,16 +563,6 @@ async def test_actual_message_wire_payload_is_plain_text_with_one_fixed_url_butt
         "chat_id": CHAT_ID,
         "text": text,
         "disable_web_page_preview": True,
-        "reply_markup": {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "Инструкция",
-                        "url": "https://github.com/AlexBomber12/knowledge-vault/blob/main/20-homelab/notifications/megaraid.md",
-                    }
-                ]
-            ]
-        },
     }
     assert hostname in text
     assert "https://" not in text

@@ -583,18 +583,19 @@ measurements (0–200); incomplete/unknown metadata gets a factual fallback. Raw
 serials and machine identifiers stay in the database. Text does not determine incident
 identity or delivery state.
 
-Every message, including the neutral CLI test, has exactly one URL button **Инструкция**
-linking to the [fixed runbook](https://github.com/AlexBomber12/knowledge-vault/blob/main/20-homelab/notifications/megaraid.md).
-The URL is absent from the body. No HTML/Markdown parse mode or callbacks are used.
+Messages, including the neutral CLI test, have no buttons or runbook links.
+No reply_markup, HTML/Markdown parse mode or callbacks are used.
 The footer holds the occurrence time in **Europe/Rome**, including summer/winter offset,
 and the unchanged event ID. Forward the message to ChatGPT; find the source record on the
 named host by event ID, checking its occurrence time (stored UTC) against that local time.
 The footer omits year/seconds for brevity: use the event record to resolve ambiguity.
 
 [Catalog and delivery audit](docs/TELEGRAM_ALERTS.md) includes exact previews, character
-counts, suppression/defer cases and confirmed detection limits. In particular, a disk
-absent from a successful snapshot has no direct disappearance event; array-state alerts
-cover it only when an array change is reported. This wording change does not fix detection.
+counts, suppression/defer cases and the evidence required for reliable inventory.
+Confirmed disk/array disappearance alerts directly and retains the previous disk identity.
+Incomplete inventories or uncertain CacheVault probes reject the whole poll and use the
+existing confirmed monitoring-outage policy. Initial controller overheating is detected;
+known state aliases compare consistently across detection, relevance and deduplication.
 
 ### Delivery
 

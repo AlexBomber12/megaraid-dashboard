@@ -281,7 +281,7 @@ def test_manual_test_is_independent_and_neutral(hostname: str) -> None:
         (None, None),
         ({}, None),
         ({"state": 3}, None),
-        ({"state": " Dgrd "}, "dgrd"),
+        ({"state": " Dgrd "}, "degraded"),
     ],
 )
 def test_incident_state(after: dict[str, Any] | None, expected: str | None) -> None:
@@ -291,7 +291,7 @@ def test_incident_state(after: dict[str, Any] | None, expected: str | None) -> N
 @pytest.mark.parametrize(
     ("after", "expected"),
     [
-        ({"state": "Dgrd", "present": True}, (("state", "dgrd"),)),
+        ({"state": "Dgrd", "present": True}, (("state", "degraded"),)),
         ({"present": False}, (("present", False),)),
         ({"replacement_required": True}, (("replacement_required", True),)),
         ({"media_errors": 7}, (("media_errors", None),)),

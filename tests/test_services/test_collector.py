@@ -103,7 +103,7 @@ async def test_collect_storcli_snapshot_treats_bbu_storcli_errors_as_optional(
     assert raw_payload["bbu"] is None
 
 
-async def test_collect_storcli_snapshot_treats_cachevault_command_failure_as_optional(
+async def test_cachevault_command_failure_is_uncertain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payloads = {
@@ -132,14 +132,11 @@ async def test_collect_storcli_snapshot_treats_cachevault_command_failure_as_opt
         fake_run_storcli,
     )
 
-    snapshot, raw_payload = await collect_storcli_snapshot(settings=_settings())
-
-    assert len(snapshot.physical_drives) == 8
-    assert snapshot.cachevault is None
-    assert raw_payload["cachevault"] is None
+    with pytest.raises(StorcliCommandFailed):
+        await collect_storcli_snapshot(settings=_settings())
 
 
-async def test_collect_storcli_snapshot_treats_cachevault_failure_payload_as_optional(
+async def test_cachevault_firmware_failure_is_uncertain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cachevault_payload = _failure_payload("firmware reports no cachevault")
@@ -167,10 +164,8 @@ async def test_collect_storcli_snapshot_treats_cachevault_failure_payload_as_opt
         fake_run_storcli,
     )
 
-    snapshot, raw_payload = await collect_storcli_snapshot(settings=_settings())
-
-    assert snapshot.cachevault is None
-    assert raw_payload["cachevault"] == cachevault_payload
+    with pytest.raises(StorcliCommandFailed):
+        await collect_storcli_snapshot(settings=_settings())
 
 
 async def test_collect_storcli_snapshot_populates_foreign_config_when_present(

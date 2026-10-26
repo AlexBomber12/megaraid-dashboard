@@ -5,8 +5,8 @@ from typing import Any
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.storcli import (
     ForeignConfig,
-    StorcliCommandFailed,
     StorcliError,
+    StorcliParseError,
     StorcliSnapshot,
     parse_bbu,
     parse_cachevault,
@@ -16,6 +16,7 @@ from megaraid_dashboard.storcli import (
     parse_virtual_drives,
     run_storcli,
 )
+from megaraid_dashboard.storcli.parser import validate_complete_inventory
 
 
 async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
@@ -23,13 +24,24 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
     virtual_drives_payload = await _run(settings, "/c0/vall show all")
     physical_drives_payload = await _run(settings, "/c0/eall/sall show all")
 
-    cachevault_payload: dict[str, Any] | None = None
-    cachevault = None
-    try:
-        cachevault_payload = await _run(settings, "/c0/cv show all")
-        cachevault = parse_cachevault(cachevault_payload)
-    except StorcliCommandFailed:
-        cachevault = None
+    controller = parse_controller_show_all(controller_payload)
+    virtual_drives = parse_virtual_drives(virtual_drives_payload)
+    physical_drives = parse_physical_drives(physical_drives_payload)
+    validate_complete_inventory(
+        controller_payload,
+        virtual_drives_payload,
+        physical_drives_payload,
+        virtual_drives,
+        physical_drives,
+    )
+
+    # Unknown optional CV results must not become an absent hardware snapshot. Reject
+    # the whole poll, retaining the last reliable baseline and using confirmed outage
+    # handling. This also prevents a probe error from clearing an existing incident.
+    cachevault_payload = await _run(settings, "/c0/cv show all")
+    cachevault = parse_cachevault(cachevault_payload)
+    if controller.cv_present != (cachevault is not None):
+        raise StorcliParseError("CacheVault presence is unproven: controller/probe disagree")
 
     bbu_payload: dict[str, Any] | None = None
     bbu = None
@@ -53,9 +65,9 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
         foreign_config = None
 
     snapshot = StorcliSnapshot(
-        controller=parse_controller_show_all(controller_payload),
-        virtual_drives=parse_virtual_drives(virtual_drives_payload),
-        physical_drives=parse_physical_drives(physical_drives_payload),
+        controller=controller,
+        virtual_drives=virtual_drives,
+        physical_drives=physical_drives,
         cachevault=cachevault,
         bbu=bbu,
         foreign_config=foreign_config,

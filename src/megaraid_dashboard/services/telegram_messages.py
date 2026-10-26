@@ -1,8 +1,8 @@
 """Concise Russian Telegram text, derived only from structured event fields.
 
 Formatting never determines eligibility, incident identity, recurrence or recovery.
-The transport adds the fixed runbook button; summaries and machine identifiers stay
-in the event store for diagnostic lookup by hostname, occurrence time and event ID.
+Summaries and machine identifiers stay in the event store for diagnostic lookup
+by hostname, occurrence time and event ID.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services.notifier import _to_aware_utc
+from megaraid_dashboard.storcli.states import normalized_state
 
 _VD_DEGRADED_STATES = frozenset({"degraded", "dgrd", "partially degraded", "pdgd"})
 _VD_UNAVAILABLE_STATES = frozenset({"failed", "offline", "offln", "ofln"})
@@ -42,7 +43,7 @@ def incident_state(event: Event) -> str | None:
     if isinstance(after, dict):
         state = after.get("state")
         if isinstance(state, str):
-            return state.strip().casefold()
+            return normalized_state(state)
     return None
 
 
