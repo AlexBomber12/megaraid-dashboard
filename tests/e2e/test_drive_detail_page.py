@@ -221,7 +221,12 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     expect(stop).to_be_enabled()
     expect(page.locator(".drive-actions")).to_have_attribute("data-locate-state", "unknown")
     expect(page.locator("[data-locate-status]")).to_have_text("LED state unverified.")
-    if '"message"' in body and isinstance(json.loads(body)["message"], str):
+    if status == 403:
+        expect(feedback).to_have_text(
+            "CSRF token missing or mismatched. Reload the HTTPS page and retry."
+        )
+        assert "controller access" not in feedback.inner_text().lower()
+    elif '"message"' in body and isinstance(json.loads(body)["message"], str):
         expect(feedback).to_have_text(json.loads(body)["message"])
     else:
         expect(feedback).to_contain_text("Check controller access")
@@ -236,3 +241,46 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     expect(stop).to_be_enabled()
     expect(page.locator("[data-locate-status]")).to_contain_text("Last accepted command: stop")
     assert page.evaluate("window.locatePageMarker") == "same page"
+
+
+@pytest.mark.parametrize("token", [None, "mismatched-token"])
+@pytest.mark.parametrize("action", ["start", "stop"])
+def test_locate_csrf_refusal_instructs_https_reload_and_keeps_stop_available(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    token: str | None,
+    action: str,
+) -> None:
+    """Use the real CSRF middleware; rejected requests never reach StorCLI."""
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+
+    def change_csrf_header(route: Route) -> None:
+        headers = dict(route.request.headers)
+        headers.pop("x-csrf-token", None)
+        if token is not None:
+            headers["x-csrf-token"] = token
+        route.continue_(headers=headers)
+
+    page.route(f"**/locate/{action}", change_csrf_header)
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/locate/{action}")
+    ) as pending:
+        page.locator(f'[data-locate-action="{action}"]').click()
+    response = pending.value
+    assert response.status == 403
+    assert response.text() == "csrf token missing or mismatched"
+
+    feedback = page.locator("[data-action-feedback]")
+    expect(feedback).to_be_visible()
+    expect(feedback).to_have_text(
+        "CSRF token missing or mismatched. Reload the HTTPS page and retry."
+    )
+    expect(feedback).to_have_class("drive-actions__feedback drive-actions__feedback--error")
+    assert "controller access" not in feedback.inner_text().lower()
+    expect(page.locator('[data-locate-action="stop"]')).to_be_enabled()
+    expect(page.locator('[data-locate-action="start"]')).to_be_enabled()
+    expect(page.locator("[data-locate-status]")).to_have_text("LED state unverified.")
+    expect(page.locator(".drive-actions")).to_have_attribute("data-locate-state", "unknown")
+    assert not _operator_event_exists(snapshot_with_drives, f"locate {action} drive 252:0")

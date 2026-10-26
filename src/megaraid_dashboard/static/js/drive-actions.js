@@ -51,8 +51,14 @@
       fb.textContent = "Controller accepted " + action + ". Check the physical LED.";
       fb.className = "drive-actions__feedback drive-actions__feedback--ok";
     } else {
-      fb.textContent = typeof response.message === "string" ? response.message :
-        "Command not confirmed. Check controller access, then retry or try Stop Locate.";
+      const csrfRefused = detail.xhr && detail.xhr.status === 403 &&
+        /\bcsrf\b/i.test(detail.xhr.responseText || "");
+      if (csrfRefused) {
+        fb.textContent = "CSRF token missing or mismatched. Reload the HTTPS page and retry.";
+      } else {
+        fb.textContent = typeof response.message === "string" ? response.message :
+          "Command not confirmed. Check controller access, then retry or try Stop Locate.";
+      }
       fb.className = "drive-actions__feedback drive-actions__feedback--error";
     }
   }
