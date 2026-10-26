@@ -303,7 +303,7 @@ async def test_prolonged_collection_outage_reports_stale_monitoring_once(
             transport_factory=lambda _: sender,
         )
         assert result.sent == 1
-        assert "НЕИЗВЕСТНО" in sender.sent[0]
+        assert "мониторинг недоступен, состояние RAID неизвестно." in sender.sent[0]
 
     async def successful_collect(*, settings: Settings) -> tuple[StorcliSnapshot, dict[str, Any]]:
         del settings

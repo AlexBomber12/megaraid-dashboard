@@ -17,6 +17,9 @@ from megaraid_dashboard.config import Settings
 
 _LOG = structlog.get_logger(__name__)
 
+RUNBOOK_URL = (
+    "https://github.com/AlexBomber12/knowledge-vault/blob/main/20-homelab/notifications/megaraid.md"
+)
 TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 TELEGRAM_RETRY_AFTER_MAX_SECONDS = 3600
@@ -130,10 +133,11 @@ class TelegramTransport:
 
     async def send_async(self, text: str) -> None:
         text = text[:TELEGRAM_MAX_MESSAGE_LENGTH]
-        payload: dict[str, str | bool] = {
+        payload: dict[str, object] = {
             "chat_id": self._config.chat_id,
             "text": text,
             "disable_web_page_preview": True,
+            "reply_markup": {"inline_keyboard": [[{"text": "Инструкция", "url": RUNBOOK_URL}]]},
         }
         start = time.monotonic()
         state = _ResponseState()
@@ -163,7 +167,7 @@ class TelegramTransport:
 
     async def _send_bounded(
         self,
-        payload: dict[str, str | bool],
+        payload: dict[str, object],
         state: _ResponseState,
     ) -> httpx.Response:
         # The absolute deadline includes headers, every body chunk and client cleanup.
@@ -175,7 +179,7 @@ class TelegramTransport:
                 return await self._read_response(client, payload, state)
 
     async def _read_response(
-        self, client: httpx.AsyncClient, payload: dict[str, str | bool], state: _ResponseState
+        self, client: httpx.AsyncClient, payload: dict[str, object], state: _ResponseState
     ) -> httpx.Response:
         # Never bind the token-bearing URL in our locals or include it in exceptions.
         async with client.stream(

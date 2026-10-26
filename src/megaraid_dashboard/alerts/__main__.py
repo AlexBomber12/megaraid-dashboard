@@ -91,7 +91,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     telegram_parser = subparsers.add_parser(
         "telegram-test",
-        help="Send one synthetic Telegram alert (no database writes, no RAID commands).",
+        help="Send one neutral Telegram delivery test (no database writes, no RAID commands).",
     )
     telegram_parser.add_argument(
         "--chat-id",

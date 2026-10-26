@@ -8,7 +8,7 @@
   messages that explain the problem, risk, and one action and link to the runbook.
 - `event_deliveries` table (migration `0009`) for independent per-channel delivery and
   retry state; existing events are backfilled as already handled for Telegram.
-- `python -m megaraid_dashboard.alerts telegram-test` for a synthetic dry-run message.
+- `python -m megaraid_dashboard.alerts telegram-test` for a neutral manual delivery check.
 - `megaraid_telegram_alerts_total{result}` metric.
 - A single critical `Monitoring stale` event after persistent collection failure
   (`COLLECTOR_STALE_ALERT_MINUTES`, at least 3 failed polls).
@@ -47,6 +47,13 @@
 - Restrict monitoring-outage Telegram text to explicitly marked collector outage events.
 
 ### Changed
+
+- Keep Russian Telegram alerts within two content lines plus a Rome-time/event-ID footer
+  and 160 characters for SERVER / AI-SERVER. Distinguish failed, missing and offline
+  disks; use only structured facts and retain detailed diagnostics in the event store.
+- Move the fixed runbook link into one inline URL button, without text parsing.
+- Make `telegram-test` neutral and independent of incidents; manual success does not
+  verify automatic delivery. Document existing detector limits without changing policy.
 
 - A single failed collection is now a `warning` event instead of `critical`, so it no
   longer emails at `ALERT_SEVERITY_THRESHOLD=critical`.

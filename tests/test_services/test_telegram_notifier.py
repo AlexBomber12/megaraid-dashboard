@@ -199,7 +199,7 @@ def test_critical_event_is_sent_once_and_smtp_marker_untouched(session: Session)
     assert first == TelegramCycleResult(sent=1, failed=0, skipped=0, deferred=0)
     assert second == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=0)
     assert len(sender.sent) == 1
-    assert "дисковый массив потерял защиту от отказа" in sender.sent[0]
+    assert "сбой массива, риск потери данных." in sender.sent[0]
     delivery = _delivery(session, event)
     assert delivery is not None
     assert (delivery.status, delivery.attempts, delivery.delivered_at) == ("sent", 1, NOW)
@@ -275,7 +275,7 @@ def test_temperature_warning_waits_for_confirmation(session: Session) -> None:
     assert early == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=1)
     assert _delivery(session, event) is not None
     assert confirmed.sent == 1
-    assert sender.sent[0].startswith("🟠 ВНИМАНИЕ")
+    assert sender.sent[0].startswith("🟠 ")
 
 
 def test_temperature_warning_that_cleared_is_not_sent(session: Session) -> None:
@@ -353,7 +353,7 @@ def test_worse_state_of_same_object_is_a_new_incident(session: Session) -> None:
     result = _cycle(session, sender, now=NOW + timedelta(minutes=5))
 
     assert result.sent == 1
-    assert "дисковый массив RAID недоступен" in sender.sent[1]
+    assert "массив недоступен." in sender.sent[1]
 
 
 def test_duplicates_in_same_cycle_produce_one_message(session: Session) -> None:
@@ -820,5 +820,30 @@ def test_degraded_array_from_detector_reaches_telegram(
     )
 
     assert result.sent == 1
-    assert "дисковый массив потерял защиту от отказа" in sender.sent[0]
-    assert "Детали: VD 0; VD 0 state is Dgrd;" in sender.sent[0]
+    assert "сбой массива, риск потери данных." in sender.sent[0]
+    assert "Детали:" not in sender.sent[0]
+    assert len(sender.sent[0].splitlines()) == 3
+
+
+@pytest.mark.parametrize("new_body", ["first body", "completely different wording"])
+def test_body_changes_cannot_change_dedup_or_channel_state(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    new_body: str,
+) -> None:
+    first = _add_event(session, occurred_at=NOW - timedelta(minutes=2))
+    sender = FakeSender()
+    monkeypatch.setattr(telegram_notifier, "build_telegram_text", lambda *a, **kw: "first body")
+    assert _cycle(session, sender).sent == 1
+    monkeypatch.setattr(telegram_notifier, "build_telegram_text", lambda *a, **kw: new_body)
+    repeat = _add_event(session, summary="different raw summary", occurred_at=NOW)
+    assert _cycle(session, sender).skipped == 1
+    worse = _add_event(session, after={"state": "OfLn"}, occurred_at=NOW)
+    assert _cycle(session, sender).sent == 1
+    assert sender.sent == ["first body", new_body]
+    for event, status, attempts in [(first, "sent", 1), (repeat, "skipped", 0), (worse, "sent", 1)]:
+        delivery = _delivery(session, event)
+        assert delivery is not None
+        assert (delivery.status, delivery.attempts) == (status, attempts)
+        assert event.notified_at is None
+    assert _delivery(session, repeat).detail == "duplicate"

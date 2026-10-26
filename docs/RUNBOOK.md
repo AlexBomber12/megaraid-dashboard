@@ -130,6 +130,21 @@ state, and runs as the `raid-monitor` service user.
 5. Stop maintenance mode when the event stream is stable.
    Expected output: normal alerting resumes.
 
+### Read a concise Telegram alert
+
+The hostname selects the server; the final `26.10 10:57 · №42` line identifies its
+original event and Europe/Rome occurrence time. Look up event `42` on that host's Events
+page (or `events` table), then compare `occurred_at` in UTC with Europe/Rome, accounting
+for summer/winter time. Year, seconds, machine identifiers, structured metadata and raw
+summary belong to that record. The message is plain text with one **Инструкция** URL
+button; forward it to ChatGPT. A test says only `тест уведомлений` / `Действий не требуется.`
+and has no event ID. A successful manual test proves that send only.
+
+The [catalog and detection audit](TELEGRAM_ALERTS.md) records limits: an entirely absent
+disk has no direct missing event. A VD degradation/unavailability transition can cover
+it, but an unchanged or also absent VD does not. Successful collection of that snapshot
+also does not trigger a monitoring-outage event. Do not treat silence as healthy hardware.
+
 ### Missed alerts; what now?
 
 1. Confirm the event exists on the Events page.
