@@ -16,6 +16,7 @@ def test_locate_browser_result(
     fake_storcli: FakeStorcli,
     action: str,
     fault: str,
+    maintenance_mode: None,
 ) -> None:
     page = authenticated_page
     fake_storcli.configure(fault=fault)
@@ -38,7 +39,9 @@ def test_locate_browser_result(
     expect(feedback).to_contain_text(
         "accepted" if fault == "success" else "fail", ignore_case=True, timeout=1500
     )
-    expect(feedback).to_contain_text("unverified", ignore_case=True, timeout=1500)
+    expect(page.locator(".drive-actions")).to_contain_text(
+        "unverified", ignore_case=True, timeout=1500
+    )
     if fault == "success" and action == "start":
         expect(button).to_be_disabled()
     else:

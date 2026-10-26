@@ -17,6 +17,7 @@
     {% if action.is_destructive %}data-confirm-phrase="{{ view_model.identity.serial_number }}"{% endif %}
   >
     <input type="hidden" name="csrf_token" value="">
+    <input type="hidden" name="serial_number" value="{{ view_model.identity.serial_number }}">
     {% if action.label == "Hot Spare" %}
       <input type="hidden" name="dg_id" value="{{ drive_dg_id if drive_dg_id != '-' else '' }}">
     {% endif %}
@@ -101,9 +102,12 @@
           method: "POST",
           headers: {
             "X-CSRF-Token": getCookie("__Host-csrf") || "",
-            ...(isHotSpare ? { "Content-Type": "application/json" } : {}),
+            "Content-Type": "application/json",
           },
-          body: isHotSpare ? JSON.stringify({ dg_id: Number(dgId) }) : null,
+          body: JSON.stringify({
+            serial_number: new FormData(form).get("serial_number"),
+            ...(isHotSpare ? { dg_id: Number(dgId) } : {}),
+          }),
         }).then((response) => {
           if (response.redirected) {
             window.location.assign(response.url);

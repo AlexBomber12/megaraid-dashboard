@@ -185,7 +185,8 @@ def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
 
     assert response.status_code == 200
     assert 'name="dg_id" value="3"' in response.text
-    assert "JSON.stringify({ dg_id: Number(dgId) })" in response.text
+    serial = next(d.serial_number for d in sample_snapshot.physical_drives if d.slot_id == 4)
+    assert f'name="serial_number" value="{serial}"' in response.text
 
 
 def test_drive_detail_v2_replace_card_and_disabled_ubad(

@@ -129,7 +129,9 @@ def test_read_only_controls_never_post_or_mutate(
     page.goto(f"{live_server}/drives/252:0")
     expect(page.get_by_label("Previous drive")).to_have_attribute("aria-disabled", "true")
     page.get_by_label("Next drive").click()
+    page.wait_for_url("**/drives/252:1", wait_until="load")
     page.get_by_label("Previous drive").click()
+    page.wait_for_url("**/drives/252:0", wait_until="load")
     for days in (7, 30, 365):
         with page.expect_response("**/charts?*") as response:
             page.get_by_role("tab", name=f"{days}d", exact=True).click()

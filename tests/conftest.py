@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import socket
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,24 @@ TEST_AUTH_HEADER = {
     "Authorization": "Basic "
     + base64.b64encode(f"admin:{TEST_ADMIN_PASSWORD}".encode()).decode("ascii")
 }
+
+
+@pytest.fixture(autouse=True)
+def isolated_metrics_listener_port(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Exercise real metrics listeners without sharing the production default port.
+
+    Concurrent checkouts/test processes must not compete for localhost:8091.
+    Tests inspecting configuration defaults explicitly remove this test override.
+    """
+    from megaraid_dashboard.config import get_settings
+
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    monkeypatch.setenv("METRICS_PORT", str(port))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

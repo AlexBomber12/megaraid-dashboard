@@ -73,13 +73,14 @@
   "src/megaraid_dashboard/templates/partials/drive_detail/advanced_actions.html": [
     "<form method=\"post\" action=\"{{ action.url }}\" class=\"inline-form\" data-csrf-form data-drive-advanced-action data-confirm-title=\"{{ action.label }} on drive {{ slot_ref }}?\" data-confirm-body=\"{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}\" data-confirm-label=\"{{ action.label }}\" data-confirm-tone=\"{{ 'danger' if action.is_destructive else 'warning' }}\" {% if action.is_destructive %}data-confirm-phrase=\"{{ view_model.identity.serial_number }}\"{% endif %} >",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<input type=\"hidden\" name=\"serial_number\" value=\"{{ view_model.identity.serial_number }}\">",
     "<input type=\"hidden\" name=\"dg_id\" value=\"{{ drive_dg_id if drive_dg_id != '-' else '' }}\">",
     "<button type=\"submit\" class=\"button{% if action.is_destructive %} button--danger{% endif %}\" {% if not action.is_enabled or no_dg %}disabled{% endif %} >",
     "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/health_snapshot.html": [
-    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-on::before-request=\"this.setAttribute('aria-busy', 'true')\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if not view_model.health.can_locate_start %}disabled{% endif %} >",
-    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-on::before-request=\"this.setAttribute('aria-busy', 'true')\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if not view_model.health.can_locate_stop %}disabled{% endif %} >"
+    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if not view_model.health.can_locate_start %}disabled{% endif %} >",
+    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if not view_model.health.can_locate_stop %}disabled{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/replace_destructive.html": [
     "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"open\">",

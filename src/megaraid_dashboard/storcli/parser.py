@@ -150,6 +150,8 @@ def parse_foreign_config(payload: dict[str, Any]) -> ForeignConfig:
             return ForeignConfig(present=False, digest="")
         raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
 
+    ensure_command_succeeded(payload)
+
     try:
         response = _response_data(controller)
     except StorcliParseError:

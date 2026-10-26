@@ -506,7 +506,27 @@ async def _run_locate(
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
+    if not settings.maintenance_mode:
+        try:
+            await run_in_threadpool(
+                _record_locate_operator_action_sync,
+                request=request,
+                action=action,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                outcome="rejected: maintenance_mode required",
+            )
+        except SQLAlchemyError:
+            return _audit_persistence_failure_response(action=action)
+        return JSONResponse(
+            {
+                "error": "locate requires maintenance_mode",
+                "message": "Locate requires an active maintenance window.",
+            },
+            status_code=403,
+        )
+
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     message = ""
@@ -607,7 +627,11 @@ class ReplaceRequest(BaseModel):
     dry_run: bool = False
 
 
-class MakeHotSpareRequest(BaseModel):
+class DriveIdentityRequest(BaseModel):
+    serial_number: str
+
+
+class MakeHotSpareRequest(DriveIdentityRequest):
     dg_id: StrictInt = Field(ge=0, le=63)
 
 
@@ -627,35 +651,44 @@ async def drive_replace_missing(enclosure: str, slot: str, request: Request) -> 
 
 
 @router.post("/drives/{enclosure}:{slot}/actions/mark-ubad", name="drive_mark_ubad")
-async def drive_mark_ubad(enclosure: str, slot: str, request: Request) -> Response:
+async def drive_mark_ubad(
+    enclosure: str, slot: str, body: DriveIdentityRequest, request: Request
+) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
         slot=slot,
         request=request,
         action="mark_ubad",
         dg_id=None,
+        serial_number=body.serial_number,
     )
 
 
 @router.post("/drives/{enclosure}:{slot}/actions/mark-ugood", name="drive_mark_ugood")
-async def drive_mark_ugood(enclosure: str, slot: str, request: Request) -> Response:
+async def drive_mark_ugood(
+    enclosure: str, slot: str, body: DriveIdentityRequest, request: Request
+) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
         slot=slot,
         request=request,
         action="mark_ugood",
         dg_id=None,
+        serial_number=body.serial_number,
     )
 
 
 @router.post("/drives/{enclosure}:{slot}/actions/spindown", name="drive_spin_down")
-async def drive_spin_down(enclosure: str, slot: str, request: Request) -> Response:
+async def drive_spin_down(
+    enclosure: str, slot: str, body: DriveIdentityRequest, request: Request
+) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
         slot=slot,
         request=request,
         action="spin_down",
         dg_id=None,
+        serial_number=body.serial_number,
     )
 
 
@@ -672,6 +705,7 @@ async def drive_make_hot_spare(
         request=request,
         action="make_hot_spare",
         dg_id=body.dg_id,
+        serial_number=body.serial_number,
     )
 
 
@@ -682,6 +716,7 @@ async def _run_advanced_drive_action(
     request: Request,
     action: AdvancedDriveAction,
     dg_id: int | None,
+    serial_number: str,
 ) -> Response:
     try:
         enclosure_id = int(enclosure)
@@ -701,6 +736,9 @@ async def _run_advanced_drive_action(
             {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
             status_code=404,
         )
+
+    if drive.serial_number != serial_number:
+        return JSONResponse({"error": "snapshot serial mismatch"}, status_code=409)
 
     has_requested_dg = True
     if action == "make_hot_spare":
@@ -3514,7 +3552,6 @@ async def _query_live_foreign_config(*, settings: Settings) -> ForeignConfig:
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
-    ensure_command_succeeded(payload)
     return parse_foreign_config(payload)
 
 

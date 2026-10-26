@@ -148,5 +148,5 @@ def prepare(action: Action, handle: Any, fake: FakeStorcli) -> dict[str, Any]:
     if action.name.endswith("-mode"):
         return {"mode": "auto"}
     if action.name == "hotspare":
-        return {"dg_id": 0}
-    return {}
+        return {"dg_id": 0, "serial_number": "WCA275678000"}
+    return {"serial_number": "WCA275678000"} if action.family == "advanced" else {}

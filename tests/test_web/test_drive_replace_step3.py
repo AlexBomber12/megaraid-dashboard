@@ -1032,8 +1032,9 @@ def test_drive_replace_insert_returns_502_when_live_precheck_fails(
         # Only the precheck call was attempted; the destructive insert must not run.
         assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
         events = _all_events(test_app)
-        assert len(events) == 1
+        assert len(events) == 2
         assert "replace step missing" in events[0].summary
+        assert "failed: storcli precheck failed" in events[1].summary
 
 
 def _drive_show_payload(*, state: str, serial_number: str) -> dict[str, Any]:
@@ -1308,3 +1309,42 @@ def test_insert_rejects_exit_zero_without_controller_success(
         assert "replace step insert" in events[-1].summary
         assert "failed:" in events[-1].summary
         assert "succeeded" not in events[-1].summary
+
+
+@pytest.mark.parametrize("failure", ["audit", "state"])
+def test_insert_precheck_refuses_unsafe_state_or_failed_audit(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    failure: str,
+) -> None:
+    from megaraid_dashboard.storcli import StorcliNotAvailable
+
+    async def fake(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        assert args == ["/c0/e2/s0", "show", "all", "J"]
+        if failure == "audit":
+            raise StorcliNotAvailable("precheck unavailable")
+        return _drive_show_payload(state="Rbld", serial_number=_NEW_SERIAL)
+
+    def fail(**kwargs: Any) -> None:
+        raise SQLAlchemyError("audit unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake)
+    if failure == "audit":
+        monkeypatch.setattr(
+            "megaraid_dashboard.web.routes._record_insert_operator_action_sync", fail
+        )
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(app, serial_number=_NEW_SERIAL, state="UGood")
+        _seed_replace_missing_audit(app, outgoing_serial=_OUTGOING_SERIAL)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            json={"serial_number": _NEW_SERIAL},
+            headers=_csrf_request_headers(client, csrf_headers),
+        )
+        assert response.status_code == (500 if failure == "audit" else 409)
+        assert response.json()["error"] == (
+            "audit persistence failed"
+            if failure == "audit"
+            else "replacement insert requires a live UGood drive"
+        )

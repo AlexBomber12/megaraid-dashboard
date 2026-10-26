@@ -28,6 +28,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
+    monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
@@ -337,3 +338,35 @@ def test_locate_process_failures_are_audited_and_never_succeed(
             else:
                 assert len(events) == 1
                 assert events[0].summary.startswith(f"locate {action} drive 2:0 failed:")
+
+
+@pytest.mark.parametrize("audit_fails", [False, True])
+def test_locate_without_maintenance_never_invokes_controller(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    audit_fails: bool,
+) -> None:
+    async def forbidden(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("controller must not run outside maintenance")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", forbidden)
+    if audit_fails:
+
+        def fail(**kwargs: Any) -> None:
+            raise SQLAlchemyError("audit unavailable")
+
+        monkeypatch.setattr(
+            "megaraid_dashboard.web.routes._record_locate_operator_action_sync", fail
+        )
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        app.state.settings = app.state.settings.model_copy(update={"maintenance_mode": False})
+        response = client.post(
+            "/drives/2:0/locate/start", headers=_csrf_request_headers(client, csrf_headers)
+        )
+        assert response.status_code == (500 if audit_fails else 403)
+        with app.state.session_factory() as session:
+            events = list(session.scalars(select(Event)))
+            assert len(events) == (0 if audit_fails else 1)
+            if events:
+                assert "rejected: maintenance_mode required" in events[0].summary

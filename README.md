@@ -234,7 +234,7 @@ RoC temperature warning, critical, and hysteresis thresholds default to 95 C, 10
 
 ## Web UI
 
-The read-only server-side rendered UI has no frontend build step and no npm dependency.
+The server-side rendered UI starts in read-only mode and has no frontend build step or npm dependency.
 Routes:
 
 - `/` renders the main dashboard with the controller card, drive grid, recent activity, and
@@ -250,7 +250,8 @@ Routes:
 - `/drives/{enclosure}:{slot}/actions/mark-ubad`,
   `/drives/{enclosure}:{slot}/actions/mark-ugood`,
   `/drives/{enclosure}:{slot}/actions/spindown`, and
-  `/drives/{enclosure}:{slot}/actions/hotspare` run advanced drive actions.
+  `/drives/{enclosure}:{slot}/actions/hotspare` run advanced drive actions. These POST
+  requests require JSON `serial_number`; Hot Spare additionally requires integer `dg_id`.
 - `/drives/{enclosure_id}/{slot_id}/charts` renders only the chart fragment used by the
   Drive Detail range selector.
 - `/events` renders the read-only events log page.
@@ -259,6 +260,16 @@ Routes:
   pagination.
 - `/health` returns the health JSON used by smoke checks.
 - `/healthz` returns JSON liveness; 200 ok / 503 degraded; whitelisted from auth.
+
+All controller writes, including Locate and buzzer changes, require maintenance mode.
+The UI window authorizes writes; Stop and expiration revoke access across restarts.
+Before the first UI window, an explicit configured maintenance flag remains supported.
+Replacement and Mark as UBad also require destructive mode. Drive changes recheck the
+serial displayed to the operator against the snapshot and the live device. Controller
+acceptance is never proof of a physical LED, motor, buzzer, or rebuild result.
+
+See [operator safety coverage](docs/OPERATOR_SAFETY.md) and the separate
+[GET-only production smoke procedure](docs/PRODUCTION_READ_ONLY_SMOKE.md).
 
 Events are retained indefinitely while raw controller snapshots are pruned after 30 days.
 That means the Events page can show event history older than the oldest retained raw

@@ -318,16 +318,36 @@ def test_mutation_has_immediate_busy_feedback(
         if action.family == "locate"
         else page.locator(f'form[action="{action.path}"] button')
     )
+    # A fetch can navigate before Playwright's click returns. Observe the actual
+    # submit/send event synchronously, then read the observation after navigation.
+    # This does not replace the request, response, cookie, or CSRF behavior.
+    page.evaluate(
+        """path => {
+      sessionStorage.removeItem('safety-in-flight');
+      function observe(event) {
+        const el = event.detail?.elt || event.target;
+        const form = el.closest('form');
+        const endpoint = el.getAttribute('hx-post') || form?.getAttribute('action');
+        if (endpoint !== path) return;
+        const button = el.matches('button') ? el : el.querySelector('button');
+        const busy = Boolean(button?.disabled || el.getAttribute('aria-busy') === 'true' ||
+          el.classList.contains('htmx-request') || form?.getAttribute('aria-busy') === 'true' ||
+          form?.classList.contains('htmx-request'));
+        sessionStorage.setItem('safety-in-flight', String(busy));
+      }
+      document.addEventListener('submit', observe);
+      document.addEventListener('htmx:beforeSend', observe);
+    }""",
+        action.path,
+    )
     with page.expect_response(lambda r: r.url.endswith(action.path) and r.request.method == "POST"):
         button.click()
         if action.family == "advanced":
             page.locator("[data-cd-confirm]").click()
-        immediate_busy = button.evaluate("""el => Boolean(
-            el.disabled || el.getAttribute('aria-busy') === 'true' ||
-            el.classList.contains('htmx-request') ||
-            el.closest('form')?.classList.contains('htmx-request'))""")
     assert fake_storcli.mutations == [list(action.command)]
-    assert immediate_busy, "Mutating control must show in-flight state immediately"
+    assert page.evaluate("sessionStorage.getItem('safety-in-flight')") == "true", (
+        "Mutating control must show in-flight state immediately"
+    )
 
 
 def _operator_event_exists(database_url: str, summary_fragment: str) -> bool:

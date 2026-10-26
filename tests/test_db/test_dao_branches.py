@@ -269,7 +269,7 @@ def test_set_maintenance_state_rejects_naive_expires_at(session: Session) -> Non
         )
 
 
-def test_set_maintenance_state_inactive_deletes_state(session: Session) -> None:
+def test_set_maintenance_state_inactive_revokes_writes(session: Session) -> None:
     set_maintenance_state(
         session,
         active=True,
@@ -279,7 +279,7 @@ def test_set_maintenance_state_inactive_deletes_state(session: Session) -> None:
     session.flush()
     set_maintenance_state(session, active=False, expires_at=None, started_by=None)
     session.flush()
-    assert dao.get_state(session, "maintenance_mode") is None
+    assert not dao.get_maintenance_state(session, now=datetime.now(UTC)).active
 
 
 def test_insert_snapshot_skips_cachevault_when_absent(

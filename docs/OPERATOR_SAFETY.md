@@ -1,11 +1,11 @@
 # Operator control coverage and safety contract
 
-This inventory is for review against the rendered UI at `6385bfb` (main before the
-parallel locate fix and PR #125). The source baseline in `operator-controls.json`
-records **every button, form, input, select, link and disclosure** in templates and
-application JavaScript, including controls inside conditional templates and the
-JavaScript-created confirmation dialog. It is deliberately checked in rather
-than regenerated in CI. Review both files when a control changes.
+This inventory covers the current PR #127 implementation, including the existing
+locate acceptance fix from #126. The source baseline in `operator-controls.json`
+records every button, form, input, select, link and disclosure in templates and
+application JavaScript, including conditional controls and the generated
+confirmation dialog. Review both files when a control changes; CI never regenerates
+the baseline automatically.
 
 No test result here proves that an LED illuminated, a motor stopped, a buzzer
 sounded, metadata changed on disk, or a rebuild completed on the target firmware.
@@ -22,15 +22,15 @@ exact argument tuples in `tests/safety/scenarios.py`.
 
 | Operator control | Endpoint / expected side effect | Availability and refusal states | Existing coverage extended / added |
 | --- | --- | --- | --- |
-| Start Maintenance; duration (15/30/60/240/1440 minutes); required reason | POST `/maintenance/start`; persist active window, expiry, actor and audit; suppress alerts | Form only when inactive. Browser required reason; server rejects blank, <1 or >1440 duration. Audit failure must roll back state. The resulting UI window must authorize controller operations. | `tests/e2e/test_maintenance_flow.py`, `tests/test_web/test_maintenance_routes.py`, `tests/integration/test_operator_safety.py` |
+| Start Maintenance; duration (15/30/60/240/1440 minutes); required reason | POST `/maintenance/start`; persist active window, expiry, actor and audit; suppress alerts | Form only when inactive. Browser required reason; server rejects blank, <1 or >1440 duration. Audit failure must roll back state. The persisted UI window authorizes controller operations. Stop and expiration override a legacy configured write flag across workers and restarts. | `tests/e2e/test_maintenance_flow.py`, `tests/test_web/test_maintenance_routes.py`, `tests/integration/test_operator_safety.py` |
 | Stop Maintenance in controller section and global banner | POST `/maintenance/stop`; clear window; audit active-to-inactive transition | Buttons only during an active window; stop after stop is idempotent. Audit failure must roll back. Banner and controller form must agree after refresh. | Same maintenance suites; `tests/test_web/test_maintenance_banner.py` |
-| Blink Locate LED / Locate LED On; Stop Locate | POST `/drives/{e}:{s}/locate/start` and `/stop`; `/c0/eE/sS start/stop locate J`; audit controller result | Active LED changes start label and stop availability. Absent/unknown drive, no snapshot and refused controller status must not be presented as successful. Intended state/feedback assertions remain enabled while separate locate fix lands. | `tests/e2e/test_locate_flow.py`, `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_actions_routes.py`, integration result matrix |
+| Blink Locate LED / Locate LED On; Stop Locate | POST `/drives/{e}:{s}/locate/start` and `/stop`; `/c0/eE/sS start/stop locate J`; audit controller result | Active LED changes start label and stop availability. Absent/unknown drive, no snapshot and refused controller status must not be presented as successful. Explicit controller acceptance updates Blink/Stop immediately; physical LED state stays unverified. Maintenance is required. | `tests/e2e/test_locate_flow.py`, `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_actions_routes.py`, integration result matrix |
 | Buzzer Silence; Enabled; Disabled | POST `/controller/buzzer/silence`, `/enable`, `/disable`; `/c0 set alarm=silence/on/off J`; audit operational change | Maintenance required. On disables Enable; Off disables Disable. Unknown alarm state covered. Failed command leaves snapshot unchanged and presents refusal. | `tests/e2e/test_buzzer_control_flow.py`, `tests/e2e/test_control_availability.py`, `tests/test_web/test_buzzer_routes.py`, integration matrix |
 | Patrol Read Start / Stop; Switch to Auto / Manual | POST `/controller/patrol-read/start`, `/stop`, `/mode`; `/c0 start/stop patrolread J`, `/c0 set patrolread=on mode=auto/manual J` | Only when patrol status exists; Start ready/stopped, Stop active/paused/running, modes depend on current mode. Maintenance required; running/not-running conflict refused. API disable mode (`patrolread=off`) has existing service/route tests, no rendered disable control. | `tests/e2e/test_controller_operations.py`, `tests/test_web/test_routes_patrol_read_branches.py`, `tests/test_services/test_patrol_read.py`, integration matrix |
 | Consistency Check Start / Stop; Switch to Auto / Manual | POST `/controller/consistency-check/start`, `/stop`, `/mode`; `/c0/vall start/stop cc J`, `/c0 set consistencycheck=on mode=auto/manual J` | Only when CC status exists; ready/stopped vs running gates and maintenance. API VD-specific start has existing tests; UI targets all VDs. Read-only refresh must not manufacture snapshot updates. | Controller browser suite; `tests/test_web/test_routes_consistency_check_branches.py`, `tests/test_services/test_consistency_check.py`, integration matrix |
-| Spin Down | POST `/drives/{e}:{s}/actions/spindown`; `/c0/eE/sS spindown J` | Onln/UGood/UBad, maintenance, live state and identity check. It changes operational state even though shown under Configuration. Confirmation dialog Cancel must issue no request. | `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_advanced_routes.py`, integration matrix |
+| Spin Down | POST `/drives/{e}:{s}/actions/spindown`; `/c0/eE/sS spindown J` | Onln/UGood/UBad, maintenance, live state and identity check; the request carries the serial displayed on the page. It changes operational state even though shown under Configuration. Confirmation dialog Cancel must issue no request. | `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_advanced_routes.py`, integration matrix |
 | Hot Spare | POST `/drives/{e}:{s}/actions/hotspare`; `/c0/eE/sS add hotsparedrive dgs=0 J` | UGood, existing target DG, maintenance, live state/identity. Missing DG disables with reason. Target DG bounds and wrong DG refused. | Advanced browser/route suites; integration matrix |
-| Mark as UBad; Mark as UGood | POST `/drives/{e}:{s}/actions/mark-ubad`, `/mark-ugood`; `/c0/eE/sS set bad/good J` | UGood→UBad and UBad→UGood only. State mismatch disables with explanation. Maintenance and live identity apply; UBad additionally requires the destructive flag and typed serial confirmation; wrong serial keeps dialog Confirm disabled. Cancel must preserve DB and trace. | Advanced browser/route suites; integration matrix |
+| Mark as UBad; Mark as UGood | POST `/drives/{e}:{s}/actions/mark-ubad`, `/mark-ugood`; `/c0/eE/sS set bad/good J` | UGood→UBad and UBad→UGood only. State mismatch disables with explanation. Maintenance and both submitted/snapshot/live identity checks apply; UBad additionally requires the destructive flag and typed serial confirmation; wrong serial keeps dialog Confirm disabled. Cancel must preserve DB and trace. | Advanced browser/route suites; integration matrix |
 | Begin Replacement; Continue; Cancel | Local wizard controls; no mutation until confirmed step | Drive exists. Initial Cancel focuses entry button. Serial must match visible outgoing drive; dry-run checked by default. Wizard must disable while running and block old identity after a live refresh. | `tests/e2e/test_replace_wizard_flow.py`, `tests/e2e/test_drive_detail_page.py`, `tests/e2e/test_live_refresh.py`, `tests/test_web/test_drive_replace_ui.py` |
 | Set Offline & Missing (Step 1 runs two endpoints) | POST `/drives/{e}:{s}/replace/offline`, `/missing`; `/c0/eE/sS set offline/missing J`; separate audits | Offline: Onln/Offln/Failed/UBad/UGood; Missing: Offln. Maintenance + destructive flag, persisted and live serial, live state. Failure in Offline stops Missing. Dry runs validate without executing anything or adding audit rows. | Replacement browser suite; `tests/test_web/test_drive_replace_routes.py`, integration matrix |
 | New Drive Inserted; new serial; dry-run checkbox | Local stage transition plus GET `/drives/{e}:{s}/replace/topology` | Server-derived DG/array/row. Replacement serial must differ from outgoing serial. Topology failures leave Insert disabled. Existing tests cover identity changes and refresh during wizard. | Replacement browser suite; `tests/test_web/test_drive_replace_step3.py`, `tests/e2e/test_live_refresh.py` |
@@ -79,35 +79,40 @@ restricted to the exact temporary fake path, with sudo forbidden. Outbound socke
 connections are restricted to loopback, browser external requests are blocked, and
 SQLAlchemy connection/query guards reject databases outside the pytest temporary
 root. No real StorCLI, production data, SMTP or Telegram transport is allowed.
+Legacy unit-test metrics listeners use a per-test ephemeral port so parallel checkouts
+cannot compete for the production default; the default-port assertion remains explicit.
 Fake call traces contain command arguments only; no authentication headers,
 cookies, password hashes or real credentials are written to artifacts.
 
-## Product defects to track
+## Enforced application behavior
 
-These are intended failing acceptance assertions, not skips or xfails:
+The safety assertions remain enabled, without skips, xfails, or a reduced coverage
+threshold. The application now enforces the failures originally exposed by them:
 
-- Locate currently treats JSON Failure as HTTP success and produces generic Sent
-  feedback; error/stop/button-state handling belongs to the parallel locate fix.
-- Missing/unknown Command Status is accepted as success across mutation families.
-  Replacement also accepts explicit JSON Failure. Audit rows can falsely say succeeded.
-- Advanced actions compare live state but not the live serial against the displayed
-  drive. The destructive UBad route does not enforce the destructive flag.
-- UI availability disagrees with server rules for UBad Spin Down and Failed Mark as UGood.
-- The maintenance UI persists a database window, while controller routes inspect
-  the separate settings flag. A started UI window does not authorize writes.
-- Patrol Read and Consistency Check view-model loaders always return `None`, so
-  their state-dependent controls cannot currently be reached in the real browser.
-- Foreign/maintenance HTMX refusals are not put in the operator-visible result
-  region on 4xx/5xx. An HTTP refusal alone is insufficient feedback.
-- Advanced/buzzer submissions have no immediate in-flight feedback.
-- Replacement insert does not reject a live rebuilding drive.
-- Locate and some drive precheck refusals omit a failed/rejected audit outcome.
+- Locate and replacement require explicit JSON Success and truthful audit outcomes.
+  Missing or unknown status is rejected for mutations and live safety prechecks.
+- Every controller write requires effective maintenance authorization. Starting the
+  UI window enables writes; expiration and Stop revoke them durably. An inactive
+  state record is retained so a configured startup flag cannot reactivate a stopped
+  window in another worker or after restart. The explicit configured flag remains
+  a compatibility fallback only before any UI window exists.
+- Advanced actions carry the displayed serial, compare it with the latest snapshot,
+  and recheck live serial and state. UBad additionally requires destructive mode
+  and browser typed confirmation. Insert refuses a live drive that is not UGood.
+- Failed drive prechecks are audited; audit failure returns HTTP 500. Successful
+  controller commands cannot fabricate collected snapshot changes.
+- Patrol Read and Consistency Check are populated by optional read-only collector
+  probes. Only normalized operation state is retained when full raw storage is off.
+  Unsupported or failed probes produce unknown/unavailable state, rather than idle.
+- HTMX refusals appear as text in the operator's result/alert region. Controller and
+  advanced-drive forms show immediate busy state and prevent repeated submission.
+- The drive UI and server use the same allowed states. Configuration is an
+  operational grouping, not a safety claim: labels such as Safe or Read-only on
+  mutating controls are rejected by rendered-label assertions.
 
-Configuration is not a safety classification. Spin Down, Hot Spare and all other
-listed POST controls change operational state. A label such as Safe or
-Read-only on these controls is a product defect; rendered label assertions reject it.
-Do not loosen assertions to accommodate these issues. Fix them in separately
-reviewed product changes, then rerun the full suite.
+A named foreign-query Failure that explicitly means no foreign configuration is
+still the documented absent case. It never permits import/clear. Missing/unknown
+status and all other failures remain refused, and no mutation follows them.
 
 ## Running and reviewing
 
@@ -129,7 +134,7 @@ and Chromium CI then exercise each scenario. Static inventory includes hidden
 conditional branches so a new state-only control cannot evade the guard.
 
 Before requesting merge: rebase this branch on main **after the locate fix (#126) merges**,
-resolve inventory and fixture conflicts with the actual final UI, review the
+resolve inventory and fixture conflicts without discarding assertions, review the
 matrix, and rerun complete CI, isolated integration and Chromium. Keep PR #125 and
 the locate branch untouched. This PR must remain unmerged while acceptance failures
 remain. The read-only production procedure is separate: `PRODUCTION_READ_ONLY_SMOKE.md`.
