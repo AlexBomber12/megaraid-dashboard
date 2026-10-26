@@ -155,11 +155,12 @@ def test_degraded_virtual_drive_reaches_critical_email_threshold(
     assert f"VD 0 state changed from Optl to {state}" in message.body_text
 
 
-def test_newly_discovered_healthy_virtual_drive_emits_no_event() -> None:
+def test_newly_discovered_healthy_virtual_drive_records_presence() -> None:
     previous = _previous()
     previous.virtual_drives = []
 
-    assert _detector().detect(previous, _current()) == []
+    events = _detector().detect(previous, _current())
+    assert [(e.severity, e.after) for e in events] == [("info", {"present": True, "state": "Optl"})]
 
 
 @pytest.mark.parametrize(
@@ -184,10 +185,11 @@ def test_newly_discovered_faulty_virtual_drive_emits_event(
     events = _detector().detect(previous, current)
 
     assert [(event.severity, event.category, event.subject, event.summary) for event in events] == [
-        (severity, "vd_state", "VD 1", f"VD 1 state is {state}")
+        ("info", "vd_state", "VD 1", "VD 1 detected"),
+        (severity, "vd_state", "VD 1", f"VD 1 state is {state}"),
     ]
-    assert events[0].before is None
-    assert events[0].after == {"state": state}
+    assert events[1].before is None
+    assert events[1].after == {"state": state}
 
 
 @pytest.mark.parametrize(
@@ -428,7 +430,9 @@ def test_slot_disappearance_clears_temperature_state(session: Session) -> None:
     events = detector.detect(_previous(), current)
     _persist_temperature_transitions(session, detector)
 
-    assert events == []
+    assert [(e.category, e.after) for e in events] == [
+        ("pd_state", {"present": False, "state": "Missing", "serial_number": "SN0001"})
+    ]
     assert _stored_temp_state(session) is None
 
 
@@ -449,7 +453,9 @@ def test_new_drive_after_empty_slot_clears_stale_temperature_state(session: Sess
     events = detector.detect(previous, _current(serial_number="NEW-SN"))
     _persist_temperature_transitions(session, detector)
 
-    assert events == []
+    assert [(e.severity, e.after) for e in events] == [
+        ("info", {"present": True, "state": "Onln", "serial_number": "NEW-SN"})
+    ]
     assert _stored_temp_state(session, serial_number="OLD-SN") is None
     assert _stored_temp_state(session, serial_number="NEW-SN") == "ok"
 
@@ -461,7 +467,8 @@ def test_new_drive_after_empty_slot_failed_state_emits_critical_event() -> None:
     events = _detector().detect(previous, _current(serial_number="NEW-SN", pd_state="Failed"))
 
     assert [(event.severity, event.category, event.summary) for event in events] == [
-        ("critical", "pd_state", "PD e252:s4 state is Failed")
+        ("info", "pd_state", "PD e252:s4 detected"),
+        ("critical", "pd_state", "PD e252:s4 state is Failed"),
     ]
 
 
@@ -500,6 +507,7 @@ def test_cachevault_replacement_required_emits_critical_event() -> None:
 
 def test_cachevault_disappearance_emits_critical_event() -> None:
     current = _current().model_copy(update={"cachevault": None})
+    current.controller.cv_present = False
 
     events = _detector().detect(_previous(cv_state="Optimal"), current)
 
@@ -513,6 +521,7 @@ def test_cachevault_disappearance_emits_critical_event() -> None:
 def test_cachevault_appearance_emits_presence_and_baseline_health_events() -> None:
     previous = _previous()
     previous.cachevault = None
+    previous.cv_present = False
 
     events = _detector().detect(
         previous,
@@ -813,39 +822,99 @@ def _virtual_drive(vd_id: int, state: str) -> VirtualDrive:
 
 
 @pytest.mark.parametrize("vd_state", ["Optl", "Dgrd", "OfLn"])
-def test_disappeared_drive_only_has_indirect_array_coverage(vd_state: str) -> None:
-    # A real disappearance is an absent entry, not a fabricated Missing state.
+def test_disappeared_drive_has_direct_critical_coverage(vd_state: str) -> None:
     current = _current(vd_state=vd_state).model_copy(update={"physical_drives": []})
     events = _detector().detect(_previous(), current)
-    expected = [] if vd_state == "Optl" else [("critical", "vd_state")]
-    assert [(event.severity, event.category) for event in events] == expected
+    missing = next(e for e in events if e.category == "pd_state")
+    assert missing.severity == "critical"
+    assert missing.after == {"present": False, "state": "Missing", "serial_number": "SN0001"}
+    assert len(events) == (1 if vd_state == "Optl" else 2)
 
 
-@pytest.mark.parametrize("state", ["failed", " FAILED ", "missing", " Missing ", "offline"])
-def test_existing_disk_classification_is_case_sensitive(state: str) -> None:
-    # Characterize the detection limit; formatter normalization must not broaden policy.
-    assert _detector().detect(None, _current(pd_state=state)) == []
-    events = _detector().detect(_previous(), _current(pd_state=state))
-    assert [(event.severity, event.category) for event in events] == [("info", "pd_state")]
+@pytest.mark.parametrize(
+    "state", ["failed", " FAILED ", "missing", " Missing ", "offline", " msng ", " OFFLN "]
+)
+def test_disk_aliases_are_critical_at_baseline_and_transition(state: str) -> None:
+    for previous in (None, _previous()):
+        events = _detector().detect(previous, _current(pd_state=state))
+        assert [(event.severity, event.category) for event in events] == [("critical", "pd_state")]
 
 
-def test_initial_controller_overheating_without_crossing_is_not_detected() -> None:
+def test_initial_controller_overheating_and_unchanged_high_reading() -> None:
     current = _current(roc_temperature_celsius=110)
-    assert _detector().detect(None, current) == []
-    assert _detector().detect(_previous(roc_temperature_celsius=110), current) == []
-    events = _detector().detect(_previous(roc_temperature_celsius=None), current)
+    events = _detector().detect(None, current)
     assert [(event.severity, event.category) for event in events] == [
         ("warning", "controller_temperature"),
         ("critical", "controller_temperature"),
     ]
+    assert _detector().detect(_previous(roc_temperature_celsius=110), current) == []
+    assert _detector().detect(_previous(roc_temperature_celsius=None), current) == events
 
 
-def test_removed_array_and_drive_produce_no_disappearance_event() -> None:
+def test_removed_array_and_drive_produce_critical_disappearance_events() -> None:
     current = _current().model_copy(update={"physical_drives": [], "virtual_drives": []})
-    assert _detector().detect(_previous(), current) == []
+    events = _detector().detect(_previous(), current)
+    assert [(e.severity, e.category, e.after["present"]) for e in events] == [
+        ("critical", "vd_state", False),
+        ("critical", "pd_state", False),
+    ]
 
 
 @pytest.mark.parametrize("state", ["optimal", " Optimal ", "optl"])
-def test_existing_cachevault_classification_does_not_normalize_healthy_aliases(state: str) -> None:
-    events = _detector().detect(None, _current(cv_state=state))
-    assert [(event.severity, event.category) for event in events] == [("critical", "cv_state")]
+def test_cachevault_healthy_aliases_are_healthy(state: str) -> None:
+    assert _detector().detect(None, _current(cv_state=state)) == []
+    assert _detector().detect(_previous(), _current(cv_state=state)) == []
+
+
+@pytest.mark.parametrize(
+    ("kind", "before", "after"),
+    [
+        ("pd", "Missing", " msng "),
+        ("pd", "Offline", " OFFLN "),
+        ("cv", "Optimal", " optl "),
+        ("cv", "Degraded", " DGRD "),
+        ("vd", "Degraded", " DGRD "),
+        ("vd", "Offline", " ofln "),
+    ],
+)
+def test_semantically_unchanged_states_do_not_repeat(kind: str, before: str, after: str) -> None:
+    assert (
+        _detector().detect(
+            _previous(**{f"{kind}_state": before}), _current(**{f"{kind}_state": after})
+        )
+        == []
+    )
+
+
+def test_unknown_disk_state_does_not_claim_a_known_failure() -> None:
+    assert _detector().detect(None, _current(pd_state=" mysterious ")) == []
+    events = _detector().detect(_previous(), _current(pd_state=" mysterious "))
+    assert len(events) == 1 and events[0].severity == "info"
+
+
+def test_unknown_cachevault_probe_does_not_create_loss() -> None:
+    current = _current().model_copy(update={"cachevault": None})
+    assert _detector().detect(_previous(), current) == []
+
+
+@pytest.mark.parametrize("state", ["Optimal", "Degraded"])
+def test_legacy_unknown_cv_health_does_not_invent_presence_recovery(state: str) -> None:
+    previous = _previous()
+    previous.cachevault = None
+    events = _detector().detect(previous, _current(cv_state=state))
+    assert all("present" not in (e.after or {}) for e in events)
+    assert len(events) == (0 if state == "Optimal" else 1)
+
+
+@pytest.mark.parametrize("previous_present", [False, True])
+def test_known_absence_after_legacy_cv_unknown_health(previous_present: bool) -> None:
+    previous = _previous()
+    previous.cachevault = None
+    previous.cv_present = previous_present
+    current = _current().model_copy(update={"cachevault": None})
+    current.controller.cv_present = False
+    events = _detector().detect(previous, current)
+    assert len(events) == int(previous_present)
+    if events:
+        assert events[0].before == {"present": True}
+        assert events[0].after == {"present": False}

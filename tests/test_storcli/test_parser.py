@@ -95,8 +95,9 @@ def test_parse_cachevault_success() -> None:
     assert cachevault.capacitance_percent == 89
 
 
-def test_parse_cachevault_from_bbu_failure_returns_none() -> None:
-    assert parse_cachevault(load_fixture("bbu_show_all.json")) is None
+def test_parse_cachevault_unsupported_probe_is_unknown() -> None:
+    with pytest.raises(StorcliCommandFailed):
+        parse_cachevault(load_fixture("bbu_show_all.json"))
 
 
 def test_parse_cachevault_raises_on_unexpected_failure() -> None:

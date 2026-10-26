@@ -13,6 +13,7 @@ from megaraid_dashboard.storcli import (
     StorcliSnapshot,
     VirtualDrive,
 )
+from megaraid_dashboard.storcli.states import normalized_state
 
 _LOG = structlog.get_logger(__name__)
 
@@ -115,7 +116,6 @@ class EventDetector:
 
         if previous is not None:
             events.extend(self._detect_controller(previous, current))
-            events.extend(self._detect_roc_temperature(previous, current))
             events.extend(self._detect_virtual_drives(previous, current))
             replacement_events, replaced_slots = self._detect_drive_replacements(
                 previous,
@@ -127,6 +127,7 @@ class EventDetector:
         else:
             events.extend(self._detect_baseline(current))
 
+        events.extend(self._detect_roc_temperature(previous, current))
         events.extend(self._detect_temperatures(previous, current, replaced_slots))
         events.extend(self._detect_foreign_config(current.foreign_config))
         # Persist disk identity with the event, beyond raw-snapshot retention. A slot
@@ -229,10 +230,10 @@ class EventDetector:
 
     def _detect_roc_temperature(
         self,
-        previous: ControllerSnapshot,
+        previous: ControllerSnapshot | None,
         current: StorcliSnapshot,
     ) -> list[DetectedEvent]:
-        previous_temperature = previous.roc_temperature_celsius
+        previous_temperature = previous.roc_temperature_celsius if previous is not None else None
         current_temperature = current.controller.roc_temperature_celsius
         if current_temperature is None:
             _LOG.info(
@@ -332,7 +333,18 @@ class EventDetector:
         events: list[DetectedEvent] = []
         for previous_drive in previous.virtual_drives:
             current_drive = current_by_id.get(previous_drive.vd_id)
-            if current_drive is None or previous_drive.state == current_drive.state:
+            if current_drive is None:
+                events.append(
+                    _presence_event(
+                        category="vd_state",
+                        subject=f"VD {previous_drive.vd_id}",
+                        present=False,
+                        state="Offline",
+                        previous_state=previous_drive.state,
+                    )
+                )
+                continue
+            if normalized_state(previous_drive.state) == normalized_state(current_drive.state):
                 continue
             events.append(
                 DetectedEvent(
@@ -350,6 +362,14 @@ class EventDetector:
         for current_drive in current.virtual_drives:
             if current_drive.vd_id in previous_ids:
                 continue
+            events.append(
+                _presence_event(
+                    category="vd_state",
+                    subject=f"VD {current_drive.vd_id}",
+                    present=True,
+                    state=current_drive.state,
+                )
+            )
             new_drive_event = _new_virtual_drive_event(current_drive)
             if new_drive_event is not None:
                 events.append(new_drive_event)
@@ -366,9 +386,19 @@ class EventDetector:
         current_slots = {(drive.enclosure_id, drive.slot_id) for drive in current.physical_drives}
         events: list[DetectedEvent] = []
         replaced_slots: set[SlotKey] = set()
-        for slot_key in previous_by_slot:
+        for slot_key, absent_drive in previous_by_slot.items():
             if slot_key not in current_slots:
                 self._temperature_clears.add(slot_key)
+                events.append(
+                    _presence_event(
+                        category="pd_state",
+                        subject=_physical_drive_subject(absent_drive),
+                        present=False,
+                        state="Missing",
+                        previous_state=absent_drive.state,
+                        serial=absent_drive.serial_number,
+                    )
+                )
 
         for current_drive in current.physical_drives:
             slot_key = (current_drive.enclosure_id, current_drive.slot_id)
@@ -376,6 +406,15 @@ class EventDetector:
             if previous_drive is None:
                 self._temperature_clears.add(slot_key)
                 replaced_slots.add(slot_key)
+                events.append(
+                    _presence_event(
+                        category="pd_state",
+                        subject=_physical_drive_subject(current_drive),
+                        present=True,
+                        state=current_drive.state,
+                        serial=current_drive.serial_number,
+                    )
+                )
                 continue
             if previous_drive.serial_number == current_drive.serial_number:
                 continue
@@ -413,7 +452,7 @@ class EventDetector:
                 events.extend(_new_physical_drive_events(current_drive))
                 continue
             if slot_key in replaced_slots:
-                if previous_drive.state != current_drive.state:
+                if normalized_state(previous_drive.state) != normalized_state(current_drive.state):
                     events.append(_physical_drive_state_event(previous_drive, current_drive))
                     events.extend(_new_counter_events(current_drive))
                     if current_drive.smart_alert:
@@ -421,7 +460,7 @@ class EventDetector:
                 else:
                     events.extend(_new_physical_drive_events(current_drive))
                 continue
-            if previous_drive.state != current_drive.state:
+            if normalized_state(previous_drive.state) != normalized_state(current_drive.state):
                 events.append(_physical_drive_state_event(previous_drive, current_drive))
             events.extend(_counter_events(previous_drive, current_drive))
             if current_drive.smart_alert and not previous_drive.smart_alert:
@@ -552,34 +591,44 @@ class EventDetector:
         events: list[DetectedEvent] = []
         previous_cachevault = previous.cachevault
         current_cachevault = current.cachevault
-        if previous_cachevault is None:
-            if current_cachevault is None:
-                return []
-            events.append(
-                DetectedEvent(
-                    severity="info",
-                    category="cv_state",
-                    subject="CacheVault",
-                    summary="CacheVault detected",
-                    before={"present": False},
-                    after={"present": True, "state": current_cachevault.state},
-                )
-            )
-            events.extend(self._new_cachevault_events(current_cachevault))
-            return events
+        # Legacy snapshots may have a failed CV probe but a positive controller flag.
+        # This is unknown, never absence. New collector snapshots reject this combination.
+        if current_cachevault is None and current.controller.cv_present:
+            return []
         if current_cachevault is None:
+            if previous_cachevault is None and not previous.cv_present:
+                return []
+            before: dict[str, Any] = {"present": True}
+            if previous_cachevault is not None:
+                before["state"] = previous_cachevault.state
             return [
                 DetectedEvent(
                     severity="critical",
                     category="cv_state",
                     subject="CacheVault",
                     summary="CacheVault no longer detected",
-                    before={"present": True, "state": previous_cachevault.state},
+                    before=before,
                     after={"present": False},
                 )
             ]
+        if previous_cachevault is None:
+            if not previous.cv_present:
+                events.append(
+                    DetectedEvent(
+                        severity="info",
+                        category="cv_state",
+                        subject="CacheVault",
+                        summary="CacheVault detected",
+                        before={"present": False},
+                        after={"present": True, "state": current_cachevault.state},
+                    )
+                )
+            events.extend(self._new_cachevault_events(current_cachevault))
+            return events
 
-        if previous_cachevault.state != current_cachevault.state:
+        if normalized_state(previous_cachevault.state) != normalized_state(
+            current_cachevault.state
+        ):
             events.append(
                 DetectedEvent(
                     severity=_cachevault_state_severity(current_cachevault.state),
@@ -689,7 +738,7 @@ _VD_CRITICAL_STATES = frozenset(
 
 
 def virtual_drive_state_severity(state: str) -> str:
-    normalized = state.strip().casefold()
+    normalized = normalized_state(state)
     if normalized in _VD_INFO_STATES:
         return "info"
     if normalized in _VD_CRITICAL_STATES:
@@ -809,12 +858,11 @@ def _smart_alert_event(
 
 
 def physical_drive_state_severity(previous_state: str, current_state: str) -> str:
-    if current_state in {"Failed", "Missing", "Msng", "Offline", "Offln"}:
+    normalized = normalized_state(current_state)
+    if normalized in {"failed", "missing", "offline"}:
         return "critical"
-    if current_state in {"JBOD", "UGood", "UBad"}:
+    if normalized in {"jbod", "ugood", "ubad"}:
         return "warning"
-    if previous_state == "Onln" or current_state == "Onln":
-        return "info"
     return "info"
 
 
@@ -823,7 +871,7 @@ _physical_drive_state_severity = physical_drive_state_severity
 
 
 def _cachevault_state_severity(state: str) -> str:
-    if state in {"Optimal", "Optl"}:
+    if normalized_state(state) == "optimal":
         return "info"
     return "critical"
 
@@ -890,3 +938,25 @@ def _physical_drive_subject(drive: PhysicalDrive | PhysicalDriveSnapshot) -> str
 
 def _drive_key(drive: PhysicalDrive) -> DriveKey:
     return drive.enclosure_id, drive.slot_id, drive.serial_number
+
+
+def _presence_event(
+    *,
+    category: str,
+    subject: str,
+    present: bool,
+    state: str,
+    previous_state: str | None = None,
+    serial: str | None = None,
+) -> DetectedEvent:
+    after: dict[str, Any] = {"present": present, "state": state}
+    if serial is not None:
+        after["serial_number"] = serial
+    return DetectedEvent(
+        severity="info" if present else "critical",
+        category=category,
+        subject=subject,
+        summary=f"{subject} {'detected' if present else 'no longer detected'}",
+        before={"present": not present, "state": previous_state},
+        after=after,
+    )

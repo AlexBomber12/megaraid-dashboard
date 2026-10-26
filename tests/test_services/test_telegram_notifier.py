@@ -786,6 +786,9 @@ def test_degraded_array_from_detector_reaches_telegram(
     )
     current = sample_snapshot.model_copy(
         update={
+            "controller": sample_snapshot.controller.model_copy(
+                update={"roc_temperature_celsius": 80}
+            ),
             "virtual_drives": [
                 VirtualDrive(
                     vd_id=0,
@@ -796,7 +799,7 @@ def test_degraded_array_from_detector_reaches_telegram(
                     access="RW",
                     cache="RWBD",
                 )
-            ]
+            ],
         }
     )
     for detected in detector.detect(None, current):

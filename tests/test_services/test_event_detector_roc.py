@@ -9,8 +9,11 @@ from megaraid_dashboard.services.event_detector import EventDetector
 from megaraid_dashboard.storcli import ControllerInfo, StorcliSnapshot
 
 
-def test_roc_temperature_warm_up_has_no_event() -> None:
-    assert _detector().detect(None, _current(98)) == []
+def test_roc_temperature_first_reading_starts_warning() -> None:
+    events = _detector().detect(None, _current(98))
+    assert len(events) == 1
+    assert events[0].severity == "warning"
+    assert events[0].after == {"roc_temperature_celsius": 98}
 
 
 @pytest.mark.parametrize(

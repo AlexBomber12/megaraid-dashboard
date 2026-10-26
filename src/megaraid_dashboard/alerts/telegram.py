@@ -17,9 +17,6 @@ from megaraid_dashboard.config import Settings
 
 _LOG = structlog.get_logger(__name__)
 
-RUNBOOK_URL = (
-    "https://github.com/AlexBomber12/knowledge-vault/blob/main/20-homelab/notifications/megaraid.md"
-)
 TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 TELEGRAM_RETRY_AFTER_MAX_SECONDS = 3600
@@ -137,7 +134,6 @@ class TelegramTransport:
             "chat_id": self._config.chat_id,
             "text": text,
             "disable_web_page_preview": True,
-            "reply_markup": {"inline_keyboard": [[{"text": "Инструкция", "url": RUNBOOK_URL}]]},
         }
         start = time.monotonic()
         state = _ResponseState()

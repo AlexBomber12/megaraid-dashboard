@@ -900,3 +900,15 @@ def test_ensure_command_succeeded_no_raise_on_success() -> None:
     from megaraid_dashboard.storcli import ensure_command_succeeded
 
     ensure_command_succeeded(success_payload({}))
+
+
+@pytest.mark.parametrize("rows", [[], {}, [None, None]])
+def test_physical_inventory_never_silently_skips_malformed_drive_blocks(rows: Any) -> None:
+    with pytest.raises(StorcliParseError):
+        parse_physical_drives(success_payload({"Drive /c0/e252/s0": rows}))
+
+
+def test_malformed_command_status_is_monitoring_uncertainty() -> None:
+    payload = {"Controllers": [{"Command Status": None}]}
+    with pytest.raises(StorcliParseError, match="status is malformed"):
+        parse_virtual_drives(payload)
