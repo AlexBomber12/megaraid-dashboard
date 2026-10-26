@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from megaraid_dashboard.config import Settings
+from megaraid_dashboard.services.drive_actions import (
+    parse_consistency_check_status,
+    parse_patrol_read_status,
+)
 from megaraid_dashboard.storcli import (
     ForeignConfig,
     StorcliError,
     StorcliParseError,
     StorcliSnapshot,
+    ensure_command_succeeded,
     parse_bbu,
     parse_cachevault,
     parse_controller_show_all,
@@ -80,6 +86,22 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
         "bbu": bbu_payload,
         "foreign_config": foreign_config_payload,
     }
+    # Optional read-only operation probes. Unknown/unsupported state must not be
+    # presented as an idle operation or prevent inventory collection.
+    try:
+        patrol = await _run(settings, "/c0 show patrolread")
+        ensure_command_succeeded(patrol)
+        raw_payload["patrol_read"] = asdict(parse_patrol_read_status(patrol))
+    except StorcliError:
+        raw_payload["patrol_read"] = None
+    try:
+        cc = await _run(settings, "/c0 show cc")
+        ensure_command_succeeded(cc)
+        progress = await _run(settings, "/c0/vall show cc")
+        ensure_command_succeeded(progress)
+        raw_payload["consistency_check"] = asdict(parse_consistency_check_status(cc, progress))
+    except StorcliError:
+        raw_payload["consistency_check"] = None
     return snapshot, raw_payload
 
 

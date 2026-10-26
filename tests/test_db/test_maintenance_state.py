@@ -57,7 +57,7 @@ def test_maintenance_state_expired_payload_reads_inactive(session: Session) -> N
     assert state.started_by == "admin"
 
 
-def test_setting_maintenance_inactive_deletes_row(session: Session) -> None:
+def test_setting_maintenance_inactive_persists_revocation(session: Session) -> None:
     set_maintenance_state(
         session,
         active=True,
@@ -69,7 +69,8 @@ def test_setting_maintenance_inactive_deletes_row(session: Session) -> None:
     set_maintenance_state(session, active=False, expires_at=None, started_by=None)
     session.commit()
 
-    assert get_state(session, "maintenance_mode") is None
+    assert get_state(session, "maintenance_mode") is not None
+    assert not get_maintenance_state(session, now=datetime.now(UTC)).active
 
 
 def test_maintenance_state_rejects_naive_now(session: Session) -> None:
@@ -84,4 +85,31 @@ def test_set_maintenance_state_rejects_naive_expires_at(session: Session) -> Non
             active=True,
             expires_at=datetime(2026, 5, 4, 12, 0),
             started_by="admin",
+        )
+
+
+@pytest.mark.parametrize("window", ["active", "expired", "stopped"])
+def test_persisted_window_controls_write_authorization_after_restart(
+    session: Session,
+    window: str,
+) -> None:
+    from megaraid_dashboard.db.dao import maintenance_writes_enabled
+
+    now = datetime.now(UTC)
+    set_maintenance_state(
+        session,
+        active=True,
+        expires_at=now + timedelta(minutes=15)
+        if window == "active"
+        else now - timedelta(minutes=1),
+        started_by="operator",
+    )
+    if window == "stopped":
+        set_maintenance_state(session, active=False, expires_at=None, started_by=None)
+    session.commit()
+    with Session(session.get_bind()) as restarted:
+        # UI Start authorizes a read-only startup; Stop and expiry revoke even a
+        # legacy configured write flag, including in another worker after restart.
+        assert maintenance_writes_enabled(restarted, configured=window != "active", now=now) == (
+            window == "active"
         )

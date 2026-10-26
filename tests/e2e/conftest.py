@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import contextlib
 import os
-import re
 import socket
+import subprocess
 import threading
 import time
 from collections.abc import Iterator
@@ -38,6 +38,8 @@ from fastapi import FastAPI
 from playwright.sync_api import Browser, Page, expect
 from sqlalchemy.engine import Engine
 
+from tests.safety.harness import FakeStorcli
+
 E2E_ADMIN_USERNAME = "e2e-admin"
 E2E_ADMIN_PASSWORD = "e2e-test-pass-1234"
 E2E_ADMIN_PASSWORD_HASH = bcrypt.hashpw(
@@ -45,7 +47,6 @@ E2E_ADMIN_PASSWORD_HASH = bcrypt.hashpw(
     bcrypt.gensalt(rounds=4),
 ).decode()
 
-_CSRF_COOKIE_RE = re.compile(r"__Host-csrf=([A-Za-z0-9_-]+)")
 _SERVER_STARTUP_POLL_INTERVAL_SECONDS = 0.1
 _SERVER_STARTUP_TIMEOUT_SECONDS = 10.0
 _SERVER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
@@ -104,6 +105,9 @@ def _build_env(
         "METRICS_INTERVAL_SECONDS": "300",
         "LOG_LEVEL": "WARNING",
         "COLLECTOR_ENABLED": "false",
+        "TELEGRAM_ENABLED": "false",
+        "MAINTENANCE_MODE": "false",
+        "DESTRUCTIVE_MODE": "false",
         "METRICS_ENABLED": "false",
         "AUTH_RATE_LIMIT_PER_MINUTE": "5",
         "AUTH_RATE_LIMIT_BURST": "0",
@@ -163,16 +167,52 @@ def _live_server_handle(_e2e_session_env: dict[str, str]) -> Iterator[_LiveServe
     instead of hanging. Shutdown signals ``server.should_exit`` and joins the
     worker thread with a matching timeout.
     """
-    from megaraid_dashboard.app import create_app
+    from megaraid_dashboard import app as app_module
+    from megaraid_dashboard.config import Settings
 
-    app = create_app()
+    # Explicit defaults and values override inherited environment, and .env is never read.
+    values = {
+        name: field.default
+        for name, field in Settings.model_fields.items()
+        if not field.is_required()
+    }
+    values.update({name.lower(): value for name, value in _e2e_session_env.items()})
+    settings = Settings(_env_file=None, **values)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(app_module, "get_settings", lambda: settings)
+        app = app_module.create_app()
     port = _free_port()
+    tls_dir = Path(_e2e_session_env["STORCLI_PATH"]).parent
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-keyout",
+            str(tls_dir / "key.pem"),
+            "-out",
+            str(tls_dir / "cert.pem"),
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1,DNS:localhost",
+        ],
+        check=True,
+        capture_output=True,
+    )
     config = uvicorn.Config(
         app=app,
         host="127.0.0.1",
         port=port,
         log_level="warning",
         lifespan="on",
+        ssl_keyfile=str(tls_dir / "key.pem"),
+        ssl_certfile=str(tls_dir / "cert.pem"),
     )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, name="e2e-uvicorn", daemon=True)
@@ -194,7 +234,7 @@ def _live_server_handle(_e2e_session_env: dict[str, str]) -> Iterator[_LiveServe
         time.sleep(_SERVER_STARTUP_POLL_INTERVAL_SECONDS)
 
     try:
-        yield _LiveServerHandle(app=app, url=f"http://127.0.0.1:{port}")
+        yield _LiveServerHandle(app=app, url=f"https://127.0.0.1:{port}")
     finally:
         server.should_exit = True
         thread.join(timeout=_SERVER_SHUTDOWN_TIMEOUT_SECONDS)
@@ -307,16 +347,30 @@ def authenticated_page(
     test_admin_creds: dict[str, str],
 ) -> Iterator[Page]:
     context = browser.new_context(
+        ignore_https_errors=True,
         http_credentials={
             "username": test_admin_creds["username"],
             "password": test_admin_creds["password"],
-        }
+        },
     )
+    blocked: list[str] = []
+
+    def local_browser_only(route: Any) -> None:
+        from urllib.parse import urlsplit
+
+        if urlsplit(route.request.url).hostname in {"127.0.0.1", "localhost", "::1"}:
+            route.continue_()
+        else:
+            blocked.append("External browser request blocked")
+            route.abort()
+
+    context.route("**/*", local_browser_only)
     page = context.new_page()
     try:
         yield page
     finally:
         context.close()
+        assert not blocked
 
 
 @pytest.fixture
@@ -494,17 +548,89 @@ def login_and_navigate(page: Page, path: str) -> None:
     response = page.goto(path)
     assert response is not None
     assert response.status == 200
-    set_cookie = response.headers.get("set-cookie", "")
-    match = _CSRF_COOKIE_RE.search(set_cookie)
-    if match is not None:
-        page.context.add_cookies(
-            [
-                {
-                    "name": "__Host-csrf",
-                    "value": match.group(1),
-                    "url": page.url,
-                    "path": "/",
-                    "sameSite": "Strict",
-                }
-            ]
-        )
+    cookies = [cookie for cookie in page.context.cookies() if cookie["name"] == "__Host-csrf"]
+    assert len(cookies) == 1
+    assert cookies[0]["secure"] is True
+    assert cookies[0]["path"] == "/"
+    assert cookies[0]["sameSite"] == "Strict"
+
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args: dict[str, Any]) -> dict[str, Any]:
+    return {**browser_context_args, "ignore_https_errors": True}
+
+
+@pytest.fixture(autouse=True)
+def fake_storcli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    _live_server_handle: _LiveServerHandle,
+) -> Iterator[FakeStorcli]:
+    """All application subprocesses must be this test's exact executable; never sudo."""
+    import asyncio
+
+    from megaraid_dashboard.storcli.runner import run_storcli
+    from megaraid_dashboard.web import routes
+
+    fake = FakeStorcli.create(tmp_path / "fake")
+    app = _live_server_handle.app
+    original = app.state.settings
+    app.state.settings = original.model_copy(
+        update={
+            "storcli_path": str(fake.path),
+            "storcli_use_sudo": False,
+            "maintenance_mode": False,
+            "destructive_mode": False,
+        }
+    )
+    spawn = asyncio.create_subprocess_exec
+
+    async def guarded_spawn(program: str, *args: Any, **kwargs: Any) -> Any:
+        assert program == str(fake.path), "Only the temporary fake executable may run"
+        return await spawn(program, *args, **kwargs)
+
+    async def bounded_runner(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        assert kwargs["binary_path"] == str(fake.path)
+        assert kwargs["use_sudo"] is False
+        return await run_storcli(args, **kwargs, timeout_seconds=0.5)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", guarded_spawn)
+    monkeypatch.setattr(routes, "run_storcli", bounded_runner)
+    # Block notification and other outbound connections in the application process.
+    connect = socket.socket.connect
+    connect_ex = socket.socket.connect_ex
+
+    def assert_local(address: Any) -> None:
+        if isinstance(address, tuple):
+            assert address[0] in {"127.0.0.1", "::1", "localhost"}, "External networking forbidden"
+
+    def local_connect(sock: socket.socket, address: Any) -> Any:
+        assert_local(address)
+        return connect(sock, address)
+
+    def local_connect_ex(sock: socket.socket, address: Any) -> Any:
+        assert_local(address)
+        return connect_ex(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", local_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", local_connect_ex)
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    def temporary_database(conn: Any, *args: Any) -> None:
+        database = conn.engine.url.database
+        assert conn.engine.url.get_backend_name() == "sqlite"
+        assert database is not None and Path(database).resolve().is_relative_to(tmp_path.parent)
+
+    def temporary_connection(dialect: Any, record: Any, args: Any, kwargs: Any) -> None:
+        assert dialect.name == "sqlite", "Only temporary SQLite databases may be opened"
+        assert Path(args[0]).resolve().is_relative_to(tmp_path.parent)
+
+    event.listen(Engine, "do_connect", temporary_connection)
+    event.listen(Engine, "before_cursor_execute", temporary_database)
+    try:
+        yield fake
+    finally:
+        event.remove(Engine, "before_cursor_execute", temporary_database)
+        event.remove(Engine, "do_connect", temporary_connection)
+        app.state.settings = original

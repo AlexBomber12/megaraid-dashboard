@@ -52,6 +52,7 @@ def test_metrics_app_reports_exporter_up() -> None:
 
 def test_metrics_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_env(monkeypatch)
+    monkeypatch.delenv("METRICS_PORT", raising=False)
 
     settings = Settings()
 

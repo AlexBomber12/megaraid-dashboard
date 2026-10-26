@@ -25,10 +25,11 @@ def test_login_succeeds_with_correct_credentials(
     test_admin_creds: dict[str, str],
 ) -> None:
     context = browser.new_context(
+        ignore_https_errors=True,
         http_credentials={
             "username": test_admin_creds["username"],
             "password": test_admin_creds["password"],
-        }
+        },
     )
     try:
         page = context.new_page()
@@ -51,10 +52,11 @@ def test_wrong_password_rejected(
     # password verification runs and would not catch a regression that
     # accepts bad passwords for the real admin account).
     context = browser.new_context(
+        ignore_https_errors=True,
         http_credentials={
             "username": test_admin_creds["username"],
             "password": "wrong-password",
-        }
+        },
     )
     try:
         page = context.new_page()

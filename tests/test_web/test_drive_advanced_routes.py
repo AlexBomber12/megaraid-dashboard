@@ -45,6 +45,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
+    monkeypatch.setenv("DESTRUCTIVE_MODE", "true")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))
@@ -126,7 +127,8 @@ def test_advanced_drive_happy_paths(
             _seed_virtual_drive(test_app, vd_id=json_body["dg_id"] + 10)
             _seed_disk_group_member(test_app, dg_id=json_body["dg_id"])
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(
+        response = _post_action(
+            client,
             path,
             headers=headers,
             json=json_body,
@@ -168,7 +170,7 @@ def test_advanced_drive_wrong_state_returns_409(
         _seed_drive(test_app, state=state)
         _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(path, headers=headers, json=json_body)
+        response = _post_action(client, path, headers=headers, json=json_body)
 
     assert response.status_code == 409
     assert response.json()["state"] == state
@@ -197,7 +199,7 @@ def test_advanced_drive_without_csrf_returns_403(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state=state)
         _seed_disk_group_member(test_app, dg_id=0)
-        response = client.post(path, json=json_body)
+        response = _post_action(client, path, json=json_body)
 
     assert response.status_code == 403
 
@@ -229,7 +231,7 @@ def test_advanced_drive_without_auth_returns_401(
         headers = _csrf_request_headers(authed_client, csrf_headers)
 
     with TestClient(test_app) as client:
-        response = client.post(path, headers=headers, json=json_body)
+        response = _post_action(client, path, headers=headers, json=json_body)
 
     assert response.status_code == 401
 
@@ -261,7 +263,7 @@ def test_advanced_drive_storcli_failure_returns_502(
         _seed_drive(test_app, state=state)
         _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(path, headers=headers, json=json_body)
+        response = _post_action(client, path, headers=headers, json=json_body)
 
         assert response.status_code == 502
         assert response.json()["error"] == "storcli command failed"
@@ -285,7 +287,7 @@ def test_advanced_drive_revalidates_live_state_before_mutation(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
+        response = _post_action(client, "/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 409
     assert response.json() == {
@@ -312,7 +314,7 @@ def test_advanced_drive_live_precheck_failure_returns_502(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
+        response = _post_action(client, "/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 502
     assert response.json()["error"] == "storcli precheck failed"
@@ -352,7 +354,7 @@ def test_advanced_drive_audit_failure_returns_500(
         _seed_drive(test_app, state=state)
         _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(path, headers=headers, json=json_body)
+        response = _post_action(client, path, headers=headers, json=json_body)
 
     assert response.status_code == 500
     assert response.json()["error"] == "audit persistence failed"
@@ -365,7 +367,7 @@ def test_make_hot_spare_missing_dg_id_returns_422(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/actions/hotspare", headers=headers, json={})
+        response = _post_action(client, "/drives/2:0/actions/hotspare", headers=headers, json={})
 
     assert response.status_code == 422
 
@@ -380,7 +382,8 @@ def test_make_hot_spare_rejects_coerced_dg_id_types(
         _seed_drive(test_app, state="UGood")
         _seed_disk_group_member(test_app, dg_id=0)
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(
+        response = _post_action(
+            client,
             "/drives/2:0/actions/hotspare",
             headers=headers,
             json={"dg_id": dg_id},
@@ -403,7 +406,8 @@ def test_advanced_drive_action_is_visible_in_audit_view(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="Onln")
         headers = _csrf_request_headers(client, csrf_headers)
-        action_response = client.post(
+        action_response = _post_action(
+            client,
             "/drives/2:0/actions/spindown",
             headers=headers,
             follow_redirects=False,
@@ -430,7 +434,8 @@ def test_make_hot_spare_nonexistent_dg_returns_409(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post(
+        response = _post_action(
+            client,
             "/drives/2:0/actions/hotspare",
             headers=headers,
             json={"dg_id": 0},
@@ -451,7 +456,7 @@ def test_advanced_drive_invalid_path_returns_400(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/not-int:0/actions/mark-ubad", headers=headers)
+        response = _post_action(client, "/drives/not-int:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 400
 
@@ -467,7 +472,7 @@ def test_advanced_drive_no_snapshot_returns_404(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
+        response = _post_action(client, "/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 404
 
@@ -486,7 +491,7 @@ def test_advanced_drive_without_maintenance_mode_returns_403(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
+        response = _post_action(client, "/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 403
     assert response.json() == {
@@ -516,7 +521,7 @@ def test_advanced_drive_audit_failure_after_storcli_failure_returns_500(
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/actions/mark-ubad", headers=headers)
+        response = _post_action(client, "/drives/2:0/actions/mark-ubad", headers=headers)
 
     assert response.status_code == 500
     assert response.json()["storcli_error"] == "storcli exited with code 1: command failed"
@@ -535,6 +540,7 @@ async def test_advanced_drive_helper_rejects_missing_dg_id(
             request=request,
             action="make_hot_spare",
             dg_id=None,
+            serial_number="WD-ADV-0001",
         )
         del client, csrf_headers
 
@@ -637,6 +643,11 @@ def _drive_show_payload(*, state: str, serial_number: str) -> dict[str, Any]:
     }
 
 
+def _post_action(client: TestClient, path: str, **kwargs: Any) -> Any:
+    body = kwargs.pop("json", None) or {}
+    return client.post(path, json={"serial_number": "WD-ADV-0001", **body}, **kwargs)
+
+
 def _seed_drive(test_app: FastAPI, *, state: str) -> None:
     session_factory = test_app.state.session_factory
     assert isinstance(session_factory, sessionmaker)
@@ -727,3 +738,68 @@ def _seed_disk_group_member(test_app: FastAPI, *, dg_id: int) -> None:
             )
         )
         session.commit()
+
+
+@pytest.mark.parametrize("gate", ["missing-identity", "stale-page", "live-identity", "destructive"])
+def test_advanced_identity_and_destructive_gates_never_mutate(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    gate: str,
+) -> None:
+    calls: list[list[str]] = []
+
+    async def fake(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        calls.append(args)
+        assert args == ["/c0/e2/s0", "show", "all", "J"]
+        return _drive_show_payload(state="UGood", serial_number="NEW-LIVE-DRIVE")
+
+    monkeypatch.setattr(routes, "run_storcli", fake)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(app, state="UGood")
+        if gate == "destructive":
+            app.state.settings = app.state.settings.model_copy(update={"destructive_mode": False})
+        body = (
+            {}
+            if gate == "missing-identity"
+            else {"serial_number": "OLD-PAGE" if gate == "stale-page" else "WD-ADV-0001"}
+        )
+        response = client.post(
+            "/drives/2:0/actions/mark-ubad",
+            json=body,
+            headers=_csrf_request_headers(client, csrf_headers),
+        )
+        assert (
+            response.status_code
+            == {
+                "missing-identity": 422,
+                "stale-page": 409,
+                "live-identity": 409,
+                "destructive": 403,
+            }[gate]
+        )
+        assert len(calls) == (1 if gate == "live-identity" else 0)
+
+
+def test_advanced_precheck_audit_failure_is_observable(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def unavailable(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise StorcliCommandFailed("precheck unavailable")
+
+    def fail(**kwargs: Any) -> None:
+        raise SQLAlchemyError("audit storage unavailable")
+
+    monkeypatch.setattr(routes, "run_storcli", unavailable)
+    monkeypatch.setattr(routes, "_record_advanced_drive_operator_action_sync", fail)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(app, state="UGood")
+        response = _post_action(
+            client,
+            "/drives/2:0/actions/mark-ubad",
+            headers=_csrf_request_headers(client, csrf_headers),
+        )
+        assert response.status_code == 500
+        assert response.json()["error"] == "audit persistence failed"

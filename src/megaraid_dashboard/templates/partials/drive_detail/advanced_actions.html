@@ -17,6 +17,7 @@
     {% if action.is_destructive %}data-confirm-phrase="{{ view_model.identity.serial_number }}"{% endif %}
   >
     <input type="hidden" name="csrf_token" value="">
+    <input type="hidden" name="serial_number" value="{{ view_model.identity.serial_number }}">
     {% if action.label == "Hot Spare" %}
       <input type="hidden" name="dg_id" value="{{ drive_dg_id if drive_dg_id != '-' else '' }}">
     {% endif %}
@@ -87,15 +88,26 @@
           error.hidden = true;
           error.textContent = "";
         }
+        if (form.getAttribute("aria-busy") === "true") return;
+        form.setAttribute("aria-busy", "true");
+        const buttons = Array.from(form.querySelectorAll("button"));
+        buttons.forEach(button => { button.disabled = true; });
+        function release() {
+          form.removeAttribute("aria-busy");
+          buttons.forEach(button => { button.disabled = false; });
+        }
         const isHotSpare = form.action.includes("/hotspare");
         const dgId = new FormData(form).get("dg_id");
         fetch(form.action, {
           method: "POST",
           headers: {
             "X-CSRF-Token": getCookie("__Host-csrf") || "",
-            ...(isHotSpare ? { "Content-Type": "application/json" } : {}),
+            "Content-Type": "application/json",
           },
-          body: isHotSpare ? JSON.stringify({ dg_id: Number(dgId) }) : null,
+          body: JSON.stringify({
+            serial_number: new FormData(form).get("serial_number"),
+            ...(isHotSpare ? { dg_id: Number(dgId) } : {}),
+          }),
         }).then((response) => {
           if (response.redirected) {
             window.location.assign(response.url);
@@ -116,7 +128,7 @@
           if (!error) return;
           error.textContent = "Drive action failed.";
           error.hidden = false;
-        });
+        }).finally(release);
       });
     }());
   </script>

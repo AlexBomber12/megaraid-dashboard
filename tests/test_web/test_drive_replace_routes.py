@@ -19,6 +19,7 @@ from megaraid_dashboard.db.models import (
     Event,
     PhysicalDriveSnapshot,
 )
+from megaraid_dashboard.storcli import StorcliNotAvailable
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 _DEFAULT_SERIAL = "WD-TEST-1234"
@@ -883,7 +884,6 @@ def test_drive_replace_missing_records_audit_when_storcli_fails(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
-    from megaraid_dashboard.storcli import StorcliNotAvailable
 
     async def fake_run_storcli(
         args: list[str],
@@ -925,7 +925,6 @@ def test_drive_replace_offline_returns_502_when_live_precheck_storcli_fails(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
 ) -> None:
-    from megaraid_dashboard.storcli import StorcliNotAvailable
 
     runner_calls: list[list[str]] = []
 
@@ -960,7 +959,10 @@ def test_drive_replace_offline_returns_502_when_live_precheck_storcli_fails(
         assert body["serial_number"] == _DEFAULT_SERIAL
         assert "permission denied" in body["detail"]
         assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
-        _assert_no_audit_event(test_app)
+        with test_app.state.session_factory() as session:
+            audit = session.scalars(select(Event)).one()
+            assert "failed: storcli precheck failed" in audit.summary
+            assert audit.operator_username == "admin"
 
 
 def test_drive_replace_missing_returns_502_when_live_precheck_parse_fails(
@@ -998,7 +1000,10 @@ def test_drive_replace_missing_returns_502_when_live_precheck_parse_fails(
         assert body["step"] == "missing"
         assert "schema" in body["detail"] or "Drive" in body["detail"]
         assert runner_calls == [["/c0/e2/s0", "show", "all", "J"]]
-        _assert_no_audit_event(test_app)
+        with test_app.state.session_factory() as session:
+            audit = session.scalars(select(Event)).one()
+            assert "failed: storcli precheck failed" in audit.summary
+            assert audit.operator_username == "admin"
 
 
 def test_drive_replace_offline_returns_500_when_storcli_and_audit_both_fail(
@@ -1271,3 +1276,28 @@ def test_replace_rejects_exit_zero_without_controller_success(
         assert f"replace step {step}" in event.summary
         assert "failed:" in event.summary
         assert "succeeded" not in event.summary
+
+
+def test_replace_precheck_failure_with_failed_audit_returns_500(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+) -> None:
+    async def unavailable(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        assert args == ["/c0/e2/s0", "show", "all", "J"]
+        raise StorcliNotAvailable("precheck unavailable")
+
+    def fail(**kwargs: Any) -> None:
+        raise SQLAlchemyError("audit unavailable")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", unavailable)
+    monkeypatch.setattr("megaraid_dashboard.web.routes._record_replace_operator_action_sync", fail)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(app, serial_number=_DEFAULT_SERIAL, state="Onln")
+        response = client.post(
+            "/drives/2:0/replace/offline",
+            json={"serial_number": _DEFAULT_SERIAL},
+            headers=_csrf_request_headers(client, csrf_headers),
+        )
+        assert response.status_code == 500
+        assert response.json()["error"] == "audit persistence failed"

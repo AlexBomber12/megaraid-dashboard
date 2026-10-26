@@ -210,15 +210,26 @@ the full command string against exact regular expressions, and uses
 
 ### Destructive Operation Gating
 
-Destructive replacement operations require both `maintenance_mode` and `destructive_mode`,
-plus typed serial confirmation. The route rechecks live drive identity with `storcli` before
-executing destructive commands.
+Every controller write, including Locate, requires effective maintenance authorization.
+After first use, the persisted UI window overrides the legacy configured flag: Start
+allows writes, while Stop and expiration revoke them across workers and restarts.
+Stop retains an inactive state record so a configured flag cannot reactivate access.
+
+Replacement and Mark as UBad additionally require `destructive_mode` and serial
+confirmation. Advanced-action requests carry `serial_number` from the displayed drive;
+the route compares it with the latest snapshot and rechecks live identity and state.
+Replacement insertion requires a live UGood drive.
+
+Mutations and live safety prechecks require explicit JSON Success, regardless of process
+exit code. The documented foreign-query "no foreign configuration" Failure is an absent
+read result; it never permits import/clear. Unknown or unsupported status refuses mutation.
 
 ### Audit Logging
 
 Maintenance-mode changes, locate operations, replacement steps, insert operations, rebuild
 completion observations, buzzer actions, and advanced drive actions are recorded as
-operator-action events. Failed destructive commands are recorded before returning errors when
+operator-action events. Failed live drive prechecks are also recorded. Failed destructive
+commands are recorded before returning errors when
 the database is available. For the new buzzer and advanced action routes, a successful HTTP
 response means the matching audit event was persisted; audit-write failure is returned as a
 server error rather than silently allowing an unaudited write.

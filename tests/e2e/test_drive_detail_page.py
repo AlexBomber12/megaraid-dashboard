@@ -9,31 +9,17 @@ from playwright.sync_api import Page, Request, Route, expect
 from sqlalchemy import select, update
 
 from megaraid_dashboard.db import Event, PhysicalDriveSnapshot, get_engine, get_sessionmaker
-from tests.e2e.conftest import assert_chart_height_within, login_and_navigate
-
-
-def _operator_event_exists(database_url: str, summary_fragment: str) -> bool:
-    engine = get_engine(database_url)
-    try:
-        session_factory = get_sessionmaker(engine)
-        with session_factory() as session:
-            return (
-                session.scalar(
-                    select(Event.id)
-                    .where(Event.category == "operator_action")
-                    .where(Event.summary.contains(summary_fragment))
-                    .limit(1)
-                )
-                is not None
-            )
-    finally:
-        engine.dispose()
+from tests.e2e.conftest import _LiveServerHandle, assert_chart_height_within, login_and_navigate
+from tests.safety.harness import FakeStorcli, database_observation, prepare
+from tests.safety.scenarios import ACTIONS, Action
 
 
 def test_drive_detail_navigation_charts_actions_and_replace(
     authenticated_page: Page,
     live_server: str,
     snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
+    maintenance_mode: None,
 ) -> None:
     """Exercise drive detail navigation, charts, locate action, and replacement wizard entry."""
     login_and_navigate(authenticated_page, f"{live_server}/drives/252:0")
@@ -44,9 +30,9 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     expect(breadcrumb.get_by_text("Slot 252:0")).to_be_visible()
 
     authenticated_page.get_by_label("Next drive").click()
-    authenticated_page.wait_for_url("**/drives/252:1")
+    authenticated_page.wait_for_url("**/drives/252:1", wait_until="load")
     authenticated_page.get_by_label("Previous drive").click()
-    authenticated_page.wait_for_url("**/drives/252:0")
+    authenticated_page.wait_for_url("**/drives/252:0", wait_until="load")
 
     expect(authenticated_page.locator("svg.error-sparkline")).to_be_visible()
     backplane_slots = authenticated_page.locator(".backplane-diagram .backplane-slot")
@@ -101,55 +87,69 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     assert authenticated_page.evaluate("1 + 1") == 2
 
 
-def test_destructive_drive_action_requires_typed_serial(
+@pytest.mark.parametrize(
+    "action", [a for a in ACTIONS if a.family == "advanced"], ids=lambda a: a.name
+)
+@pytest.mark.parametrize("outcome", ["success", "failure", "maintenance"])
+def test_advanced_action_browser_matrix(
     authenticated_page: Page,
     live_server: str,
     snapshot_with_drives: str,
+    _live_server_handle: _LiveServerHandle,
+    fake_storcli: FakeStorcli,
+    action: Action,
+    outcome: str,
 ) -> None:
-    """Mark as UBad requires the drive's serial; its slot and other serials are rejected."""
-    _set_drive_state(snapshot_with_drives, slot_id=7, state="UGood")
-    login_and_navigate(authenticated_page, f"{live_server}/drives/252:7")
-    posted: list[str] = []
-
-    def record(request: Request) -> None:
-        if request.method == "POST" and "/actions/mark-ubad" in request.url:
-            posted.append(request.url)
-
-    authenticated_page.on("request", record)
-    dialog = authenticated_page.locator("dialog.confirm-dialog")
-    confirm = dialog.get_by_role("button", name="Mark as UBad")
-    phrase_input = dialog.locator("[data-cd-input]")
-
-    authenticated_page.get_by_role("button", name="Spin Down").click()
+    page = authenticated_page
+    prepare(action, _live_server_handle, fake_storcli)
+    if outcome == "maintenance":
+        app = _live_server_handle.app
+        app.state.settings = app.state.settings.model_copy(update={"maintenance_mode": False})
+    fake_storcli.configure(fault="failure" if outcome == "failure" else "success")
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+    before = database_observation(snapshot_with_drives)
+    button = page.locator(f'form[action="{action.path}"] button')
+    expect(button).to_be_enabled()
+    button.click()
+    dialog = page.locator("dialog.confirm-dialog")
     expect(dialog).to_be_visible()
-    expect(phrase_input).to_be_hidden()
-    expect(dialog.get_by_role("button", name="Spin Down")).to_be_enabled()
+    # Cancel is an actual dialog action and must leave both command trace and DB unchanged.
     dialog.get_by_role("button", name="Cancel").click()
     expect(dialog).to_be_hidden()
-
-    authenticated_page.get_by_role("button", name="Mark as UBad").click()
-    expect(dialog).to_be_visible()
-    expect(dialog).to_contain_text("Mark as UBad on drive 252:7?")
-    expect(dialog.locator("[data-cd-phrase]")).to_have_text("WCA275678007")
-    expect(phrase_input).to_be_visible()
-    expect(confirm).to_be_disabled()
-    phrase_input.fill("252:7")
-    expect(confirm).to_be_disabled()
-    phrase_input.fill("WCA275678006")
-    expect(confirm).to_be_disabled()
-    dialog.get_by_role("button", name="Cancel").click()
-    expect(dialog).to_be_hidden()
-    assert posted == []
-
-    authenticated_page.get_by_role("button", name="Mark as UBad").click()
-    expect(phrase_input).to_have_value("")
-    phrase_input.fill("WCA275678007")
-    expect(confirm).to_be_enabled()
-    with authenticated_page.expect_response(lambda response: "/actions/mark-ubad" in response.url):
-        confirm.click()
-    assert posted == [f"{live_server}/drives/252:7/actions/mark-ubad"]
-    # Maintenance mode is off, so the server refuses and the page shows the error.
-    expect(authenticated_page.locator("[data-drive-action-error]")).to_be_visible()
+    assert fake_storcli.calls == []
+    assert database_observation(snapshot_with_drives) == before
+    button.click()
+    phrase = dialog.locator("[data-cd-input]")
+    if phrase.is_visible():
+        expect(dialog.locator("[data-cd-confirm]")).to_be_disabled()
+        phrase.fill("WRONG")
+        expect(dialog.locator("[data-cd-confirm]")).to_be_disabled()
+        phrase.fill("WCA275678000")
+    with page.expect_response(
+        lambda r: r.url.endswith(action.path) and r.request.method == "POST"
+    ) as response:
+        dialog.locator("[data-cd-confirm]").click()
+    assert response.value.status == {"success": 303, "failure": 502, "maintenance": 403}[outcome]
+    assert fake_storcli.mutations == ([] if outcome == "maintenance" else [list(action.command)])
+    if outcome != "success":
+        expect(page.locator("[data-drive-action-error]")).to_contain_text(
+            "storcli command failed" if outcome == "failure" else "maintenance_mode"
+        )
+        expect(button).to_be_enabled()
+    else:
+        page.wait_for_load_state("networkidle")
+        expect(button).to_be_enabled()
+    after = database_observation(snapshot_with_drives)
+    assert after[1] == before[1]
+    if outcome != "maintenance":
+        assert len(after[0]) == len(before[0]) + 1
+        assert ("succeeded" if outcome == "success" else "failed") in after[0][-1][1]
+    if outcome == "success":
+        page.goto(f"{live_server}/events")
+        expect(page.locator(".timeline__message")).to_contain_text("succeeded")
+        page.goto(f"{live_server}/drives/252:0")
+    page.reload()
+    expect(button).to_be_enabled()
 
 
 def _set_drive_state(database_url: str, *, slot_id: int, state: str) -> None:
@@ -284,3 +284,135 @@ def test_locate_csrf_refusal_instructs_https_reload_and_keeps_stop_available(
     expect(page.locator("[data-locate-status]")).to_have_text("LED state unverified.")
     expect(page.locator(".drive-actions")).to_have_attribute("data-locate-state", "unknown")
     assert not _operator_event_exists(snapshot_with_drives, f"locate {action} drive 252:0")
+
+
+@pytest.mark.parametrize("name", ["spindown", "buzzer-silence", "foreign-import", "locate-start"])
+def test_mutation_has_immediate_busy_feedback(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    _live_server_handle: _LiveServerHandle,
+    fake_storcli: FakeStorcli,
+    name: str,
+) -> None:
+    page = authenticated_page
+    action = next(a for a in ACTIONS if a.name == name)
+    body = prepare(action, _live_server_handle, fake_storcli)
+    fake_storcli.configure(delay_seconds=0.2)
+    if action.family == "foreign":
+        login_and_navigate(page, f"{live_server}/controller/foreign-config")
+        disclosure = page.locator("#foreign-import")
+        disclosure.locator("summary").click()
+        disclosure.locator('[name="confirmation"]').fill(body["confirmation"])
+        disclosure.locator('[name="dry_run"]').uncheck()
+    else:
+        login_and_navigate(
+            page,
+            f"{live_server}/controller"
+            if action.family == "buzzer"
+            else f"{live_server}/drives/252:0",
+        )
+    button = (
+        page.locator('[data-locate-action="start"]')
+        if action.family == "locate"
+        else page.locator(f'form[action="{action.path}"] button')
+    )
+    # A fetch can navigate before Playwright's click returns. Observe the actual
+    # submit/send event synchronously, then read the observation after navigation.
+    # This does not replace the request, response, cookie, or CSRF behavior.
+    page.evaluate(
+        """path => {
+      sessionStorage.removeItem('safety-in-flight');
+      function observe(event) {
+        const el = event.detail?.elt || event.target;
+        const form = el.closest('form');
+        const endpoint = el.getAttribute('hx-post') || form?.getAttribute('action');
+        if (endpoint !== path) return;
+        const button = el.matches('button') ? el : el.querySelector('button');
+        const busy = Boolean(button?.disabled || el.getAttribute('aria-busy') === 'true' ||
+          el.classList.contains('htmx-request') || form?.getAttribute('aria-busy') === 'true' ||
+          form?.classList.contains('htmx-request'));
+        sessionStorage.setItem('safety-in-flight', String(busy));
+      }
+      document.addEventListener('submit', observe);
+      document.addEventListener('htmx:beforeSend', observe);
+    }""",
+        action.path,
+    )
+    with page.expect_response(lambda r: r.url.endswith(action.path) and r.request.method == "POST"):
+        button.click()
+        if action.family == "advanced":
+            page.locator("[data-cd-confirm]").click()
+    assert fake_storcli.mutations == [list(action.command)]
+    assert page.evaluate("sessionStorage.getItem('safety-in-flight')") == "true", (
+        "Mutating control must show in-flight state immediately"
+    )
+
+
+def _operator_event_exists(database_url: str, summary_fragment: str) -> bool:
+    engine = get_engine(database_url)
+    try:
+        session_factory = get_sessionmaker(engine)
+        with session_factory() as session:
+            return (
+                session.scalar(
+                    select(Event.id)
+                    .where(Event.category == "operator_action")
+                    .where(Event.summary.contains(summary_fragment))
+                    .limit(1)
+                )
+                is not None
+            )
+    finally:
+        engine.dispose()
+
+
+def test_destructive_drive_action_requires_typed_serial(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+) -> None:
+    """Mark as UBad requires the drive's serial; its slot and other serials are rejected."""
+    _set_drive_state(snapshot_with_drives, slot_id=7, state="UGood")
+    login_and_navigate(authenticated_page, f"{live_server}/drives/252:7")
+    posted: list[str] = []
+
+    def record(request: Request) -> None:
+        if request.method == "POST" and "/actions/mark-ubad" in request.url:
+            posted.append(request.url)
+
+    authenticated_page.on("request", record)
+    dialog = authenticated_page.locator("dialog.confirm-dialog")
+    confirm = dialog.get_by_role("button", name="Mark as UBad")
+    phrase_input = dialog.locator("[data-cd-input]")
+
+    authenticated_page.get_by_role("button", name="Spin Down").click()
+    expect(dialog).to_be_visible()
+    expect(phrase_input).to_be_hidden()
+    expect(dialog.get_by_role("button", name="Spin Down")).to_be_enabled()
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).to_be_hidden()
+
+    authenticated_page.get_by_role("button", name="Mark as UBad").click()
+    expect(dialog).to_be_visible()
+    expect(dialog).to_contain_text("Mark as UBad on drive 252:7?")
+    expect(dialog.locator("[data-cd-phrase]")).to_have_text("WCA275678007")
+    expect(phrase_input).to_be_visible()
+    expect(confirm).to_be_disabled()
+    phrase_input.fill("252:7")
+    expect(confirm).to_be_disabled()
+    phrase_input.fill("WCA275678006")
+    expect(confirm).to_be_disabled()
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).to_be_hidden()
+    assert posted == []
+
+    authenticated_page.get_by_role("button", name="Mark as UBad").click()
+    expect(phrase_input).to_have_value("")
+    phrase_input.fill("WCA275678007")
+    expect(confirm).to_be_enabled()
+    with authenticated_page.expect_response(lambda response: "/actions/mark-ubad" in response.url):
+        confirm.click()
+    assert posted == [f"{live_server}/drives/252:7/actions/mark-ubad"]
+    # Maintenance mode is off, so the server refuses and the page shows the error.
+    expect(authenticated_page.locator("[data-drive-action-error]")).to_be_visible()

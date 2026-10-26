@@ -27,6 +27,7 @@ from megaraid_dashboard.config import Settings, get_settings
 from megaraid_dashboard.db.dao import (
     get_latest_snapshot,
     get_maintenance_state,
+    maintenance_writes_enabled,
     record_event,
     set_maintenance_state,
 )
@@ -505,7 +506,27 @@ async def _run_locate(
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
+    if not settings.maintenance_mode:
+        try:
+            await run_in_threadpool(
+                _record_locate_operator_action_sync,
+                request=request,
+                action=action,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                outcome="rejected: maintenance_mode required",
+            )
+        except SQLAlchemyError:
+            return _audit_persistence_failure_response(action=action)
+        return JSONResponse(
+            {
+                "error": "locate requires maintenance_mode",
+                "message": "Locate requires an active maintenance window.",
+            },
+            status_code=403,
+        )
+
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     message = ""
@@ -592,12 +613,25 @@ def _record_locate_operator_action_sync(
         raise
 
 
+def _write_settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    with _session(request) as session:
+        enabled = maintenance_writes_enabled(
+            session, configured=settings.maintenance_mode, now=datetime.now(UTC)
+        )
+    return settings.model_copy(update={"maintenance_mode": enabled})
+
+
 class ReplaceRequest(BaseModel):
     serial_number: str
     dry_run: bool = False
 
 
-class MakeHotSpareRequest(BaseModel):
+class DriveIdentityRequest(BaseModel):
+    serial_number: str
+
+
+class MakeHotSpareRequest(DriveIdentityRequest):
     dg_id: StrictInt = Field(ge=0, le=63)
 
 
@@ -617,35 +651,44 @@ async def drive_replace_missing(enclosure: str, slot: str, request: Request) -> 
 
 
 @router.post("/drives/{enclosure}:{slot}/actions/mark-ubad", name="drive_mark_ubad")
-async def drive_mark_ubad(enclosure: str, slot: str, request: Request) -> Response:
+async def drive_mark_ubad(
+    enclosure: str, slot: str, body: DriveIdentityRequest, request: Request
+) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
         slot=slot,
         request=request,
         action="mark_ubad",
         dg_id=None,
+        serial_number=body.serial_number,
     )
 
 
 @router.post("/drives/{enclosure}:{slot}/actions/mark-ugood", name="drive_mark_ugood")
-async def drive_mark_ugood(enclosure: str, slot: str, request: Request) -> Response:
+async def drive_mark_ugood(
+    enclosure: str, slot: str, body: DriveIdentityRequest, request: Request
+) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
         slot=slot,
         request=request,
         action="mark_ugood",
         dg_id=None,
+        serial_number=body.serial_number,
     )
 
 
 @router.post("/drives/{enclosure}:{slot}/actions/spindown", name="drive_spin_down")
-async def drive_spin_down(enclosure: str, slot: str, request: Request) -> Response:
+async def drive_spin_down(
+    enclosure: str, slot: str, body: DriveIdentityRequest, request: Request
+) -> Response:
     return await _run_advanced_drive_action(
         enclosure=enclosure,
         slot=slot,
         request=request,
         action="spin_down",
         dg_id=None,
+        serial_number=body.serial_number,
     )
 
 
@@ -662,6 +705,7 @@ async def drive_make_hot_spare(
         request=request,
         action="make_hot_spare",
         dg_id=body.dg_id,
+        serial_number=body.serial_number,
     )
 
 
@@ -672,6 +716,7 @@ async def _run_advanced_drive_action(
     request: Request,
     action: AdvancedDriveAction,
     dg_id: int | None,
+    serial_number: str,
 ) -> Response:
     try:
         enclosure_id = int(enclosure)
@@ -691,6 +736,9 @@ async def _run_advanced_drive_action(
             {"error": "no snapshot for slot", "enclosure": enclosure_id, "slot": slot_id},
             status_code=404,
         )
+
+    if drive.serial_number != serial_number:
+        return JSONResponse({"error": "snapshot serial mismatch"}, status_code=409)
 
     has_requested_dg = True
     if action == "make_hot_spare":
@@ -713,7 +761,7 @@ async def _run_advanced_drive_action(
             status_code=409,
         )
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode:
         return JSONResponse(
             {
@@ -722,6 +770,9 @@ async def _run_advanced_drive_action(
             },
             status_code=403,
         )
+
+    if action == "mark_ubad" and not settings.destructive_mode:
+        return JSONResponse({"error": "mark UBad requires destructive_mode"}, status_code=403)
 
     argv = _advanced_drive_action_argv(action, enclosure_id, slot_id, dg_id)
 
@@ -732,6 +783,22 @@ async def _run_advanced_drive_action(
             settings=settings,
         )
     except StorcliError as exc:
+        try:
+            await run_in_threadpool(
+                _record_advanced_drive_operator_action_sync,
+                request=request,
+                category=_advanced_drive_action_category(action),
+                message=_advanced_drive_action_audit_message(
+                    action=action,
+                    enclosure_id=enclosure_id,
+                    slot_id=slot_id,
+                    state=drive.state,
+                    dg_id=dg_id,
+                ),
+                outcome=f"failed: storcli precheck failed: {_truncate_audit_detail(str(exc))}",
+            )
+        except SQLAlchemyError:
+            return _audit_persistence_failure_response(action=action, storcli_error=str(exc))
         return JSONResponse(
             {
                 "error": "storcli precheck failed",
@@ -742,6 +809,9 @@ async def _run_advanced_drive_action(
             },
             status_code=502,
         )
+
+    if live.serial_number != drive.serial_number:
+        return JSONResponse({"error": "live serial mismatch"}, status_code=409)
 
     if not _advanced_drive_action_allowed(action, live.state, has_requested_dg):
         return JSONResponse(
@@ -1005,7 +1075,7 @@ async def _run_replace_step(
             }
         )
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode or not settings.destructive_mode:
         return JSONResponse(
             {
@@ -1026,6 +1096,18 @@ async def _run_replace_step(
             settings=settings,
         )
     except StorcliError as exc:
+        try:
+            await run_in_threadpool(
+                _record_replace_operator_action_sync,
+                request=request,
+                step=step,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                serial_number=body.serial_number,
+                outcome=f"failed: storcli precheck failed: {_truncate_audit_detail(str(exc))}",
+            )
+        except SQLAlchemyError:
+            return _audit_persistence_failure_response(storcli_error=str(exc))
         return JSONResponse(
             {
                 "error": "storcli precheck failed",
@@ -1166,6 +1248,7 @@ async def _query_live_drive_show(
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
+    ensure_command_succeeded(payload)
     return parse_drive_show(payload)
 
 
@@ -1508,7 +1591,7 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             }
         )
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode or not settings.destructive_mode:
         return JSONResponse(
             {
@@ -1532,6 +1615,21 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             settings=settings,
         )
     except StorcliError as exc:
+        try:
+            await run_in_threadpool(
+                _record_insert_operator_action_sync,
+                request=request,
+                precheck_only=True,
+                dg=topology.dg,
+                array=topology.array,
+                row=topology.row,
+                enclosure_id=enclosure_id,
+                slot_id=slot_id,
+                serial_number=body.serial_number,
+                outcome=f"failed: storcli precheck failed: {_truncate_audit_detail(str(exc))}",
+            )
+        except SQLAlchemyError:
+            return _audit_persistence_failure_response(storcli_error=str(exc))
         return JSONResponse(
             {
                 "error": "storcli precheck failed",
@@ -1549,6 +1647,11 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
         return JSONResponse(
             {"error": "live serial mismatch (replacement drive)"},
             status_code=409,
+        )
+
+    if live.state != "UGood":
+        return JSONResponse(
+            {"error": "replacement insert requires a live UGood drive"}, status_code=409
         )
 
     result: dict[str, Any] | None = None
@@ -1649,6 +1752,14 @@ def _load_last_operator_action_for_slot(
         return session.scalars(
             select(Event)
             .where(Event.category == "operator_action")
+            # A failed read cannot undo Missing. Only the server-owned marker
+            # is ignored; free-form error text and attempted mutations still
+            # invalidate the gate, including all historical unmarked failures.
+            .where(
+                Event.after_json["read_only_precheck"]
+                .as_string()
+                .is_distinct_from("replace_insert")
+            )
             .where(
                 or_(
                     Event.summary.like(f"%{slot_token} %"),
@@ -1946,10 +2057,11 @@ def _record_insert_operator_action_sync(
     array: int,
     row: int,
     outcome: str,
+    precheck_only: bool = False,
 ) -> None:
     try:
         with _session(request) as session, session.begin():
-            record_operator_action(
+            audit = record_operator_action(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
                 message=(
@@ -1957,6 +2069,8 @@ def _record_insert_operator_action_sync(
                     f"serial {serial_number} dg={dg} array={array} row={row} {outcome}"
                 ),
             )
+            if precheck_only:
+                audit.after_json = {"read_only_precheck": "replace_insert"}
     except SQLAlchemyError:
         LOGGER.exception(
             "operator_action_audit_failed",
@@ -2025,7 +2139,7 @@ async def controller_patrol_read(request: Request) -> JSONResponse:
 
 @router.post("/controller/patrol-read/start", name="controller_patrol_read_start")
 async def controller_patrol_read_start(request: Request) -> JSONResponse:
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode:
         return await _reject_patrol_read_maintenance_required(
             request=request,
@@ -2075,7 +2189,7 @@ async def controller_patrol_read_start(request: Request) -> JSONResponse:
 
 @router.post("/controller/patrol-read/stop", name="controller_patrol_read_stop")
 async def controller_patrol_read_stop(request: Request) -> JSONResponse:
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode:
         return await _reject_patrol_read_maintenance_required(
             request=request,
@@ -2132,7 +2246,7 @@ async def controller_patrol_read_mode(request: Request) -> JSONResponse:
         argv = build_patrol_read_mode_command(body.mode)
     except ValueError as exc:
         return _patrol_read_error_response(request, {"error": str(exc)}, status_code=400)
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     return await _run_patrol_read_mutation(
         request=request,
         settings=settings,
@@ -2173,6 +2287,7 @@ async def _query_live_patrol_read(*, settings: Settings) -> PatrolReadStatus:
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
+    ensure_command_succeeded(payload)
     return parse_patrol_read_status(payload)
 
 
@@ -2408,7 +2523,7 @@ async def controller_consistency_check(request: Request) -> JSONResponse:
 
 @router.post("/controller/consistency-check/start", name="controller_consistency_check_start")
 async def controller_consistency_check_start(request: Request) -> JSONResponse:
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     body = await _parse_consistency_check_start_request_body(request)
     if isinstance(body, JSONResponse):
         return body
@@ -2468,7 +2583,7 @@ async def controller_consistency_check_start(request: Request) -> JSONResponse:
 
 @router.post("/controller/consistency-check/stop", name="controller_consistency_check_stop")
 async def controller_consistency_check_stop(request: Request) -> JSONResponse:
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode:
         return await _reject_consistency_check_maintenance_required(
             request=request,
@@ -2525,7 +2640,7 @@ async def controller_consistency_check_mode(request: Request) -> JSONResponse:
         argv = build_consistency_check_mode_command(body.mode)
     except ValueError as exc:
         return _consistency_check_error_response(request, {"error": str(exc)}, status_code=400)
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     return await _run_consistency_check_mutation(
         request=request,
         settings=settings,
@@ -2604,6 +2719,8 @@ async def _query_live_consistency_check(*, settings: Settings) -> ConsistencyChe
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
     )
+    ensure_command_succeeded(show_payload)
+    ensure_command_succeeded(progress_payload)
     return parse_consistency_check_status(show_payload, progress_payload)
 
 
@@ -2853,7 +2970,7 @@ async def _run_controller_buzzer_action(
     argv: list[str],
     audit_message: str,
 ) -> Response:
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     if not settings.maintenance_mode:
         return await _reject_controller_buzzer_maintenance_required(
             request=request,
@@ -3095,7 +3212,7 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
         return query_dry_run
     dry_run = body.dry_run or query_dry_run
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     try:
         live_foreign_config = await _query_live_foreign_config(settings=settings)
     except StorcliParseError as exc:
@@ -3233,7 +3350,7 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    settings: Settings = request.app.state.settings
+    settings = _write_settings(request)
     try:
         live_foreign_config = await _query_live_foreign_config(settings=settings)
     except StorcliParseError as exc:

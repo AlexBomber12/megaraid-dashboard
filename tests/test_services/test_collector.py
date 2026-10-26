@@ -35,7 +35,7 @@ async def test_collect_storcli_snapshot_assembles_snapshot(
     ) -> dict[str, Any]:
         del timeout_seconds
         calls.append((args, use_sudo, binary_path))
-        return payloads[" ".join(args)]
+        return payloads.get(" ".join(args), _failure_payload("operation probe unsupported"))
 
     monkeypatch.setattr(
         "megaraid_dashboard.services.collector.run_storcli",
@@ -62,6 +62,8 @@ async def test_collect_storcli_snapshot_assembles_snapshot(
         ["/c0/cv", "show", "all"],
         ["/c0/bbu", "show", "all"],
         ["/c0/fall", "show", "all"],
+        ["/c0", "show", "patrolread"],
+        ["/c0", "show", "cc"],
     ]
     assert all(use_sudo is True for _, use_sudo, _ in calls)
     assert all(binary_path == "/custom/storcli64" for _, _, binary_path in calls)
@@ -89,7 +91,7 @@ async def test_collect_storcli_snapshot_treats_bbu_storcli_errors_as_optional(
         command = " ".join(args)
         if command == "/c0/bbu show all":
             raise StorcliNotAvailable("sudoers does not allow bbu probe")
-        return payloads[command]
+        return payloads.get(command, _failure_payload("operation probe unsupported"))
 
     monkeypatch.setattr(
         "megaraid_dashboard.services.collector.run_storcli",
@@ -125,7 +127,7 @@ async def test_cachevault_command_failure_is_uncertain(
         command = " ".join(args)
         if command == "/c0/cv show all":
             raise StorcliCommandFailed("cachevault module not present")
-        return payloads[command]
+        return payloads.get(command, _failure_payload("operation probe unsupported"))
 
     monkeypatch.setattr(
         "megaraid_dashboard.services.collector.run_storcli",
@@ -157,7 +159,7 @@ async def test_cachevault_firmware_failure_is_uncertain(
         timeout_seconds: float = 30.0,
     ) -> dict[str, Any]:
         del use_sudo, binary_path, timeout_seconds
-        return payloads[" ".join(args)]
+        return payloads.get(" ".join(args), _failure_payload("operation probe unsupported"))
 
     monkeypatch.setattr(
         "megaraid_dashboard.services.collector.run_storcli",
@@ -188,7 +190,7 @@ async def test_collect_storcli_snapshot_populates_foreign_config_when_present(
         timeout_seconds: float = 30.0,
     ) -> dict[str, Any]:
         del use_sudo, binary_path, timeout_seconds
-        return payloads[" ".join(args)]
+        return payloads.get(" ".join(args), _failure_payload("operation probe unsupported"))
 
     monkeypatch.setattr(
         "megaraid_dashboard.services.collector.run_storcli",
@@ -227,7 +229,7 @@ async def test_collect_storcli_snapshot_treats_foreign_config_probe_errors_as_op
         command = " ".join(args)
         if command == "/c0/fall show all":
             raise StorcliCommandFailed("foreign-config probe unsupported")
-        return payloads[command]
+        return payloads.get(command, _failure_payload("operation probe unsupported"))
 
     monkeypatch.setattr(
         "megaraid_dashboard.services.collector.run_storcli",
@@ -276,3 +278,61 @@ def _failure_payload(err_msg: str) -> dict[str, Any]:
             }
         ]
     }
+
+
+@pytest.mark.parametrize("progress_fails", [False, True])
+async def test_operation_states_are_collected_and_persisted_without_raw_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Any,
+    progress_fails: bool,
+) -> None:
+    from megaraid_dashboard.db.dao import insert_snapshot
+    from megaraid_dashboard.services.controller_detail import (
+        _load_consistency_check_state,
+        _load_patrol_read_state,
+    )
+
+    fixtures = {
+        "/c0 show all": "c0_show_all.json",
+        "/c0/vall show all": "vall_show_all.json",
+        "/c0/eall/sall show all": "eall_sall_show_all.json",
+        "/c0/cv show all": "cv_show_all.json",
+        "/c0/bbu show all": "bbu_show_all.json",
+        "/c0/fall show all": "c0_fall_show_all_absent.json",
+    }
+    calls = []
+
+    async def fake(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        command = " ".join(args)
+        calls.append(command)
+        if command in fixtures:
+            return _load_fixture(fixtures[command])
+        if progress_fails and command == "/c0/vall show cc":
+            return _failure_payload("unsupported progress")
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {"Status": "Success"},
+                    "Response Data": {
+                        "PR Mode": "Manual",
+                        "PR Current State": "Stopped",
+                        "CC Mode": "Auto",
+                        "CC Current State": "Active",
+                        "CC Progress%": 35,
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.services.collector.run_storcli", fake)
+    snapshot, raw = await collect_storcli_snapshot(settings=_settings())
+    row = insert_snapshot(session, snapshot, store_raw=False, raw_payload=raw)
+    assert row.raw_json is not None and "controller" not in row.raw_json
+    patrol = _load_patrol_read_state(row)
+    assert patrol is not None and patrol.state == "stopped"
+    cc = _load_consistency_check_state(row)
+    if progress_fails:
+        assert cc is None
+    else:
+        assert cc is not None and cc.state == "active" and cc.progress_percent == 35
+    assert calls[-3:] == ["/c0 show patrolread", "/c0 show cc", "/c0/vall show cc"]

@@ -37,6 +37,11 @@ def insert_snapshot(
     raw_payload: dict[str, Any] | None = None,
 ) -> ControllerSnapshot:
     controller = snapshot.controller
+    operation_state = {
+        key: raw_payload[key]
+        for key in ("patrol_read", "consistency_check")
+        if raw_payload is not None and raw_payload.get(key) is not None
+    }
     controller_snapshot = ControllerSnapshot(
         captured_at=_require_aware_utc(snapshot.captured_at),
         model_name=controller.model_name,
@@ -48,7 +53,7 @@ def insert_snapshot(
         cv_present=controller.cv_present,
         bbu_present=controller.bbu_present,
         roc_temperature_celsius=controller.roc_temperature_celsius,
-        raw_json=raw_payload if store_raw else None,
+        raw_json=raw_payload if store_raw else operation_state or None,
     )
     controller_snapshot.virtual_drives = [
         VirtualDriveSnapshot(
@@ -424,6 +429,17 @@ def get_maintenance_state(session: Session, *, now: datetime) -> MaintenanceStat
     )
 
 
+def maintenance_writes_enabled(session: Session, *, configured: bool, now: datetime) -> bool:
+    """The persisted UI window overrides the legacy explicit configuration flag.
+
+    Keep an inactive record after Stop so it also revokes configured write access
+    across workers and restarts. Expired windows never fall back to configuration.
+    """
+    if get_state(session, _MAINTENANCE_MODE_KEY) is None:
+        return configured
+    return get_maintenance_state(session, now=now).active
+
+
 def set_maintenance_state(
     session: Session,
     *,
@@ -433,12 +449,9 @@ def set_maintenance_state(
 ) -> None:
     if expires_at is not None:
         _require_aware_utc(expires_at)
-    if not active:
-        delete_state(session, _MAINTENANCE_MODE_KEY)
-        return
 
     payload = {
-        "active": True,
+        "active": active,
         "expires_at": expires_at.isoformat() if expires_at is not None else None,
         "started_by": started_by,
     }

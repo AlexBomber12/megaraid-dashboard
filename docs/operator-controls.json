@@ -1,0 +1,140 @@
+{
+  "src/megaraid_dashboard/templates/pages/controller_detail.html": [
+    "<a href=\"{{ request.url_for('overview').path }}\">"
+  ],
+  "src/megaraid_dashboard/templates/pages/drive_detail_v2.html": [
+    "<a href=\"{{ request.url_for('overview').path }}\">",
+    "<a href=\"{{ request.url_for('drives').path }}\">",
+    "<a class=\"drive-nav__link\" aria-label=\"Previous drive\" {% if view_model.prev_drive_url %}href=\"{{ view_model.prev_drive_url }}\"{% else %}aria-disabled=\"true\"{% endif %}>",
+    "<a class=\"drive-nav__link\" aria-label=\"Next drive\" {% if view_model.next_drive_url %}href=\"{{ view_model.next_drive_url }}\"{% else %}aria-disabled=\"true\"{% endif %}>"
+  ],
+  "src/megaraid_dashboard/templates/pages/foreign_config.html": [
+    "<a href=\"{{ request.url_for('overview').path }}\">",
+    "<a href=\"{{ request.url_for('controller_detail').path }}\">",
+    "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">",
+    "<summary>",
+    "<form class=\"form-grid foreign-config__form\" data-foreign-config-form=\"import\" method=\"post\" action=\"{{ request.url_for('controller_foreign_config_import').path }}\" hx-post=\"{{ request.url_for('controller_foreign_config_import').path }}\" hx-ext=\"json-enc\" hx-target=\"#foreign-config-import-result\" hx-swap=\"innerHTML\" >",
+    "<input class=\"input mono\" type=\"text\" name=\"confirmation\" required autocomplete=\"off\" spellcheck=\"false\">",
+    "<input type=\"checkbox\" name=\"dry_run\" value=\"true\" checked>",
+    "<button type=\"submit\" class=\"button button--warning\">",
+    "<summary>",
+    "<form class=\"form-grid foreign-config__form\" data-foreign-config-form=\"clear\" method=\"post\" action=\"{{ request.url_for('controller_foreign_config_clear').path }}\" hx-post=\"{{ request.url_for('controller_foreign_config_clear').path }}\" hx-ext=\"json-enc\" hx-target=\"#foreign-config-clear-result\" hx-swap=\"innerHTML\" >",
+    "<input class=\"input mono\" type=\"text\" name=\"confirmation\" required autocomplete=\"off\" spellcheck=\"false\" pattern=\"{{ clear_confirmation_phrase }}\">",
+    "<input type=\"checkbox\" name=\"dry_run\" value=\"true\" checked>",
+    "<button type=\"submit\" class=\"button button--danger\">",
+    "<a href=\"{{ request.url_for('controller_detail').path }}\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/activity_timeline_v2.html": [
+    "<a href=\"{{ request.url_for('events').path }}\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/backplane_diagram.html": [
+    "<a class=\"backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}\" href=\"{{ slot.detail_url }}\" title=\"Slot {{ slot.slot_label }} \u00b7 {{ severity_class | title }}\" {% if slot.is_this %}aria-current=\"page\"{% endif %} >"
+  ],
+  "src/megaraid_dashboard/templates/partials/controller_detail/buzzer_control.html": [
+    "<a href=\"#maintenance\">",
+    "<form method=\"post\" action=\"{{ view_model.buzzer.enable_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"enable\">",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'true' if buzzer_on else 'false' }}\" {% if not view_model.buzzer.can_enable %}disabled{% endif %}>",
+    "<form method=\"post\" action=\"{{ view_model.buzzer.disable_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"disable\">",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'false' if buzzer_on else 'true' }}\" {% if not view_model.buzzer.can_disable %}disabled{% endif %}>",
+    "<form method=\"post\" action=\"{{ view_model.buzzer.silence_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"silence\">",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button type=\"submit\" class=\"button button--warning\" {% if not view_model.buzzer.can_silence %}disabled{% endif %}>"
+  ],
+  "src/megaraid_dashboard/templates/partials/controller_detail/foreign_config.html": [
+    "<a class=\"button button--warning\" href=\"{{ request.url_for('controller_foreign_config').path }}\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/controller_detail/hardware_identity.html": [
+    "<summary id=\"hardware-identity-heading\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/controller_detail/live_operations.html": [
+    "<a href=\"#maintenance\">",
+    "<form method=\"post\" action=\"{{ operation.start_url or '#' }}\" class=\"inline-form\" data-csrf-form>",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button class=\"button\" type=\"submit\" {% if not operation.can_start %}disabled{% endif %}>",
+    "<form method=\"post\" action=\"{{ operation.stop_url or '#' }}\" class=\"inline-form\" data-csrf-form>",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button class=\"button\" type=\"submit\" {% if not operation.can_stop %}disabled{% endif %}>",
+    "<form method=\"post\" action=\"{{ operation.mode_url or '#' }}\" class=\"inline-form\" data-csrf-form data-operation-mode-form>",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<input type=\"hidden\" name=\"mode\" value=\"{{ next_operation_mode }}\">",
+    "<button class=\"button\" type=\"submit\" {% if not operation.can_change_mode %}disabled{% endif %}>"
+  ],
+  "src/megaraid_dashboard/templates/partials/controller_detail/roc_history_chart.html": [
+    "<button type=\"button\" class=\"range-tabs__button\" data-range-hours=\"1\" role=\"tab\" aria-selected=\"false\">",
+    "<button type=\"button\" class=\"range-tabs__button range-tabs__button--active\" data-range-hours=\"24\" role=\"tab\" aria-selected=\"true\">",
+    "<button type=\"button\" class=\"range-tabs__button\" data-range-hours=\"168\" role=\"tab\" aria-selected=\"false\">",
+    "<button type=\"button\" class=\"range-tabs__button\" data-range-hours=\"720\" role=\"tab\" aria-selected=\"false\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/controller_summary_card.html": [
+    "<a href=\"{{ request.url_for('controller_detail').path }}\" class=\"controller-card controller-card--{{ controller.state | lower }}\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/drive_detail/advanced_actions.html": [
+    "<form method=\"post\" action=\"{{ action.url }}\" class=\"inline-form\" data-csrf-form data-drive-advanced-action data-confirm-title=\"{{ action.label }} on drive {{ slot_ref }}?\" data-confirm-body=\"{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}\" data-confirm-label=\"{{ action.label }}\" data-confirm-tone=\"{{ 'danger' if action.is_destructive else 'warning' }}\" {% if action.is_destructive %}data-confirm-phrase=\"{{ view_model.identity.serial_number }}\"{% endif %} >",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<input type=\"hidden\" name=\"serial_number\" value=\"{{ view_model.identity.serial_number }}\">",
+    "<input type=\"hidden\" name=\"dg_id\" value=\"{{ drive_dg_id if drive_dg_id != '-' else '' }}\">",
+    "<button type=\"submit\" class=\"button{% if action.is_destructive %} button--danger{% endif %}\" {% if not action.is_enabled or no_dg %}disabled{% endif %} >",
+    "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/drive_detail/health_snapshot.html": [
+    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if not view_model.health.can_locate_start %}disabled{% endif %} >",
+    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if not view_model.health.can_locate_stop %}disabled{% endif %} >"
+  ],
+  "src/megaraid_dashboard/templates/partials/drive_detail/replace_destructive.html": [
+    "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"open\">",
+    "<button type=\"button\" class=\"button\" data-replace-action=\"cancel\" autofocus>",
+    "<button type=\"button\" class=\"button button--warning\" data-replace-action=\"continue-to-serial\">",
+    "<input type=\"text\" class=\"input mono\" data-replace-input=\"serial\" autocomplete=\"off\" spellcheck=\"false\">",
+    "<input type=\"checkbox\" data-replace-input=\"dry-run\" checked>",
+    "<button type=\"button\" class=\"button\" data-replace-action=\"cancel\" autofocus>",
+    "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"run-step1\" disabled>",
+    "<button type=\"button\" class=\"button\" data-replace-action=\"cancel\" autofocus>",
+    "<button type=\"button\" class=\"button button--warning\" data-replace-action=\"continue-to-insert\">",
+    "<input type=\"text\" class=\"input mono\" data-replace-input=\"new-serial\" autocomplete=\"off\" spellcheck=\"false\">",
+    "<input type=\"checkbox\" data-replace-input=\"dry-run-step3\" checked>",
+    "<button type=\"button\" class=\"button\" data-replace-action=\"cancel\" autofocus>",
+    "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"run-step3\" disabled>",
+    "<button type=\"button\" class=\"button\" data-replace-action=\"close\">",
+    "<button type=\"button\" class=\"button\" data-replace-action=\"close\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/drive_detail/temperature_chart.html": [
+    "<button class=\"range-tabs__button{% if range_days == 30 %} range-tabs__button--active{% endif %}\" type=\"button\" role=\"tab\" aria-selected=\"{{ 'true' if range_days == 30 else 'false' }}\" hx-get=\"{{ request.url_for('drive_charts', enclosure_id=view_model.position.enclosure, slot_id=view_model.position.slot).path }}\" hx-vals='{\"range_days\": {{ range_days }}, \"serial_number\": {{ view_model.identity.serial_number | tojson }}, \"captured_at\": {{ view_model.updated_at.isoformat() | tojson }}}' hx-target=\"#chart-area\" hx-swap=\"outerHTML\" >"
+  ],
+  "src/megaraid_dashboard/templates/partials/drive_grid.html": [
+    "<a href=\"{{ drives_url }}\">",
+    "<a class=\"drive-tile-v2 drive-tile-v2--{{ tile.tile_severity }}\" href=\"{{ root_path }}{{ tile.detail_url }}\" >"
+  ],
+  "src/megaraid_dashboard/templates/partials/events_data.html": [
+    "<button id=\"events-load-more\" class=\"button\" type=\"button\" hx-get=\"{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}before_occurred_at={{ cursor.before_occurred_at_iso | urlencode }}&before_id={{ cursor.before_id }}\" hx-target=\"#events-list\" hx-swap=\"beforeend\" >",
+    "<a class=\"filter-chip{% if chip.active %} filter-chip--active{% endif %}\" href=\"{{ chip.href }}\" aria-pressed=\"{{ 'true' if chip.active else 'false' }}\" >",
+    "<a class=\"filter-chip{% if chip.active %} filter-chip--active{% endif %}\" href=\"{{ chip.href }}\" aria-pressed=\"{{ 'true' if chip.active else 'false' }}\" >"
+  ],
+  "src/megaraid_dashboard/templates/partials/maintenance_banner.html": [
+    "<button type=\"button\" class=\"button button--warning\" hx-post=\"{{ request.url_for('maintenance_stop').path }}\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >"
+  ],
+  "src/megaraid_dashboard/templates/partials/maintenance_start_form.html": [
+    "<button type=\"button\" class=\"button button--warning\" hx-post=\"{{ request.url_for('maintenance_stop').path }}\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >",
+    "<form class=\"form-grid\" hx-post=\"{{ request.url_for('maintenance_start').path }}\" hx-ext=\"json-enc\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >",
+    "<select class=\"input\" name=\"duration_minutes\">",
+    "<input class=\"input\" type=\"text\" name=\"reason\" maxlength=\"200\" required placeholder=\"e.g. Replace drive 252:3\">",
+    "<button type=\"submit\" class=\"button button--warning\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/physical_drive_table.html": [
+    "<button type=\"button\" class=\"sort-button\">",
+    "<a href=\"{{ drive.slot_url }}\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/site_header.html": [
+    "<a class=\"brand-v2\" href=\"{{ request.url_for('overview').path }}\">",
+    "<a class=\"site-nav-v2__link{% if nav_active == key %} site-nav-v2__link--active{% endif %}\" href=\"{{ request.url_for(endpoint).path }}\" {% if nav_active == key %}aria-current=\"page\"{% endif %} >",
+    "<button type=\"button\" class=\"icon-button\" data-live-refresh aria-label=\"Refresh now\" title=\"Refresh now\">"
+  ],
+  "src/megaraid_dashboard/static/js/confirm-dialog.js": [
+    "<form>",
+    "<form method=\"dialog\" class=\"confirm-dialog__inner\">",
+    "<input class=\"input mono\" data-cd-input autocomplete=\"off\" spellcheck=\"false\">",
+    "<button type=\"submit\" value=\"cancel\" class=\"button\" data-cd-cancel>",
+    "<button type=\"submit\" value=\"confirm\" class=\"button\" data-cd-confirm>"
+  ]
+}

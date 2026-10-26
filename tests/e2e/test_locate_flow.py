@@ -1,60 +1,57 @@
-"""End-to-end coverage of the drive locate LED start/stop flow via Playwright.
+"""Locate regression assertions remain strict while the separate product fix lands."""
 
-Relies on the ``snapshot_with_drives`` fixture so the addressed slots (252:0
-and 252:1) resolve to real DB rows. The session storcli stub returns success
-for any args, so the route produces a 200 with an audit record.
+import pytest
+from playwright.sync_api import Page, expect
 
-The CSRF cookie is parsed from the ``Set-Cookie`` header and re-sent via an
-explicit ``Cookie`` header on each POST, matching the pattern used by the CSRF
-and maintenance flow tests.
-"""
-
-from __future__ import annotations
-
-import re
-
-from playwright.sync_api import Page
-
-_CSRF_COOKIE_RE = re.compile(r"__Host-csrf=([A-Za-z0-9_-]+)")
+from tests.e2e.conftest import login_and_navigate
+from tests.safety.harness import FakeStorcli, database_observation
 
 
-def _csrf_token_from_get(page: Page, live_server: str) -> str:
-    response = page.request.get(f"{live_server}/")
-    assert response.status == 200, f"GET / returned {response.status}"
-    set_cookie = response.headers.get("set-cookie", "")
-    match = _CSRF_COOKIE_RE.search(set_cookie)
-    assert match is not None, f"no __Host-csrf in Set-Cookie: {set_cookie!r}"
-    return match.group(1)
-
-
-def test_locate_start_then_stop(
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize("fault", ["success", "failure"])
+def test_locate_browser_result(
     authenticated_page: Page,
     live_server: str,
     snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
+    action: str,
+    fault: str,
+    maintenance_mode: None,
 ) -> None:
-    del snapshot_with_drives
-    token = _csrf_token_from_get(authenticated_page, live_server)
-    csrf_headers = {
-        "Cookie": f"__Host-csrf={token}",
-        "X-CSRF-Token": token,
-    }
-
-    start = authenticated_page.request.post(
-        f"{live_server}/drives/252:0/locate/start",
-        headers=csrf_headers,
+    page = authenticated_page
+    fake_storcli.configure(fault=fault)
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+    before = database_observation(snapshot_with_drives)
+    button = page.locator(f'[data-locate-action="{action}"]')
+    # Stop must be available after starting, rather than manufacturing browser state.
+    if action == "stop":
+        fake_storcli.configure(fault="success")
+        with page.expect_response("**/locate/start"):
+            page.locator('[data-locate-action="start"]').click()
+        fake_storcli.clear()
+        fake_storcli.configure(fault=fault)
+    expect(button).to_be_enabled(timeout=1500)
+    with page.expect_response(f"**/locate/{action}") as response:
+        button.click()
+    assert fake_storcli.mutations == [["/c0/e252/s0", action, "locate", "J"]]
+    assert response.value.status == (200 if fault == "success" else 502)
+    feedback = page.locator("[data-action-feedback]")
+    expect(feedback).to_contain_text(
+        "accepted" if fault == "success" else "fail", ignore_case=True, timeout=1500
     )
-    assert start.status == 200, f"locate start returned {start.status}"
-    start_body = start.json()
-    assert start_body["action"] == "start"
-    assert start_body["enclosure"] == 252
-    assert start_body["slot"] == 0
-
-    stop = authenticated_page.request.post(
-        f"{live_server}/drives/252:0/locate/stop",
-        headers=csrf_headers,
+    expect(page.locator(".drive-actions")).to_contain_text(
+        "unverified", ignore_case=True, timeout=1500
     )
-    assert stop.status == 200, f"locate stop returned {stop.status}"
-    stop_body = stop.json()
-    assert stop_body["action"] == "stop"
-    assert stop_body["enclosure"] == 252
-    assert stop_body["slot"] == 0
+    if fault == "success" and action == "start":
+        expect(button).to_be_disabled()
+    else:
+        expect(button).to_be_enabled()
+    expect(page.locator('[data-locate-action="stop"]')).to_be_enabled()
+    events, drives = database_observation(snapshot_with_drives)
+    assert drives == before[1]
+    assert events and (fault == "success" or "fail" in events[-1][1].lower())
+    page.reload()
+    expect(page.locator(".drive-detail-v2")).to_have_count(1)
+    if fault == "success" and action == "start":
+        expect(page.locator('[data-locate-action="start"]')).to_be_disabled()
+        expect(page.locator('[data-locate-action="stop"]')).to_be_enabled()
