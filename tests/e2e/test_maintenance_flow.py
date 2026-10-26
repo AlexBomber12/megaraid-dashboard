@@ -1,99 +1,76 @@
-"""End-to-end coverage of the maintenance start/stop flow via Playwright.
+"""Browser-only maintenance flow over HTTPS; production JS supplies CSRF."""
 
-Walks the browser through the same sequence an operator would use:
+from playwright.sync_api import Page, expect
 
-* GET ``/`` to obtain the ``__Host-csrf`` cookie.
-* POST ``/maintenance/start`` with a matching token; confirm the maintenance
-  banner is rendered on the overview page.
-* POST ``/maintenance/stop`` with the same token; confirm the banner is gone.
-
-The CSRF cookie is parsed from the ``Set-Cookie`` header and re-sent via an
-explicit ``Cookie`` header on each POST so the test does not depend on a
-browser storing a ``Secure`` cookie issued over plain ``http://``.
-"""
-
-from __future__ import annotations
-
-import re
-
-from playwright.sync_api import Page
-
-_CSRF_COOKIE_RE = re.compile(r"__Host-csrf=([A-Za-z0-9_-]+)")
-_MAINTENANCE_BANNER_MARKER = 'class="maintenance-banner"'
+from tests.e2e.conftest import login_and_navigate
+from tests.safety.harness import FakeStorcli, database_observation
 
 
-def _csrf_token_from_get(page: Page, live_server: str) -> str:
-    response = page.request.get(f"{live_server}/")
-    assert response.status == 200, f"GET / returned {response.status}"
-    set_cookie = response.headers.get("set-cookie", "")
-    match = _CSRF_COOKIE_RE.search(set_cookie)
-    assert match is not None, f"no __Host-csrf in Set-Cookie: {set_cookie!r}"
-    return match.group(1)
+def start_maintenance(page: Page, live_server: str) -> None:
+    login_and_navigate(page, f"{live_server}/controller")
+    page.get_by_label("Reason (required)").fill("isolated safety test")
+    page.get_by_label("Duration").select_option("15")
+    with page.expect_response("**/maintenance/start") as response:
+        page.get_by_role("button", name="Start Maintenance").click()
+    assert response.value.status == 200
+    expect(page.locator(".maintenance-banner")).to_be_visible()
 
 
-def _post_maintenance_start(
-    page: Page,
+def test_maintenance_start_stop_persists_and_refreshes(
+    authenticated_page: Page,
     live_server: str,
-    token: str,
-    *,
-    reason: str,
+    snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
 ) -> None:
-    response = page.request.post(
-        f"{live_server}/maintenance/start",
-        headers={
-            "Cookie": f"__Host-csrf={token}",
-            "X-CSRF-Token": token,
-        },
-        data={"duration_minutes": 5, "reason": reason},
+    page = authenticated_page
+    start_maintenance(page, live_server)
+    page.reload()
+    expect(page.get_by_role("button", name="Stop Maintenance")).to_have_count(2)
+    events, _ = database_observation(snapshot_with_drives)
+    assert any(
+        "maintenance start" in summary and "isolated safety test" in summary
+        for _, summary in events
     )
-    assert response.status == 200, f"maintenance start returned {response.status}"
-    assert response.json()["active"] is True
+    with page.expect_response("**/maintenance/stop") as response:
+        page.locator("#maintenance").get_by_role("button", name="Stop Maintenance").click()
+    assert response.value.status == 200
+    expect(page.get_by_role("button", name="Start Maintenance")).to_be_visible()
+    page.reload()
+    expect(page.locator(".maintenance-banner")).to_have_count(0)
+    events, _ = database_observation(snapshot_with_drives)
+    assert any("maintenance stop" in summary for _, summary in events)
+    assert fake_storcli.calls == []
 
 
-def test_maintenance_start_renders_banner_on_overview(
+def test_maintenance_blank_reason_does_not_submit(
     authenticated_page: Page,
     live_server: str,
     fresh_db: str,
+    fake_storcli: FakeStorcli,
 ) -> None:
-    del fresh_db
-    token = _csrf_token_from_get(authenticated_page, live_server)
-    _post_maintenance_start(
-        authenticated_page,
-        live_server,
-        token,
-        reason="e2e maintenance start",
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/controller")
+    posts = []
+    page.on(
+        "request", lambda request: posts.append(request.url) if request.method == "POST" else None
     )
+    page.get_by_role("button", name="Start Maintenance").click()
+    assert page.get_by_label("Reason (required)").evaluate("el => !el.validity.valid")
+    assert posts == []
+    assert database_observation(fresh_db)[0] == []
+    assert fake_storcli.calls == []
 
-    authenticated_page.goto(f"{live_server}/")
-    content = authenticated_page.content()
-    assert _MAINTENANCE_BANNER_MARKER in content
-    assert "Maintenance Mode Active" in content
 
-
-def test_maintenance_stop_clears_banner(
+def test_ui_maintenance_window_authorizes_controller_action(
     authenticated_page: Page,
     live_server: str,
-    fresh_db: str,
+    snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
 ) -> None:
-    del fresh_db
-    token = _csrf_token_from_get(authenticated_page, live_server)
-    _post_maintenance_start(
-        authenticated_page,
-        live_server,
-        token,
-        reason="e2e maintenance stop setup",
-    )
-
-    stop = authenticated_page.request.post(
-        f"{live_server}/maintenance/stop",
-        headers={
-            "Cookie": f"__Host-csrf={token}",
-            "X-CSRF-Token": token,
-        },
-    )
-    assert stop.status == 200
-    assert stop.json()["active"] is False
-
-    authenticated_page.goto(f"{live_server}/")
-    content = authenticated_page.content()
-    assert _MAINTENANCE_BANNER_MARKER not in content
+    page = authenticated_page
+    start_maintenance(page, live_server)
+    page.goto(f"{live_server}/controller")
+    with page.expect_response("**/controller/buzzer/silence") as response:
+        page.locator('[data-buzzer-action="silence"] button').click()
+    assert response.value.status == 303, "Starting UI maintenance must authorize controller writes"
+    assert fake_storcli.mutations == [["/c0", "set", "alarm=silence", "J"]]

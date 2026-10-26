@@ -25,4 +25,7 @@ fi
 echo "==> pytest"
 python -m pytest
 
+echo "==> isolated operator safety integration"
+python -m pytest -o "addopts=" tests/integration/ --no-cov
+
 echo "==> ci.sh OK"

@@ -3,32 +3,17 @@
 from __future__ import annotations
 
 from playwright.sync_api import Page, expect
-from sqlalchemy import select
 
-from megaraid_dashboard.db import Event, get_engine, get_sessionmaker
 from tests.e2e.conftest import assert_chart_height_within, login_and_navigate
 
 
-def _event_category_exists(database_url: str, category: str) -> bool:
-    engine = get_engine(database_url)
-    try:
-        session_factory = get_sessionmaker(engine)
-        with session_factory() as session:
-            return (
-                session.scalar(select(Event.id).where(Event.category == category).limit(1))
-                is not None
-            )
-    finally:
-        engine.dispose()
-
-
-def test_controller_detail_sections_buzzer_and_roc_chart(
+def test_controller_detail_sections_and_roc_chart(
     authenticated_page: Page,
     live_server: str,
     snapshot_with_drives: str,
     maintenance_mode: None,
 ) -> None:
-    """Exercise controller sections, buzzer POST forms, audit events, and chart range tabs."""
+    """Exercise controller sections and chart range tabs; buzzer actions have their own matrix."""
     del maintenance_mode
     login_and_navigate(authenticated_page, f"{live_server}/controller")
 
@@ -48,21 +33,6 @@ def test_controller_detail_sections_buzzer_and_roc_chart(
     expect(
         authenticated_page.locator("[data-controller-section='hardware-identity'] dl > div")
     ).to_have_count(18)
-
-    with authenticated_page.expect_navigation(url="**/"):
-        authenticated_page.locator("[data-buzzer-action='silence']").get_by_role(
-            "button",
-            name="Silence",
-        ).click()
-    assert _event_category_exists(snapshot_with_drives, "controller_buzzer_silence")
-
-    login_and_navigate(authenticated_page, f"{live_server}/controller")
-    with authenticated_page.expect_navigation(url="**/"):
-        authenticated_page.locator("[data-buzzer-action='disable']").get_by_role(
-            "button",
-            name="Disable",
-        ).click()
-    assert _event_category_exists(snapshot_with_drives, "controller_buzzer_disable")
 
     login_and_navigate(authenticated_page, f"{live_server}/controller")
     with authenticated_page.expect_response(

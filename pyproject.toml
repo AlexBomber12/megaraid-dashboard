@@ -75,7 +75,8 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--cov=src/megaraid_dashboard --cov-report=term-missing --cov-branch --cov-fail-under=100 --ignore=tests/e2e"
+addopts = "--cov=src/megaraid_dashboard --cov-report=term-missing --cov-branch --cov-fail-under=100 --ignore=tests/e2e -m 'not integration'"
+markers = ["integration: isolated executable and local HTTPS integration tests"]
 
 [tool.coverage.run]
 omit = ["tests/e2e/*"]
