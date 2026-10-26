@@ -1277,3 +1277,34 @@ def _all_events(test_app: FastAPI) -> list[Event]:
     with session_factory() as session:
         assert isinstance(session, Session)
         return list(session.scalars(select(Event)).all())
+
+
+@pytest.mark.parametrize(
+    "status", [{"Status": "Failure", "Description": "Controller busy"}, {}, {"Status": "Unknown"}]
+)
+def test_insert_rejects_exit_zero_without_controller_success(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    status: dict[str, str],
+) -> None:
+    async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            return _drive_show_payload(state="UGood", serial_number=_NEW_SERIAL)
+        return {"Controllers": [{"Command Status": status}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(test_app, serial_number=_NEW_SERIAL, state="UGood")
+        _seed_replace_missing_audit(test_app, outgoing_serial=_OUTGOING_SERIAL)
+        response = client.post(
+            "/drives/2:0/replace/insert",
+            headers=_csrf_request_headers(client, csrf_headers),
+            json={"serial_number": _NEW_SERIAL},
+        )
+        assert response.status_code == 502
+        events = sorted(_all_events(test_app), key=lambda event: event.id)
+        assert len(events) == 2
+        assert "replace step insert" in events[-1].summary
+        assert "failed:" in events[-1].summary
+        assert "succeeded" not in events[-1].summary

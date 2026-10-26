@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from megaraid_dashboard.app import create_app
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliError, StorcliNotAvailable
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
 
 
@@ -63,6 +64,8 @@ def test_drive_locate_start_returns_200_with_auth_and_csrf(
 
     assert response.status_code == 200
     assert response.json() == {
+        "command_accepted": True,
+        "led_state": "unverified",
         "action": "start",
         "enclosure": 2,
         "slot": 0,
@@ -113,13 +116,17 @@ def test_drive_locate_records_operator_action(
             assert event.category == "operator_action"
             assert event.severity == "info"
             assert event.subject == "Operator action"
-            assert event.summary == f"locate {action} drive 2:0"
+            assert event.summary == f"locate {action} drive 2:0 succeeded"
             assert event.operator_username == "admin"
 
 
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize("status", ["Success", "Failure"])
 def test_drive_locate_returns_500_when_operator_action_audit_fails(
     monkeypatch: pytest.MonkeyPatch,
     csrf_headers: Callable[[TestClient], dict[str, str]],
+    action: str,
+    status: str,
 ) -> None:
     # Regression for PR-069: locate endpoints previously returned 200 and
     # silently swallowed the SQLAlchemyError, violating the operator-facing
@@ -134,7 +141,11 @@ def test_drive_locate_returns_500_when_operator_action_audit_fails(
     ) -> dict[str, Any]:
         del use_sudo, binary_path
         calls.append(args)
-        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+        return {
+            "Controllers": [
+                {"Command Status": {"Status": status, "Description": "Controller busy"}}
+            ]
+        }
 
     def fail_record_operator_action(*_args: object, **_kwargs: object) -> None:
         raise SQLAlchemyError("database is locked")
@@ -147,16 +158,23 @@ def test_drive_locate_returns_500_when_operator_action_audit_fails(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         headers = _csrf_request_headers(client, csrf_headers)
-        response = client.post("/drives/2:0/locate/start", headers=headers)
+        response = client.post(f"/drives/2:0/locate/{action}", headers=headers)
 
     assert response.status_code == 500
     body = response.json()
     assert body["error"] == "audit persistence failed"
-    assert body["action"] == "start"
+    assert body["action"] == action
     assert body["enclosure"] == 2
     assert body["slot"] == 0
-    assert body["result"] == {"Controllers": [{"Command Status": {"Status": "Success"}}]}
-    assert calls == [["/c0/e2/s0", "start", "locate", "J"]]
+    assert body["result"] == {
+        "Controllers": [{"Command Status": {"Status": status, "Description": "Controller busy"}}]
+    }
+    assert calls == [["/c0/e2/s0", action, "locate", "J"]]
+
+    assert "Audit could not be saved" in body["message"]
+    if status == "Failure":
+        assert "Controller busy" in body["message"]
+    assert "command_accepted" not in body
 
 
 def test_drive_locate_start_without_csrf_returns_403(
@@ -228,3 +246,94 @@ def _csrf_request_headers(
     headers = csrf_headers(client)
     token = headers["X-CSRF-Token"]
     return {**headers, "Cookie": f"__Host-csrf={token}"}
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (
+            {"Status": "Failure", "Detailed Status": [{"ErrMsg": "Drive not supported"}]},
+            "Drive not supported",
+        ),
+        ({"Status": "Failure", "Description": "Controller busy"}, "Controller busy"),
+        (
+            {"Status": "Failure", "Description": "Drive timed out: unsupported operation"},
+            "Drive timed out: unsupported operation",
+        ),
+        ({}, "explicit Success or Failure"),
+        ({"Status": "Pending"}, "explicit Success or Failure"),
+        (None, "valid Command Status"),
+    ],
+)
+def test_locate_rejects_unconfirmed_json_and_audits_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    action: str,
+    status: object,
+    expected: str,
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        return {"Controllers": [{"Command Status": status}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            f"/drives/2:0/locate/{action}", headers=_csrf_request_headers(client, csrf_headers)
+        )
+        assert response.status_code == 502
+        assert expected in response.json()["message"]
+        with test_app.state.session_factory() as session:
+            event = session.scalars(select(Event)).one()
+            assert event.summary.startswith(f"locate {action} drive 2:0 failed:")
+            assert "succeeded" not in event.summary
+            assert event.operator_username == "admin"
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (
+            StorcliCommandFailed("process exited 1", err_msg="private process stderr"),
+            "Check controller access",
+        ),
+        (StorcliCommandFailed("storcli timed out after 30 seconds"), "timed out"),
+        (StorcliNotAvailable("private binary path"), "unavailable"),
+    ],
+)
+@pytest.mark.parametrize("audit_fails", [False, True])
+def test_locate_process_failures_are_audited_and_never_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    action: str,
+    failure: StorcliError,
+    expected: str,
+    audit_fails: bool,
+) -> None:
+    async def fake_run_storcli(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise failure
+
+    def fail_audit(*_args: object, **_kwargs: object) -> None:
+        raise SQLAlchemyError("database is locked")
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
+    if audit_fails:
+        monkeypatch.setattr("megaraid_dashboard.web.routes.record_operator_action", fail_audit)
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            f"/drives/2:0/locate/{action}", headers=_csrf_request_headers(client, csrf_headers)
+        )
+        assert response.status_code == (500 if audit_fails else 502)
+        message = response.json()["message"]
+        assert ("Audit could not be saved" if audit_fails else expected) in message
+        assert "private" not in message
+        with test_app.state.session_factory() as session:
+            events = session.scalars(select(Event)).all()
+            if audit_fails:
+                assert events == []
+            else:
+                assert len(events) == 1
+                assert events[0].summary.startswith(f"locate {action} drive 2:0 failed:")

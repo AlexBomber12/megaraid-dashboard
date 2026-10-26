@@ -900,3 +900,50 @@ def test_ensure_command_succeeded_no_raise_on_success() -> None:
     from megaraid_dashboard.storcli import ensure_command_succeeded
 
     ensure_command_succeeded(success_payload({}))
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        None,
+        [],
+        "Success",
+        {},
+        {"Status": None},
+        {"Status": 0},
+        {"Status": ""},
+        {"Status": "Warning"},
+    ],
+)
+def test_mutation_requires_explicit_success_status(status: object) -> None:
+    from megaraid_dashboard.storcli import ensure_command_succeeded
+
+    with pytest.raises(StorcliParseError):
+        ensure_command_succeeded({"Controllers": [{"Command Status": status}]})
+
+
+def test_mutation_rejects_absent_controller_or_status() -> None:
+    from megaraid_dashboard.storcli import ensure_command_succeeded
+
+    for payload in ({}, {"Controllers": []}, {"Controllers": [{}]}):
+        with pytest.raises(StorcliParseError):
+            ensure_command_succeeded(payload)
+
+
+def test_mutation_normalizes_status_and_bounds_controller_detail() -> None:
+    from megaraid_dashboard.storcli import ensure_command_succeeded
+
+    ensure_command_succeeded({"Controllers": [{"Command Status": {"Status": " SUCCESS "}}]})
+    payload = {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Status": " FAILURE ",
+                    "Detailed Status": [{"ErrMsg": "busy\n\x00\t" + "x" * 500}],
+                }
+            }
+        ]
+    }
+    with pytest.raises(StorcliCommandFailed) as error:
+        ensure_command_succeeded(payload)
+    assert error.value.err_msg == "busy " + "x" * 295

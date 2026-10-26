@@ -131,6 +131,7 @@ from megaraid_dashboard.storcli import (
     DriveShow,
     ForeignConfig,
     StorcliError,
+    StorcliNotAvailable,
     StorcliParseError,
     ensure_command_succeeded,
     parse_drive_show,
@@ -492,8 +493,8 @@ async def _run_locate(
 ) -> JSONResponse:
     """Drive the locate LED for one slot.
 
-    Contract: a 200 response implies the operator action was recorded in the
-    audit log. If the audit write fails we return a 500 via
+    Contract: a 200 response means explicit controller acceptance and a saved
+    audit event, with physical LED state still unverified. If auditing fails, return 500 via
     ``_audit_persistence_failure_response`` rather than swallow the error,
     matching the destructive endpoints in this module.
     """
@@ -505,11 +506,28 @@ async def _run_locate(
         return JSONResponse({"error": str(exc)}, status_code=400)
 
     settings: Settings = request.app.state.settings
-    result = await run_storcli(
-        argv,
-        use_sudo=settings.storcli_use_sudo,
-        binary_path=settings.storcli_path,
-    )
+    result: dict[str, Any] | None = None
+    storcli_error: StorcliError | None = None
+    message = ""
+    try:
+        result = await run_storcli(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+        )
+        ensure_command_succeeded(result)
+        outcome = "succeeded"
+    except StorcliError as exc:
+        storcli_error = exc
+        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+        message = "StorCLI could not confirm the command. Check controller access and retry."
+        if result is not None:
+            message = f"Locate {action} was not confirmed: {exc}. Check the drive and retry."
+        elif isinstance(exc, StorcliNotAvailable):
+            message = "StorCLI is unavailable. Check its installation and sudo access, then retry."
+        elif "timed out" in str(exc):
+            message = "StorCLI timed out. LED state is unverified; check it or try Stop Locate."
+
     try:
         await run_in_threadpool(
             _record_locate_operator_action_sync,
@@ -517,6 +535,7 @@ async def _run_locate(
             action=action,
             enclosure_id=enclosure_id,
             slot_id=slot_id,
+            outcome=outcome,
         )
     except SQLAlchemyError:
         return _audit_persistence_failure_response(
@@ -524,6 +543,15 @@ async def _run_locate(
             enclosure=enclosure_id,
             slot=slot_id,
             result=result,
+            message=(
+                "Audit could not be saved. "
+                + (message or "LED state is unverified; check it or try Stop Locate.")
+            ),
+        )
+    if storcli_error is not None:
+        return JSONResponse(
+            {"error": "locate command failed", "message": message, "action": action},
+            status_code=502,
         )
     return JSONResponse(
         {
@@ -531,6 +559,8 @@ async def _run_locate(
             "enclosure": enclosure_id,
             "slot": slot_id,
             "result": result,
+            "command_accepted": True,
+            "led_state": "unverified",
         }
     )
 
@@ -541,18 +571,21 @@ def _record_locate_operator_action_sync(
     action: LocateAction,
     enclosure_id: int,
     slot_id: int,
+    outcome: str,
 ) -> None:
     try:
         with _session(request) as session, session.begin():
             record_operator_action(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
-                message=f"locate {action} drive {enclosure_id}:{slot_id}",
+                message=f"locate {action} drive {enclosure_id}:{slot_id} {outcome}",
             )
     except SQLAlchemyError:
         LOGGER.exception(
             "operator_action_audit_failed",
             action=action,
+            outcome=outcome,
+            username=str(request.scope.get("user_username", "unknown")),
             enclosure_id=enclosure_id,
             slot_id=slot_id,
         )
@@ -1029,6 +1062,7 @@ async def _run_replace_step(
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
         )
+        ensure_command_succeeded(result)
         outcome = "succeeded"
     except StorcliError as exc:
         storcli_error = exc
@@ -1525,6 +1559,7 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
         )
+        ensure_command_succeeded(result)
         outcome = "succeeded"
     except StorcliError as exc:
         storcli_error = exc
