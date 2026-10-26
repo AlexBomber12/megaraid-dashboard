@@ -424,6 +424,17 @@ def get_maintenance_state(session: Session, *, now: datetime) -> MaintenanceStat
     )
 
 
+def maintenance_writes_enabled(session: Session, *, configured: bool, now: datetime) -> bool:
+    """The persisted UI window overrides the legacy explicit configuration flag.
+
+    Keep an inactive record after Stop so it also revokes configured write access
+    across workers and restarts. Expired windows never fall back to configuration.
+    """
+    if get_state(session, _MAINTENANCE_MODE_KEY) is None:
+        return configured
+    return get_maintenance_state(session, now=now).active
+
+
 def set_maintenance_state(
     session: Session,
     *,
@@ -433,9 +444,6 @@ def set_maintenance_state(
 ) -> None:
     if expires_at is not None:
         _require_aware_utc(expires_at)
-    if not active:
-        delete_state(session, _MAINTENANCE_MODE_KEY)
-        return
 
     payload = {
         "active": True,

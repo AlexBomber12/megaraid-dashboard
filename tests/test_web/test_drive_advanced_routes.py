@@ -45,6 +45,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("STORCLI_PATH", "/usr/local/sbin/storcli64")
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
+    monkeypatch.setenv("DESTRUCTIVE_MODE", "true")
     monkeypatch.setenv("METRICS_INTERVAL_SECONDS", "300")
     monkeypatch.setenv("COLLECTOR_ENABLED", "false")
     monkeypatch.setenv("COLLECTOR_LOCK_PATH", str(tmp_path / "collector.lock"))

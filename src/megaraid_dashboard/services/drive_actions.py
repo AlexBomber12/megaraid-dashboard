@@ -247,9 +247,9 @@ class RebuildStatus:
 class PatrolReadStatus:
     mode: str
     state: str
-    progress_percent: int | None
-    completed_drive_count: int | None
-    last_run_timestamp: str | None
+    progress_percent: int | None = None
+    completed_drive_count: int | None = None
+    last_run_timestamp: str | None = None
 
     @property
     def is_running(self) -> bool:
@@ -260,10 +260,10 @@ class PatrolReadStatus:
 class ConsistencyCheckStatus:
     mode: str
     state: str
-    progress_percent: int | None
-    last_run_timestamp: str | None
-    inconsistency_count: int | None
-    inconsistency_detail: str | None
+    progress_percent: int | None = None
+    last_run_timestamp: str | None = None
+    inconsistency_count: int | None = None
+    inconsistency_detail: str | None = None
 
     @property
     def is_running(self) -> bool:

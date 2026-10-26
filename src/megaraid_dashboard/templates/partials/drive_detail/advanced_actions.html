@@ -87,6 +87,14 @@
           error.hidden = true;
           error.textContent = "";
         }
+        if (form.getAttribute("aria-busy") === "true") return;
+        form.setAttribute("aria-busy", "true");
+        const buttons = Array.from(form.querySelectorAll("button"));
+        buttons.forEach(button => { button.disabled = true; });
+        function release() {
+          form.removeAttribute("aria-busy");
+          buttons.forEach(button => { button.disabled = false; });
+        }
         const isHotSpare = form.action.includes("/hotspare");
         const dgId = new FormData(form).get("dg_id");
         fetch(form.action, {
@@ -116,7 +124,7 @@
           if (!error) return;
           error.textContent = "Drive action failed.";
           error.hidden = false;
-        });
+        }).finally(release);
       });
     }());
   </script>

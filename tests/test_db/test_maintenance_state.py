@@ -57,7 +57,7 @@ def test_maintenance_state_expired_payload_reads_inactive(session: Session) -> N
     assert state.started_by == "admin"
 
 
-def test_setting_maintenance_inactive_deletes_row(session: Session) -> None:
+def test_setting_maintenance_inactive_persists_revocation(session: Session) -> None:
     set_maintenance_state(
         session,
         active=True,
@@ -69,7 +69,8 @@ def test_setting_maintenance_inactive_deletes_row(session: Session) -> None:
     set_maintenance_state(session, active=False, expires_at=None, started_by=None)
     session.commit()
 
-    assert get_state(session, "maintenance_mode") is None
+    assert get_state(session, "maintenance_mode") is not None
+    assert not get_maintenance_state(session, now=datetime.now(UTC)).active
 
 
 def test_maintenance_state_rejects_naive_now(session: Session) -> None:

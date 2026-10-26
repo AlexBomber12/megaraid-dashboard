@@ -460,15 +460,15 @@ def _advanced_actions(drive: PhysicalDriveSnapshot) -> list[AdvancedActionButton
             label="Mark as UGood",
             url=f"/drives/{slot_ref}/actions/mark-ugood",
             destructive=False,
-            enabled=state in {"UBad", "Failed", "Missing"},
+            enabled=state == "UBad",
             reason="Drive state does not allow Mark as UGood.",
         ),
         _action_button(
             label="Spin Down",
             url=f"/drives/{slot_ref}/actions/spindown",
             destructive=False,
-            enabled=state in {"Onln", "Online", "UGood"},
-            reason="Only online or unconfigured good drives can be spun down.",
+            enabled=state in {"Onln", "UGood", "UBad"},
+            reason="Only Onln, UGood, or UBad drives can be spun down.",
         ),
         _action_button(
             label="Hot Spare",

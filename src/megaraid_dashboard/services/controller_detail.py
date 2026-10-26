@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol
 
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -619,13 +620,19 @@ def _count_recent_warning_and_critical_events(session: Session, *, now: datetime
 
 
 def _load_patrol_read_state(snapshot: ControllerSnapshot) -> PatrolReadStatus | None:
-    del snapshot
-    return None
+    value = (snapshot.raw_json or {}).get("patrol_read")
+    try:
+        return TypeAdapter(PatrolReadStatus).validate_python(value)
+    except ValidationError:
+        return None
 
 
 def _load_consistency_check_state(snapshot: ControllerSnapshot) -> ConsistencyCheckStatus | None:
-    del snapshot
-    return None
+    value = (snapshot.raw_json or {}).get("consistency_check")
+    try:
+        return TypeAdapter(ConsistencyCheckStatus).validate_python(value)
+    except ValidationError:
+        return None
 
 
 def _worst_health(current: str, candidate: str) -> str:
