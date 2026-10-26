@@ -1,7 +1,8 @@
 # Operator control coverage and safety contract
 
-This inventory covers the independent PR #127 implementation. PR #126 is a
-pending dependency and is not included in this branch. The source baseline in `operator-controls.json`
+This inventory covers PR #127 rebased onto main at
+`223e7fd2cd7151065756b87413e96868830ad26e`, including merged PRs #125 and #126.
+The source baseline in `operator-controls.json`
 records every button, form, input, select, link and disclosure in templates and
 application JavaScript, including conditional controls and the generated
 confirmation dialog. Review both files when a control changes; CI never regenerates
@@ -89,9 +90,10 @@ cookies, password hashes or real credentials are written to artifacts.
 The safety assertions remain enabled, without skips, xfails, or a reduced coverage
 threshold. The application now enforces the failures originally exposed by them:
 
-- After #126 merges, Locate/replacement require explicit JSON Success and truthful
-  audit outcomes, including missing/unknown status rejection. These assertions remain
-  enabled and are expected to fail until this branch is rebased on that merged fix.
+- Locate/replacement require explicit JSON Success and truthful audit outcomes,
+  including missing/unknown status rejection. Locate updates the accepted-command
+  buttons immediately, retains Stop for uncertain state, and labels physical LED
+  state unverified. CSRF refusals instruct the operator to reload the HTTPS page.
 - Every controller write requires effective maintenance authorization. Starting the
   UI window enables writes; expiration and Stop revoke them durably. An inactive
   state record is retained so a configured startup flag cannot reactivate a stopped
@@ -137,8 +139,10 @@ the source baseline, route/scenario equality and browser references. Integration
 and Chromium CI then exercise each scenario. Static inventory includes hidden
 conditional branches so a new state-only control cannot evade the guard.
 
-Before requesting merge: rebase this branch on main **after the locate fix (#126) merges**,
-resolve inventory and fixture conflicts without discarding assertions, review the
-matrix, and rerun complete CI, isolated integration and Chromium. Keep PR #125 and
-the locate branch untouched. This PR must remain unmerged while acceptance failures
-remain. The read-only production procedure is separate: `PRODUCTION_READ_ONLY_SMOKE.md`.
+Before requesting merge: review the combined matrix and rerun complete CI, isolated
+integration and Chromium on the current rebased head. Rebase conflicts preserve
+both Locate result handling and maintenance authorization, both sets of route and
+browser regressions, and the HTTPS fake-executable harness. The reviewed inventory
+includes Locate request synchronization and immediate busy feedback from #126.
+This PR must remain unmerged while acceptance failures remain. The read-only
+production procedure is separate: `PRODUCTION_READ_ONLY_SMOKE.md`.

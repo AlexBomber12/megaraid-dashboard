@@ -9,7 +9,6 @@ from playwright.sync_api import Page, Request, Route, expect
 from sqlalchemy import select, update
 
 from megaraid_dashboard.db import Event, PhysicalDriveSnapshot, get_engine, get_sessionmaker
-
 from tests.e2e.conftest import _LiveServerHandle, assert_chart_height_within, login_and_navigate
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
@@ -31,9 +30,9 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     expect(breadcrumb.get_by_text("Slot 252:0")).to_be_visible()
 
     authenticated_page.get_by_label("Next drive").click()
-    authenticated_page.wait_for_url("**/drives/252:1")
+    authenticated_page.wait_for_url("**/drives/252:1", wait_until="load")
     authenticated_page.get_by_label("Previous drive").click()
-    authenticated_page.wait_for_url("**/drives/252:0")
+    authenticated_page.wait_for_url("**/drives/252:0", wait_until="load")
 
     expect(authenticated_page.locator("svg.error-sparkline")).to_be_visible()
     backplane_slots = authenticated_page.locator(".backplane-diagram .backplane-slot")
