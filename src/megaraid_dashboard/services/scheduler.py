@@ -6,13 +6,13 @@ import fcntl
 import os
 import stat
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from time import monotonic, time
 from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from megaraid_dashboard.alerts import SmtpAlertTransport
@@ -26,7 +26,7 @@ from megaraid_dashboard.db.dao import (
     upsert_temp_state,
 )
 from megaraid_dashboard.db.event_metrics import stage_event_metric
-from megaraid_dashboard.db.models import Event
+from megaraid_dashboard.db.models import ControllerSnapshot, Event
 from megaraid_dashboard.db.retention import (
     downsample_to_daily,
     downsample_to_hourly,
@@ -39,8 +39,11 @@ from megaraid_dashboard.services.event_detector import DetectedEvent, EventDetec
 from megaraid_dashboard.services.notifier import (
     _LOCK_PATH_DEFAULT,
     _record_notifier_health,
+    _record_telegram_health,
     run_notifier_cycle,
 )
+from megaraid_dashboard.services.telegram_notifier import run_telegram_cycle_async
+from megaraid_dashboard.services.telegram_relevance import record_controller_temperature_clears
 from megaraid_dashboard.storcli import StorcliError, StorcliSnapshot
 from megaraid_dashboard.web.metrics import (
     COLLECTOR_CYCLE_DURATION,
@@ -48,6 +51,11 @@ from megaraid_dashboard.web.metrics import (
 )
 
 LOGGER = structlog.get_logger(__name__)
+
+_COLLECTION_FAILED_PREFIX = "Collection failed:"
+_MONITORING_STALE_PREFIX = "Monitoring stale:"
+# A prolonged outage must be confirmed by several failed polls, not a single slow one.
+_STALE_MIN_FAILED_POLLS = 3
 
 
 def _utc_now() -> datetime:
@@ -106,6 +114,12 @@ class CollectorService:
                         store_raw=self.settings.store_raw_snapshot_payload,
                         raw_payload=raw_payload,
                     )
+                    record_controller_temperature_clears(
+                        session,
+                        temperature=snapshot.controller.roc_temperature_celsius,
+                        captured_at=snapshot.captured_at,
+                        settings=self.settings,
+                    )
                     events = self.event_detector.detect(previous, snapshot)
                     if self._latest_system_event_was_collection_failure(session):
                         events.append(
@@ -115,7 +129,7 @@ class CollectorService:
                                 subject="Controller",
                                 summary="Collection recovered",
                                 before=None,
-                                after=None,
+                                after={"monitoring_outage": False},
                             )
                         )
                     for event in events:
@@ -303,29 +317,48 @@ class CollectorService:
                 session.commit()
 
     async def _run_notifier_once(self) -> None:
-        async with self._write_lock:
-            await asyncio.to_thread(self._run_notifier_cycle_with_lock)
+        await self._run_notifier_cycle_with_lock()
 
-    def _run_notifier_cycle_with_lock(self) -> None:
+    async def _run_notifier_cycle_with_lock(self) -> None:
         lock_fd = _try_acquire_notifier_lock(_LOCK_PATH_DEFAULT)
         if lock_fd is None:
             LOGGER.info("notifier_overlap_skipped", lock_path=_LOCK_PATH_DEFAULT)
             return
         try:
-            transport = SmtpAlertTransport(self.settings)
-            with self.session_factory() as session:
-                try:
-                    run_notifier_cycle(
-                        session,
-                        transport,
-                        settings=self.settings,
-                        now=self.clock(),
-                    )
-                except Exception:
-                    _record_notifier_health(False)
-                    LOGGER.exception("notifier_cycle_failed")
+            # Keep the process lock throughout both phases. Telegram takes the shared
+            # write lock only for DB work; its bounded network I/O runs without it.
+            if self.settings.telegram_enabled:
+                with self.session_factory() as session:
+                    try:
+                        await run_telegram_cycle_async(
+                            session,
+                            settings=self.settings,
+                            now=self.clock(),
+                            database_lock=self._write_lock,
+                            clock=self.clock,
+                        )
+                    except Exception:
+                        _record_telegram_health(False)
+                        LOGGER.exception("telegram_notifier_cycle_failed")
+            # SMTP retains its existing transaction, transport and locking behavior.
+            async with self._write_lock:
+                await asyncio.to_thread(self._run_smtp_cycle)
         finally:
             _release_notifier_lock(lock_fd)
+
+    def _run_smtp_cycle(self) -> None:
+        transport = SmtpAlertTransport(self.settings)
+        with self.session_factory() as session:
+            try:
+                run_notifier_cycle(
+                    session,
+                    transport,
+                    settings=self.settings,
+                    now=self.clock(),
+                )
+            except Exception:
+                _record_notifier_health(False)
+                LOGGER.exception("notifier_cycle_failed")
 
     async def _run_tracked_job(self, job: Callable[[], Awaitable[None]]) -> None:
         task = asyncio.current_task()
@@ -350,13 +383,25 @@ class CollectorService:
         try:
             async with self._write_lock:
                 with self.session_factory() as session:
-                    record_event(
+                    # A single failed poll often recovers on the next cycle, so it is only a
+                    # warning; a confirmed outage is reported once as a critical event.
+                    failure = record_event(
                         session,
-                        severity="critical",
+                        severity="warning",
                         category="system",
                         subject="Controller",
-                        summary=f"Collection failed: {type(exc).__name__}: {exc}",
+                        summary=f"{_COLLECTION_FAILED_PREFIX} {type(exc).__name__}: {exc}",
                     )
+                    stale_summary = self._monitoring_stale_summary(session, failure)
+                    if stale_summary is not None:
+                        record_event(
+                            session,
+                            severity="critical",
+                            category="system",
+                            subject="Controller",
+                            summary=stale_summary,
+                            after={"monitoring_outage": True},
+                        )
                     session.commit()
         except Exception:
             LOGGER.exception("collection_failure_event_record_failed")
@@ -392,7 +437,42 @@ class CollectorService:
             .order_by(Event.occurred_at.desc(), Event.id.desc())
             .limit(1)
         ).one_or_none()
-        return event is not None and event.summary.startswith("Collection failed:")
+        return event is not None and event.summary.startswith(
+            (_COLLECTION_FAILED_PREFIX, _MONITORING_STALE_PREFIX)
+        )
+
+    def _monitoring_stale_summary(self, session: Session, failure: Event) -> str | None:
+        """Return a summary when collection has failed long enough to call the data stale."""
+        last_success = session.scalar(select(func.max(ControllerSnapshot.captured_at)))
+        failures = select(Event.occurred_at).where(
+            Event.category == "system",
+            Event.summary.startswith(_COLLECTION_FAILED_PREFIX),
+        )
+        if last_success is not None:
+            failures = failures.where(Event.occurred_at > last_success)
+        failure_times = list(session.scalars(failures))
+        if len(failure_times) < _STALE_MIN_FAILED_POLLS:
+            return None
+        stale_since = _require_aware_utc(last_success or min(failure_times))
+        stale_for = _require_aware_utc(failure.occurred_at) - stale_since
+        if stale_for < timedelta(minutes=self.settings.collector_stale_alert_minutes):
+            return None
+        already_reported = session.scalar(
+            select(Event.id)
+            .where(
+                Event.category == "system",
+                Event.summary.startswith(_MONITORING_STALE_PREFIX),
+                Event.occurred_at > stale_since,
+            )
+            .limit(1)
+        )
+        if already_reported is not None:
+            return None
+        return (
+            f"{_MONITORING_STALE_PREFIX} no successful collection for "
+            f"{int(stale_for.total_seconds() // 60)} min ({len(failure_times)} failed polls); "
+            "RAID state is unknown"
+        )
 
 
 def _require_aware_utc(value: datetime) -> datetime:

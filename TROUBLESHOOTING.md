@@ -113,6 +113,41 @@ sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select id,
 sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select key,value from system_state where key='maintenance_mode';"
 ```
 
+For Telegram, check the per-channel delivery state and the Telegram log events
+(`telegram_config_invalid`, `telegram_event_failed`, `telegram_event_sent`,
+`telegram_delivery_requeued`, `telegram_delivery_prolonged_failure`).
+Log lines never contain the bot token.
+
+```bash
+sudo -u raid-monitor sqlite3 /var/lib/megaraid-dashboard/megaraid.db "select event_id,status,attempts,next_attempt_at,delivered_at,detail from event_deliveries where channel='telegram' order by id desc limit 20;"
+journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 --no-pager | grep -i telegram
+```
+
+The UTC `system_state` value `telegram_not_before` is the channel-wide 429 deadline:
+all scheduled Telegram sends wait for it, across restarts. `retry` / `awaiting_*` retains
+an incident whose fresh data, temperature or disk identity cannot yet be verified.
+`obsolete` means positive evidence of recovery/removal/replacement. Active incidents
+retry beyond three hours and eight attempts (at most hourly after backoff); pending
+attempted retries keep the health flag unhealthy. A requeued interrupted claim can
+produce a duplicate with the same event ID if Telegram already accepted the request.
+Telegram also enforces a 10 s absolute request deadline and 64 KiB response cap.
+`timeout`, `response too large`, `unexpected response encoding` and sanitized
+`network error: <type>` use normal durable retry. A 429 with an unreadable body falls
+back to a 60 s channel cooldown. Provider hints are capped at 3600 s before persistence;
+`telegram_retry_after_clamped` signals an oversized hint. `telegram_cooldown_clamped`
+signals repair of an old channel deadline; attempted Telegram retry deadlines more than
+an hour ahead are repaired as well. Repairs persist once, so restarts do not extend them.
+A legitimate hint over an hour may be retried early, with another 429 renewing the pause. Do not raise limits just to accept an unexpected response;
+check the trusted API path, connectivity and TLS first. Network waits do not hold the
+collector's shared write lock. Repeated controller warning crossings inside hysteresis
+preserve the first confirmation deadline; only a clear or escalation cancels it.
+For a new controller episode without an intervening recovery event, check
+`system_state.telegram_roc_warning_cleared_at` / `telegram_roc_critical_cleared_at`.
+Successful cool readings update these atomically, even when Telegram is disabled; the
+timestamps survive raw-history pruning. Missing sensors do not prove recovery. Retained
+readings bootstrap missing metadata; pre-tracking history already pruned cannot be recovered.
+See [Telegram delivery](README.md#delivery) and [missed alerts](docs/RUNBOOK.md#missed-alerts-what-now).
+
 ### Fixes
 
 - SMTP failure: correct the SMTP settings in `/etc/megaraid-dashboard/env`, restart the

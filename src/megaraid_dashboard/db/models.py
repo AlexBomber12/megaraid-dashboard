@@ -214,6 +214,35 @@ class Event(TimestampedMixin, Base):
     )
 
 
+class EventDelivery(TimestampedMixin, Base):
+    """Per-channel delivery state for one event.
+
+    ``events.notified_at`` remains the SMTP delivery marker; additional channels such as
+    Telegram track their own attempts here so that one channel's failures never mark or
+    block the other.
+    """
+
+    __tablename__ = "event_deliveries"
+    __table_args__ = (
+        UniqueConstraint("event_id", "channel", name="uq_event_deliveries_event_id_channel"),
+        Index("ix_event_deliveries_channel_status", "channel", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    channel: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    detail: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
 class AuditLog(TimestampedMixin, Base):
     __tablename__ = "audit_logs"
 

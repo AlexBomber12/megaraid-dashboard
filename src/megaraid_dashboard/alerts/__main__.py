@@ -49,8 +49,34 @@ def _handle_test(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_telegram_test(args: argparse.Namespace) -> int:
+    from megaraid_dashboard.alerts.telegram import (
+        TelegramConfigError,
+        TelegramSendError,
+        TelegramTransport,
+        load_telegram_config,
+    )
+    from megaraid_dashboard.config import get_settings
+    from megaraid_dashboard.services.telegram_messages import build_test_telegram_text
+
+    try:
+        config = load_telegram_config(get_settings(), chat_id=args.chat_id)
+    except TelegramConfigError as exc:
+        print(f"Telegram configuration error: {exc}", file=sys.stderr)
+        return 1
+    text = build_test_telegram_text(hostname=socket.gethostname())
+    try:
+        TelegramTransport(config).send(text)
+    except TelegramSendError as exc:
+        print(f"Telegram error: {exc.reason}", file=sys.stderr)
+        return 1
+    print(f"Sent Telegram test alert to chat {config.chat_id}")
+    return 0
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "test": _handle_test,
+    "telegram-test": _handle_telegram_test,
 }
 
 
@@ -62,6 +88,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--to",
         default=None,
         help="Override the recipient address (defaults to ALERT_TO).",
+    )
+    telegram_parser = subparsers.add_parser(
+        "telegram-test",
+        help="Send one synthetic Telegram alert (no database writes, no RAID commands).",
+    )
+    telegram_parser.add_argument(
+        "--chat-id",
+        default=None,
+        help="Override the chat id, e.g. a disposable test channel (defaults to TELEGRAM_CHAT_ID).",
     )
     return parser
 

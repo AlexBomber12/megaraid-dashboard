@@ -21,7 +21,7 @@
                 +------+------+        +------+------+
                        |                      |
                        v                      v
-                  Proton SMTP            nginx /raid/
+           Proton SMTP + Telegram        nginx /raid/
                                               |
                                       operator browser
 ```
@@ -91,6 +91,39 @@ same event is not repeatedly sent.
 
 Maintenance mode suppresses notification delivery without suppressing event recording. That
 keeps the audit trail intact during noisy repair work.
+
+Telegram is an optional, alert-only second channel (`services/telegram_notifier.py`,
+transport in `alerts/telegram.py`). It runs as a separate phase of the same 60-second
+notifier job, before SMTP; an exception in either phase never skips the other. Its
+delivery and retry state lives in `event_deliveries` (one row per event and channel), so
+`events.notified_at` stays the SMTP-only marker and neither channel can mark, block, or
+duplicate the other. Telegram applies its own policy instead of
+`ALERT_SEVERITY_THRESHOLD`: critical data-risk events immediately, sustained temperature
+warnings after confirmation, nothing else. A single failed collection is a warning; the
+collector records one critical `Monitoring stale` event only after persistent failure.
+Every attempt revalidates against fresh saved snapshots, disk serial identity and current
+incident state. Active incidents survive long transport outages at a capped retry rate;
+obsolete incidents are skipped. Repeated temperature warnings retain the original
+confirmation deadline until a clear/escalation. Telegram DB phases use the scheduler's
+write lock, but release it and close the transaction before network I/O. The async
+transport enforces a 10 s absolute request deadline and 64 KiB response cap, and rejects
+compression before decoding. Collection/disk checks/retention can progress during a send;
+the process notifier lock remains held across the entire cycle. Later candidates recheck
+current time, snapshots and maintenance after the unlocked phase. SMTP keeps its existing
+locking and delivery behavior. Channel-wide HTTP 429 cooldown lives in `system_state`,
+without an additional migration. Provider hints are validated as positive integers and
+capped at 3600 seconds in `TelegramSendError`, before either deadline is computed. The
+notifier durably repairs older channel/attempted-retry deadlines beyond one hour; the
+persisted repair does not slide on subsequent cycles or restart. A provider requesting
+a longer wait may be retried early; repeated 429s renew the cooldown. Interrupted `sending` claims retry after revalidation,
+accepting possible duplicates after an ambiguous remote acceptance rather than silently
+losing an unsent critical alert. Candidate batches and sends per cycle are bounded.
+Collection persists two monotonic RoC recovery timestamps in existing `system_state`,
+atomically with each successful snapshot and even when Telegram is disabled. These record
+readings at/below each severity's hysteresis clear boundary, including clears missed by
+the adjacent-sample event detector. Relevance/dedup use them plus retained raw readings;
+raw-history pruning cannot erase newly tracked recoveries. No extra SMTP events are added.
+See the README "Alerts (Telegram)" section for the full policy and delivery guarantees.
 
 ### Web app
 

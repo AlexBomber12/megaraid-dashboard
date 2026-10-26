@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import structlog
@@ -129,7 +129,17 @@ class EventDetector:
 
         events.extend(self._detect_temperatures(previous, current, replaced_slots))
         events.extend(self._detect_foreign_config(current.foreign_config))
-        return events
+        # Persist disk identity with the event, beyond raw-snapshot retention. A slot
+        # can contain a different disk by the time a queued notification is delivered.
+        serials = {
+            _physical_drive_subject(drive): drive.serial_number for drive in current.physical_drives
+        }
+        return [
+            replace(event, after={**(event.after or {}), "serial_number": serials[event.subject]})
+            if event.subject in serials
+            else event
+            for event in events
+        ]
 
     def _detect_foreign_config(
         self,

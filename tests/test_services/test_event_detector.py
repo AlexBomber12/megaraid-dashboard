@@ -407,9 +407,9 @@ def test_replacement_drive_state_change_emits_baseline_counter_events() -> None:
         ("critical", "predictive_failures", "Predictive failure count is 1"),
     ]
     assert events[2].before is None
-    assert events[2].after == {"media_errors": 5}
+    assert events[2].after == {"media_errors": 5, "serial_number": "NEW-SN"}
     assert events[3].before is None
-    assert events[3].after == {"predictive_failures": 1}
+    assert events[3].after == {"predictive_failures": 1, "serial_number": "NEW-SN"}
 
 
 def test_slot_disappearance_clears_temperature_state(session: Session) -> None:

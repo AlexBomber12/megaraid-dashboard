@@ -33,6 +33,11 @@ ALERTS_SENT_TOTAL = Counter(
     "megaraid_alerts_sent_total",
     "Cumulative count of alert emails dispatched.",
 )
+TELEGRAM_ALERTS_TOTAL = Counter(
+    "megaraid_telegram_alerts_total",
+    "Cumulative count of Telegram alert delivery attempts by result.",
+    labelnames=["result"],
+)
 COLLECTOR_CYCLE_DURATION = Gauge(
     "megaraid_collector_cycle_duration_seconds",
     "Duration in seconds of the last completed collector cycle.",
@@ -45,6 +50,7 @@ COLLECTOR_LAST_RUN_TIMESTAMP = Gauge(
 _RUNTIME_METRICS = (
     EVENTS_TOTAL,
     ALERTS_SENT_TOTAL,
+    TELEGRAM_ALERTS_TOTAL,
     COLLECTOR_CYCLE_DURATION,
     COLLECTOR_LAST_RUN_TIMESTAMP,
 )
@@ -215,6 +221,7 @@ def create_metrics_app(session_factory: sessionmaker[Session] | None = None) -> 
 
 def _reset_runtime_metrics_for_tests() -> None:
     EVENTS_TOTAL._metrics.clear()
+    TELEGRAM_ALERTS_TOTAL._metrics.clear()
     _set_metric_value(ALERTS_SENT_TOTAL, 0.0)
     _set_metric_value(COLLECTOR_CYCLE_DURATION, 0.0)
     _set_metric_value(COLLECTOR_LAST_RUN_TIMESTAMP, 0.0)
