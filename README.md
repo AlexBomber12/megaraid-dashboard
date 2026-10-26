@@ -564,6 +564,38 @@ Growing error counters stay one incident. Events recorded during
 maintenance mode are skipped permanently for Telegram (SMTP keeps its existing
 pause-then-send behaviour). Events that existed before migration `0009` are never sent.
 
+### Message format
+
+Messages use Russian plain text, at most two short content lines plus one diagnostic
+footer, no blank lines, and at most 160 Unicode characters for `SERVER` / `AI-SERVER`.
+Example (illustrative, not an incident):
+
+```text
+🔴 SERVER: сбой массива, риск потери данных.
+Перешли в ChatGPT. Диски не трогай.
+26.10 10:57 · №42
+```
+
+Critical incidents use 🔴; confirmed temperature warnings use 🟠. Failed, missing and
+offline disks have distinct wording. No disk count, physical bay or lost-redundancy
+claim is inferred. Temperatures appear only from valid structured integral Celsius
+measurements (0–200); incomplete/unknown metadata gets a factual fallback. Raw summaries,
+serials and machine identifiers stay in the database. Text does not determine incident
+identity or delivery state.
+
+Every message, including the neutral CLI test, has exactly one URL button **Инструкция**
+linking to the [fixed runbook](https://github.com/AlexBomber12/knowledge-vault/blob/main/20-homelab/notifications/megaraid.md).
+The URL is absent from the body. No HTML/Markdown parse mode or callbacks are used.
+The footer holds the occurrence time in **Europe/Rome**, including summer/winter offset,
+and the unchanged event ID. Forward the message to ChatGPT; find the source record on the
+named host by event ID, checking its occurrence time (stored UTC) against that local time.
+The footer omits year/seconds for brevity: use the event record to resolve ambiguity.
+
+[Catalog and delivery audit](docs/TELEGRAM_ALERTS.md) includes exact previews, character
+counts, suppression/defer cases and confirmed detection limits. In particular, a disk
+absent from a successful snapshot has no direct disappearance event; array-state alerts
+cover it only when an array change is reported. This wording change does not fix detection.
+
 ### Delivery
 
 Per-event Telegram state lives in `event_deliveries` (`channel='telegram'`), independent of
@@ -590,7 +622,7 @@ hour ahead are shortened once to one hour from the next notifier cycle and persi
 so restarts do not slide that repair indefinitely. This does not change unattempted
 warning confirmation, terminal records, or other channels. Clamping logs
 `telegram_retry_after_clamped` / `telegram_cooldown_clamped`.
-The per-event backoff can delay that event further. The synthetic CLI
+The per-event backoff can delay that event further. The manual CLI
 command is outside this scheduled outbox and should not be used during a cooldown.
 
 Before **every** send (initial or retry), hardware incidents need a snapshot no older than
@@ -644,9 +676,17 @@ python -m megaraid_dashboard.alerts telegram-test
 python -m megaraid_dashboard.alerts telegram-test --chat-id -1009999999999
 ```
 
-`telegram-test` sends one synthetic alert in the real message format, clearly marked
-`ТЕСТ`. It writes nothing to the database and runs no `storcli` command; use `--chat-id`
-to dry-run against a disposable channel first.
+`telegram-test` sends an independent, neutral manual delivery check:
+
+```text
+🧪 SERVER: тест уведомлений
+Действий не требуется.
+```
+
+It has the same instruction button but no event number, invented incident, state
+transition or diagnostic footer. It writes nothing to the database and runs no `storcli`
+command. It sends a real message; `--chat-id` changes the destination, not a dry-run mode.
+Successful manual delivery does not verify or enable automatic monitoring or delivery.
 
 ## Roadmap
 

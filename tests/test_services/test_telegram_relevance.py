@@ -259,7 +259,7 @@ def test_interrupted_send_retries_active_critical_even_after_three_hours(
         assert delivery is not None and (delivery.status, delivery.attempts) == ("sent", 2)
         delivered.extend(sender.sent)
     assert len(delivered) == (2 if accepted else 1)  # explicitly documents the ambiguity
-    assert all(f"событие #{event.id}" in text for text in delivered)
+    assert all(f"· №{event.id}" in text for text in delivered)
 
 
 def test_interrupted_send_of_recovered_incident_is_not_replayed(
@@ -310,7 +310,7 @@ def test_only_explicit_monitoring_outages_send_system_message(
     sender = FakeSender()
     assert _cycle(session, sender).sent == (1 if expected else 0)
     if expected:
-        assert "НЕИЗВЕСТНО" in sender.sent[0]
+        assert "мониторинг недоступен, состояние RAID неизвестно." in sender.sent[0]
 
 
 def test_recovered_monitoring_outage_does_not_page_later(
@@ -520,7 +520,7 @@ def test_new_incident_after_recovery_does_not_replay_old_incident_or_get_dedupli
     result = _cycle(session, sender)
     assert (result.sent, result.skipped) == (1, 1)
     assert _delivery(session, old).detail == "obsolete"
-    assert f"событие #{new.id}" in sender.sent[0]
+    assert f"· №{new.id}" in sender.sent[0]
 
     _add_event(
         session, severity="info", after={"state": "Optl"}, occurred_at=NOW + timedelta(minutes=1)
@@ -528,7 +528,7 @@ def test_new_incident_after_recovery_does_not_replay_old_incident_or_get_dedupli
     recurrence = _add_event(session, occurred_at=NOW + timedelta(minutes=2))
     _save(session, sample_snapshot, now=NOW + timedelta(minutes=2))
     assert _cycle(session, sender, now=NOW + timedelta(minutes=2)).sent == 1
-    assert f"событие #{recurrence.id}" in sender.sent[-1]
+    assert f"· №{recurrence.id}" in sender.sent[-1]
 
 
 def test_nonthermal_warning_in_hardware_category_stays_ineligible(session: Session) -> None:
@@ -664,7 +664,7 @@ def test_controller_warning_oscillations_preserve_original_confirmation_deadline
     _save(session, sample_snapshot, roc=94)
     sender = FakeSender()
     result = _cycle(session, sender)
-    assert result.sent == 1 and f"событие #{first.id}" in sender.sent[0]
+    assert result.sent == 1 and f"· №{first.id}" in sender.sent[0]
     assert _delivery(session, first).status == "sent"
 
     later = NOW + timedelta(minutes=15)
@@ -781,7 +781,7 @@ def test_flag_recurrence_uses_persisted_rising_edge_after_recovery(
     result = _cycle(session, sender, now=NOW + timedelta(minutes=2))
     assert result.sent == 1
     assert len(sender.sent) == (2 if first_delivered else 1)
-    assert f"событие #{alerts[-1].id}" in sender.sent[-1]
+    assert f"· №{alerts[-1].id}" in sender.sent[-1]
     if not first_delivered:
         assert _delivery(session, alerts[0]).detail == "obsolete"
 
@@ -801,4 +801,40 @@ def test_flag_baseline_without_a_clear_is_still_deduplicated(
     assert _cycle(session, sender).sent == 1
     _add_event(session, category=category, subject=subject, after=after)
     assert _cycle(session, sender).skipped == 1
+    assert len(sender.sent) == 1
+
+
+def test_unknown_cachevault_data_uses_fallback_without_broadening_policy(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+) -> None:
+    # Unknown CV states are already critical; preserve eligibility without a diagnosis.
+    detector = EventDetector(
+        temp_warning=100,
+        temp_critical=110,
+        temp_hysteresis=5,
+        roc_temp_warning=95,
+        roc_temp_critical=105,
+        roc_temp_hysteresis=5,
+    )
+    assert sample_snapshot.cachevault is not None
+    current = sample_snapshot.model_copy(
+        update={
+            "captured_at": NOW,
+            "cachevault": sample_snapshot.cachevault.model_copy(update={"state": "Unknown"}),
+        }
+    )
+    detected = detector.detect(None, current)
+    assert [(e.severity, e.category) for e in detected] == [("critical", "cv_state")]
+    event = _add_event(session, category="cv_state", subject="CacheVault", after=detected[0].after)
+    insert_snapshot(session, current)
+    session.commit()
+    sender = FakeSender()
+    assert _cycle(session, sender).sent == 1
+    assert "событие RAID, данные неполны." in sender.sent[0]
+    assert sender.sent[0].endswith(f"· №{event.id}")
+    unsupported = _add_event(session, category="unsupported", after={"state": "Unknown"})
+    assert not is_telegram_alert(unsupported)
+    assert _cycle(session, sender).sent == 0
+    assert _delivery(session, unsupported) is None
     assert len(sender.sent) == 1

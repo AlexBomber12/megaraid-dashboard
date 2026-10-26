@@ -810,3 +810,42 @@ def _virtual_drive(vd_id: int, state: str) -> VirtualDrive:
         access="RW",
         cache="RWBD",
     )
+
+
+@pytest.mark.parametrize("vd_state", ["Optl", "Dgrd", "OfLn"])
+def test_disappeared_drive_only_has_indirect_array_coverage(vd_state: str) -> None:
+    # A real disappearance is an absent entry, not a fabricated Missing state.
+    current = _current(vd_state=vd_state).model_copy(update={"physical_drives": []})
+    events = _detector().detect(_previous(), current)
+    expected = [] if vd_state == "Optl" else [("critical", "vd_state")]
+    assert [(event.severity, event.category) for event in events] == expected
+
+
+@pytest.mark.parametrize("state", ["failed", " FAILED ", "missing", " Missing ", "offline"])
+def test_existing_disk_classification_is_case_sensitive(state: str) -> None:
+    # Characterize the detection limit; formatter normalization must not broaden policy.
+    assert _detector().detect(None, _current(pd_state=state)) == []
+    events = _detector().detect(_previous(), _current(pd_state=state))
+    assert [(event.severity, event.category) for event in events] == [("info", "pd_state")]
+
+
+def test_initial_controller_overheating_without_crossing_is_not_detected() -> None:
+    current = _current(roc_temperature_celsius=110)
+    assert _detector().detect(None, current) == []
+    assert _detector().detect(_previous(roc_temperature_celsius=110), current) == []
+    events = _detector().detect(_previous(roc_temperature_celsius=None), current)
+    assert [(event.severity, event.category) for event in events] == [
+        ("warning", "controller_temperature"),
+        ("critical", "controller_temperature"),
+    ]
+
+
+def test_removed_array_and_drive_produce_no_disappearance_event() -> None:
+    current = _current().model_copy(update={"physical_drives": [], "virtual_drives": []})
+    assert _detector().detect(_previous(), current) == []
+
+
+@pytest.mark.parametrize("state", ["optimal", " Optimal ", "optl"])
+def test_existing_cachevault_classification_does_not_normalize_healthy_aliases(state: str) -> None:
+    events = _detector().detect(None, _current(cv_state=state))
+    assert [(event.severity, event.category) for event in events] == [("critical", "cv_state")]

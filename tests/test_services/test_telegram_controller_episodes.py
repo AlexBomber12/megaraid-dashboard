@@ -112,7 +112,7 @@ def test_sparse_controller_readings_separate_episodes_without_recovery_events(
     result = _cycle(session, sender)
     assert result.sent == 1
     assert len(sender.sent) == (2 if first_delivered else 1)
-    assert f"событие #{events[-1].id}" in sender.sent[-1]
+    assert f"· №{events[-1].id}" in sender.sent[-1]
     if not first_delivered:
         assert _delivery(session, events[0]).detail == "obsolete"
     assert all(event.notified_at is None for event in events)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import smtplib
+import socket
 import ssl
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -122,7 +123,7 @@ def _telegram_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     get_settings.cache_clear()
 
 
-def test_telegram_test_sends_synthetic_alert(
+def test_telegram_test_sends_neutral_delivery_check(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -142,7 +143,10 @@ def test_telegram_test_sends_synthetic_alert(
     chat_id, text = sent[0]
     assert chat_id == "-1001234567890"
     assert text.startswith("🧪")
-    assert "SYNTHETIC TEST" in text
+    assert text.splitlines() == [
+        f"🧪 {socket.gethostname()}: тест уведомлений",
+        "Действий не требуется.",
+    ]
     out = capsys.readouterr().out
     assert out == "Sent Telegram test alert to chat -1001234567890\n"
     assert _FAKE_TELEGRAM_TOKEN not in out
