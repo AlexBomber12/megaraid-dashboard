@@ -1,7 +1,7 @@
 # Operator control coverage and safety contract
 
-This inventory covers the current PR #127 implementation, including the existing
-locate acceptance fix from #126. The source baseline in `operator-controls.json`
+This inventory covers the independent PR #127 implementation. PR #126 is a
+pending dependency and is not included in this branch. The source baseline in `operator-controls.json`
 records every button, form, input, select, link and disclosure in templates and
 application JavaScript, including conditional controls and the generated
 confirmation dialog. Review both files when a control changes; CI never regenerates
@@ -89,8 +89,9 @@ cookies, password hashes or real credentials are written to artifacts.
 The safety assertions remain enabled, without skips, xfails, or a reduced coverage
 threshold. The application now enforces the failures originally exposed by them:
 
-- Locate and replacement require explicit JSON Success and truthful audit outcomes.
-  Missing or unknown status is rejected for mutations and live safety prechecks.
+- After #126 merges, Locate/replacement require explicit JSON Success and truthful
+  audit outcomes, including missing/unknown status rejection. These assertions remain
+  enabled and are expected to fail until this branch is rebased on that merged fix.
 - Every controller write requires effective maintenance authorization. Starting the
   UI window enables writes; expiration and Stop revoke them durably. An inactive
   state record is retained so a configured startup flag cannot reactivate a stopped
@@ -99,7 +100,10 @@ threshold. The application now enforces the failures originally exposed by them:
 - Advanced actions carry the displayed serial, compare it with the latest snapshot,
   and recheck live serial and state. UBad additionally requires destructive mode
   and browser typed confirmation. Insert refuses a live drive that is not UGood.
-- Failed drive prechecks are audited; audit failure returns HTTP 500. Successful
+- Failed drive prechecks are audited; audit failure returns HTTP 500. A failed
+  read-only insert precheck has a server-owned audit marker and preserves completed
+  Missing eligibility for retry. An attempted mutation or unrecognized/legacy audit
+  marker still invalidates eligibility; free-form error text cannot bypass the gate. Successful
   controller commands cannot fabricate collected snapshot changes.
 - Patrol Read and Consistency Check are populated by optional read-only collector
   probes. Only normalized operation state is retained when full raw storage is off.

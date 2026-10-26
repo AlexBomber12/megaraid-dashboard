@@ -1348,3 +1348,72 @@ def test_insert_precheck_refuses_unsafe_state_or_failed_audit(
             if failure == "audit"
             else "replacement insert requires a live UGood drive"
         )
+
+
+@pytest.mark.parametrize("attempt", ["read_precheck", "mutation", "unknown_marker"])
+def test_insert_retry_preserves_only_proven_read_only_precheck_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    attempt: str,
+) -> None:
+    from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliNotAvailable
+
+    recovered = False
+    calls: list[list[str]] = []
+
+    async def fake(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        calls.append(args)
+        if args == ["/c0/e2/s0", "show", "all", "J"]:
+            if attempt == "read_precheck" and not recovered:
+                raise StorcliNotAvailable("temporary precheck outage")
+            return _drive_show_payload(state="UGood", serial_number=_NEW_SERIAL)
+        assert args == ["/c0/e2/s0", "insert", "dg=0", "array=0", "row=0", "J"]
+        if not recovered:
+            # Error text cannot forge the server-owned read-only classification.
+            raise StorcliCommandFailed("storcli precheck failed (untrusted error text)")
+        return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        _seed_drive(app, serial_number=_NEW_SERIAL, state="UGood")
+        _seed_replace_missing_audit(app, outgoing_serial=_OUTGOING_SERIAL)
+        headers = _csrf_request_headers(client, csrf_headers)
+        if attempt == "unknown_marker":
+            with app.state.session_factory() as session, session.begin():
+                session.add(
+                    Event(
+                        occurred_at=datetime.now(UTC),
+                        severity="info",
+                        category="operator_action",
+                        subject="Operator action",
+                        summary="replace step insert drive 2:0 failed: precheck failed",
+                        after_json={"read_only_precheck": "unrecognized"},
+                    )
+                )
+        else:
+            first = client.post(
+                "/drives/2:0/replace/insert", headers=headers, json={"serial_number": _NEW_SERIAL}
+            )
+            assert first.status_code == 502
+            audit = _all_events(app)[-1]
+            assert "failed" in audit.summary
+            assert audit.after_json == (
+                {"read_only_precheck": "replace_insert"} if attempt == "read_precheck" else None
+            )
+        recovered = True
+        calls.clear()
+        retry = client.post(
+            "/drives/2:0/replace/insert", headers=headers, json={"serial_number": _NEW_SERIAL}
+        )
+        if attempt == "read_precheck":
+            assert retry.status_code == 200
+            assert calls == [
+                ["/c0/e2/s0", "show", "all", "J"],
+                ["/c0/e2/s0", "insert", "dg=0", "array=0", "row=0", "J"],
+            ]
+            assert "succeeded" in _all_events(app)[-1].summary
+        else:
+            assert retry.status_code == 409
+            assert "complete replace step missing" in retry.json()["error"]
+            assert calls == []

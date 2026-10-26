@@ -399,3 +399,29 @@ def test_maintenance_security_gate_cannot_write(
     assert response.status_code == (401 if gate == "authentication" else 403)
     assert database_observation(fresh_db) == before
     assert fake_storcli.calls == []
+
+
+@pytest.mark.parametrize("fault", ["failure", "nonzero", "timeout"])
+def test_insert_can_retry_after_audited_read_only_precheck_outage(
+    fault: str,
+    client: httpx.Client,
+    snapshot_with_drives: str,
+    _live_server_handle: _LiveServerHandle,
+    fake_storcli: FakeStorcli,
+) -> None:
+    action = next(action for action in ACTIONS if action.name == "replace-insert")
+    body = prepare(action, _live_server_handle, fake_storcli)
+    fake_storcli.configure(read_fault=fault)
+    first = client.post(action.path, json=body)
+    assert first.status_code == 502
+    assert fake_storcli.mutations == []
+    with _live_server_handle.app.state.session_factory() as session:
+        audit = session.scalar(select(Event).order_by(Event.id.desc()).limit(1))
+        assert audit is not None
+        assert audit.after_json == {"read_only_precheck": "replace_insert"}
+    fake_storcli.configure(read_fault="success")
+    fake_storcli.clear()
+    retry = client.post(action.path, json=body)
+    assert retry.status_code == 200
+    assert fake_storcli.calls == [["/c0/e252/s0", "show", "all", "J"], list(action.command)]
+    assert "succeeded" in database_observation(snapshot_with_drives)[0][-1][1]

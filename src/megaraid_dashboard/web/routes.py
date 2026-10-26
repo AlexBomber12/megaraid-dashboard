@@ -1619,6 +1619,7 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             await run_in_threadpool(
                 _record_insert_operator_action_sync,
                 request=request,
+                precheck_only=True,
                 dg=topology.dg,
                 array=topology.array,
                 row=topology.row,
@@ -1751,6 +1752,14 @@ def _load_last_operator_action_for_slot(
         return session.scalars(
             select(Event)
             .where(Event.category == "operator_action")
+            # A failed read cannot undo Missing. Only the server-owned marker
+            # is ignored; free-form error text and attempted mutations still
+            # invalidate the gate, including all historical unmarked failures.
+            .where(
+                Event.after_json["read_only_precheck"]
+                .as_string()
+                .is_distinct_from("replace_insert")
+            )
             .where(
                 or_(
                     Event.summary.like(f"%{slot_token} %"),
@@ -2048,10 +2057,11 @@ def _record_insert_operator_action_sync(
     array: int,
     row: int,
     outcome: str,
+    precheck_only: bool = False,
 ) -> None:
     try:
         with _session(request) as session, session.begin():
-            record_operator_action(
+            audit = record_operator_action(
                 session,
                 username=str(request.scope.get("user_username", "unknown")),
                 message=(
@@ -2059,6 +2069,8 @@ def _record_insert_operator_action_sync(
                     f"serial {serial_number} dg={dg} array={array} row={row} {outcome}"
                 ),
             )
+            if precheck_only:
+                audit.after_json = {"read_only_precheck": "replace_insert"}
     except SQLAlchemyError:
         LOGGER.exception(
             "operator_action_audit_failed",

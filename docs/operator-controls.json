@@ -79,8 +79,8 @@
     "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/health_snapshot.html": [
-    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if not view_model.health.can_locate_start %}disabled{% endif %} >",
-    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if not view_model.health.can_locate_stop %}disabled{% endif %} >"
+    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-on::before-request=\"this.setAttribute('aria-busy', 'true')\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if not view_model.health.can_locate_start %}disabled{% endif %} >",
+    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-on::before-request=\"this.setAttribute('aria-busy', 'true')\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if not view_model.health.can_locate_stop %}disabled{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/replace_destructive.html": [
     "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"open\">",
