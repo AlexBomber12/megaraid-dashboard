@@ -591,3 +591,19 @@ def test_legacy_wrong_drive_cannot_record_completion(monkeypatch: pytest.MonkeyP
         response = client.get("/drives/252:0/replace/rebuild-status")
         assert _all_events(app) == []
     assert response.status_code == 502
+
+
+@pytest.mark.parametrize("state", ["Not in progress", "Failed", "Aborted"])
+def test_unsuccessful_terminal_status_does_not_audit_completion_at_100_percent(
+    monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    async def fake_run(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        return _rebuild_payload(percent=100, state=state)
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/2:0/replace/rebuild-status")
+        assert _all_events(app) == []
+    assert response.status_code == 200
+    assert response.json()["state"] != "Complete"
