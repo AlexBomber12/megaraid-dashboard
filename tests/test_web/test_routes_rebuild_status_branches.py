@@ -211,7 +211,6 @@ def test_record_rebuild_complete_propagates_sqlalchemy_error(
             request=request,
             enclosure_id=2,
             slot_id=0,
-            require_replacement_cycle=False,
         )
 
 
@@ -265,7 +264,6 @@ def test_record_rebuild_complete_uses_postgres_advisory_lock_when_dialect_is_pos
             request=request,
             enclosure_id=2,
             slot_id=0,
-            require_replacement_cycle=False,
         )
 
         assert any("pg_advisory_xact_lock" in sql for sql in captured_sql), captured_sql
