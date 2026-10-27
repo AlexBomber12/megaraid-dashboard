@@ -237,7 +237,7 @@ editable-install reference to the old checkout. Require all existing non-rollout
 dependencies/config to resolve identically. No new `.env` may override missing
 service settings. Confirm `/health` will report the reviewed application SHA.
 
-From the same operator shell, create exclusive files (Bash noclobber is intentional):
+From the same operator Bash shell, create exclusive files (noclobber is intentional):
 
 ```sh
 rollout_env=/etc/megaraid-dashboard/storcli-read-only.env
@@ -246,7 +246,27 @@ rollout_dropin="$rollout_dropin_dir/90-storcli-read-only.conf"
 test ! -e "$rollout_env" && test ! -L "$rollout_env"
 test ! -e "$rollout_dropin" && test ! -L "$rollout_dropin"
 # Inspect ancestors for root ownership, no symlinks, no group/other writes first.
-install -d -o root -g root -m 0755 "$rollout_dropin_dir"
+# Begin drop-in directory preparation (also records ownership of cleanup).
+rollout_dropin_dir_created=false
+(set -C; printf '%s\n' "$rollout_dropin_dir_created" > "$rollout_backup/dropin-directory-created")
+test ! -L "$rollout_dropin_dir"
+if test -e "$rollout_dropin_dir"; then
+  test -d "$rollout_dropin_dir"  # Inspect only: keep existing ownership and mode.
+else
+  mkdir -m 0700 -- "$rollout_dropin_dir"  # Exclusive; fail if another path appeared.
+  rollout_dropin_dir_created=true
+  printf '%s\n' "$rollout_dropin_dir_created" > "$rollout_backup/dropin-directory-created"
+  chown root:root -- "$rollout_dropin_dir"  # Only the directory just created.
+  chmod 0755 -- "$rollout_dropin_dir"       # Explicit despite umask 077.
+fi
+test "$(stat -c %u -- "$rollout_dropin_dir")" -eq 0
+rollout_dropin_dir_mode=$(stat -c %a -- "$rollout_dropin_dir")
+test "$((8#$rollout_dropin_dir_mode & 0022))" -eq 0
+if test "$rollout_dropin_dir_created" = true; then
+  test "$(stat -c %g -- "$rollout_dropin_dir")" -eq 0
+  test "$rollout_dropin_dir_mode" = 755
+fi
+# End drop-in directory preparation.
 (set -C; cat > "$rollout_env" <<'ENV'
 STORCLI_PATH=/usr/local/libexec/megaraid-dashboard/storcli-1.23.02/storcli64
 STORCLI_USE_SUDO=true
@@ -270,12 +290,20 @@ systemctl cat "$rollout_unit" > "$rollout_backup/unit-staged.txt"
 systemctl show "$rollout_unit" -p User -p WorkingDirectory -p ExecStart -p EnvironmentFiles -p NoNewPrivileges > "$rollout_backup/effective-staged.txt"
 ```
 
+The private `dropin-directory-created` record is exclusive to this rollout and
+must be retained for rollback, including from a later operator shell. An existing
+root-owned directory with no group/other write bits is accepted without chmod or
+chown; mode 0700 is valid because systemd reads the drop-ins as root. Existing
+drop-ins remain untouched. Only an absent directory is created as root:root 0755.
+If preparation is interrupted, inspect the directory and private record before
+continuing; never infer that a pre-existing directory belongs to this rollout.
+
 Review that the new environment file is last in the effective EnvironmentFiles
 list, no later drop-in supersedes these choices, and all unrelated settings,
 User=megaraid and security restrictions remain the recorded ones. A failed
-review means remove only the two exclusive files and daemon-reload; do not
-restart. These paths and commands are a proposed operator deployment, not a
-change applied by this PR.
+review means remove only the two exclusive files, apply the recorded-directory
+cleanup from step 6, and daemon-reload; do not restart. These paths and commands
+are a proposed operator deployment, not a change applied by this PR.
 
 CONTROLLER_READ_ONLY defaults to false for compatibility. Explicit true blocks
 all action POSTs before handler probes/subprocess execution, including locate,
@@ -304,6 +332,17 @@ For the additive activation above, the exact reversal of application selection i
 ```sh
 systemctl stop "$rollout_unit"  # Only if the new selection was already restarted.
 rm -- "$rollout_dropin" "$rollout_env"  # Only the two exclusively created files.
+# Begin recorded drop-in directory cleanup.
+case "$(cat -- "$rollout_backup/dropin-directory-created")" in
+  true)
+    test ! -L "$rollout_dropin_dir"
+    # Remove only an empty directory created by this rollout. Keep other drop-ins.
+    rmdir --ignore-fail-on-non-empty -- "$rollout_dropin_dir"
+    ;;
+  false) ;;  # Preserve a pre-existing directory, even if it is now empty.
+  *) printf '%s\n' 'Invalid drop-in directory creation record; stop and inspect.' >&2; exit 1 ;;
+esac
+# End recorded drop-in directory cleanup.
 systemctl daemon-reload
 # Restore narrowed original sudoers files with cp -a from their private backups.
 rm -- /etc/sudoers.d/megaraid-dashboard-rollout
@@ -315,8 +354,12 @@ sudo -l -U megaraid
 systemctl restart "$rollout_unit"
 ```
 
-If activation never restarted the unit, omit stop/restart and remove the additive
-files only. The prior release, env files and original binaries were never moved.
+If activation never restarted the unit, omit stop/restart and still remove the
+additive files and apply the recorded-directory cleanup. A directory created by
+this rollout is retained if another drop-in now makes it nonempty; never use a
+recursive removal. Pre-existing directories retain their ownership and permissions
+and are never removed. The prior release, env files and original binaries were
+never moved.
 If the operator's separately reviewed procedure edited existing files instead:
 
 Before restart: restore every edited effective environment/policy file from its
