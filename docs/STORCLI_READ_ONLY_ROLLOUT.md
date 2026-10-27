@@ -95,12 +95,18 @@ From the reviewed release, run:
 
 This has no StorCLI invocation. It verifies both recorded original hashes and
 root ownership of every path component, rejects symlinks and group/other writable
-components (including the source path), creates only missing safe staging parents,
-and creates the target exclusively as root:root 0755. A pre-existing target is an
+components (including the source path), and creates only missing staging parents.
+Each newly created directory is verified root-owned, then explicitly set to
+root:root 0755 and checked again, regardless of the operator's `umask 077`.
+Existing directory ownership and permissions are never relaxed or overwritten;
+an existing ancestor that prevents megaraid traversal must be resolved separately,
+and the service-account preflight will fail until it is traversable. The target
+is created exclusively as root:root 0755. A pre-existing target is an
 error, even if its hash matches. It then rechecks all three hashes. Resolve unsafe
 original paths separately; the tool never repairs them. On failure, inspect any
 partial new staging artifact and remove it explicitly before retrying; never
-blindly overwrite it. Version is required from JSON in step 4, before activation.
+blindly overwrite it. The exact recorded SHA-256 is mandatory in step 4;
+JSON version metadata, when present, must agree with that pinned selection.
 Do not confuse safe file staging with successful hardware compatibility.
 
 ## 3. Install a complete exact read-only policy
@@ -156,23 +162,52 @@ not automatically from the candidate being checked:
 }
 ```
 
-Replace every placeholder. Store a reviewed copy readable by megaraid at
-`/var/lib/megaraid-dashboard/rollout-inventory.json` with root:megaraid 0640,
-under a safe parent. Keep raw response evidence private. Run as the actual account:
+Replace every placeholder and save the reviewed source as
+`$rollout_backup/approved-inventory.json`. The approved baseline must be independent
+of megaraid: use a dedicated **root-owned, non-service-writable** directory outside
+the service's data directory. A root-owned file inside a service-writable parent
+can be replaced and is not an approved trust anchor.
+
+Inspect every ancestor of `/etc/megaraid-dashboard/rollout-baselines` first:
+require root ownership, no symlinks, no group/other write permissions, and no
+megaraid write access (including ACL grants). Create this new directory only;
+stop if it already exists rather than overwriting permissions or a prior baseline:
 
 ```sh
-sudo -u megaraid -- "$rollout_release/.venv/bin/python" "$rollout_release/scripts/storcli_rollout.py" probe --inventory /var/lib/megaraid-dashboard/rollout-inventory.json > "$rollout_backup/preflight.json"
+test ! -e /etc/megaraid-dashboard/rollout-baselines
+test ! -L /etc/megaraid-dashboard/rollout-baselines
+install -d -o root -g megaraid -m 0750 /etc/megaraid-dashboard/rollout-baselines
+install -o root -g megaraid -m 0640 "$rollout_backup/approved-inventory.json" /etc/megaraid-dashboard/rollout-baselines/inventory.json
+```
+
+Root controls the directory and file; megaraid can traverse/read through its group
+without write access. Keep raw response evidence private. Run as the actual account:
+
+```sh
+sudo -u megaraid -- "$rollout_release/.venv/bin/python" "$rollout_release/scripts/storcli_rollout.py" probe --inventory /etc/megaraid-dashboard/rollout-baselines/inventory.json > "$rollout_backup/preflight.json"
 sha256sum -c "$rollout_backup/binaries-before.sha256"
 ```
 
 All actual invocations go through the application's allowlisted JSON wrapper
-using `sudo -n`. A nonzero process, sudo rejection, timeout, malformed JSON,
+using `sudo -n`. Before reading baseline contents or invoking StorCLI, probe
+validates the baseline file and every ancestor: root-owned, no symlinks, no
+group/other write permissions and no effective megaraid write access. It also
+requires a readable regular baseline file. Permission or identity failures stop
+before any controller read. A nonzero process, sudo rejection, timeout, malformed
+JSON,
 missing/unknown command status, wrong controller, wrong CLI version, incomplete
 inventory, changed serial or mismatched per-drive identity stops the preflight.
-The candidate must report 1.23.02 (including padded 001.2302 forms), correct model,
-approved controller/drive identities, and all 8 per-drive show-all and rebuild
-reads. Inventory uses the same pydantic models and completeness checks as the
-collector. CV must be present with parseable health. The known invalid optional
+The exact recorded SHA-256 is checked before and after the reads and identifies
+the pinned 1.23.02 binary; it remains mandatory even when JSON omits `CLI Version`.
+The supplied legacy read examples omit that metadata. If `/c0 show all` reports
+`CLI Version`, require 1.23.02 (including padded 001.2302 forms); reject contradictory,
+empty or malformed reported values. If the field is absent, report
+`_binary_identity.version_metadata="unavailable"` and `json_cli_version=null` in
+the private preflight evidence, alongside the verified hash and pinned selection.
+This is hash identity, not independent runtime-version or vendor-signature evidence.
+Require the correct model, approved controller/drive identities, and all 8 per-drive
+show-all and rebuild reads. Inventory uses the same pydantic models and
+completeness checks as the collector. CV must be present with parseable health. The known invalid optional
 learn date remains unknown with a warning; it is not a required health failure.
 Patrol and both CC commands are **required here**, even though the normal
 collector tolerates their absence. Unknown states fail; active states are
@@ -310,6 +345,6 @@ environment again. The strict 1.23.02 preflight is not a 7.37 acceptance gate:
 7.37's known patrol unsupported result fails the required probe deliberately.
 
 Once no environment, unit or sudoers rule references the new copy, remove only
-that new staging directory and the private working inventory file, or quarantine
-them root-only for diagnosis. Retain offline recovery media and change evidence
+that new staging directory and the newly created root-controlled baseline
+directory/file, or quarantine them root-only for diagnosis. Retain offline recovery media and change evidence
 under the actual license. There is no RAID-state reversal: this rollout uses reads.

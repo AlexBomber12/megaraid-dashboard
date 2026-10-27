@@ -55,14 +55,21 @@ READS = (
 OPTIONAL = {"/c0/bbu show all J", "/c0/fall show all J"}
 
 
-def secure_path(path: Path) -> None:
-    """Require every component, including /, to be root-owned and non-writable by others."""
+def secure_components(path: Path, *, reject_service_writes: bool = False) -> None:
+    """Require a root-controlled, symlink-free path, including every ancestor."""
     if not path.is_absolute() or ".." in path.parts:
         raise ValueError(f"Absolute canonical path required: {path}")
     for component in (*reversed(path.parents), path):
         info = component.lstat()  # Deliberately does not follow symlinks.
         if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise ValueError(f"Unsafe ownership, permissions or symlink: {component}")
+        if reject_service_writes and os.access(component, os.W_OK, effective_ids=True):
+            raise ValueError(f"Service-writable inventory path: {component}")
+
+
+def secure_path(path: Path) -> None:
+    """Validate the protected executable and its ancestors."""
+    secure_components(path)
     if not stat.S_ISREG(path.lstat().st_mode) or not os.access(path, os.X_OK):
         raise ValueError(f"Not a regular executable: {path}")
 
@@ -73,6 +80,17 @@ def verify_binary(path: Path, expected: str) -> None:
         raise ValueError(f"SHA-256 mismatch: {path}")
 
 
+def load_inventory(path: Path) -> dict[str, Any]:
+    """Read only an independently root-controlled baseline as the service identity."""
+    secure_components(path, reject_service_writes=True)
+    if not stat.S_ISREG(path.lstat().st_mode) or not os.access(path, os.R_OK, effective_ids=True):
+        raise ValueError(f"Inventory must be a readable regular file: {path}")
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError("Inventory JSON must be an object")
+    return value
+
+
 def stage() -> None:
     """Create a separate copy exclusively; preserve both original files and metadata."""
     if os.geteuid() != 0:
@@ -81,11 +99,20 @@ def stage() -> None:
     verify_binary(ORIGINAL, ORIGINAL_HASH)
     # Check existing ancestors before creating missing directories. Never follow a link.
     for directory in (*reversed(STAGED.parent.parents), STAGED.parent):
+        created = False
         if not directory.exists() and not directory.is_symlink():
             directory.mkdir(mode=0o755)
+            created = True
         info = directory.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise ValueError(f"Unsafe staging directory: {directory}")
+        if created:
+            # mkdir's mode is masked by the operator's umask. Only adjust our new directories.
+            os.chown(directory, 0, 0, follow_symlinks=False)
+            directory.chmod(0o755)
+            info = directory.lstat()
+            if info.st_uid != 0 or info.st_gid != 0 or stat.S_IMODE(info.st_mode) != 0o755:
+                raise ValueError(f"New staging directory must be root:root 0755: {directory}")
     fd = os.open(STAGED, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o755)
     with os.fdopen(fd, "wb") as output:
         output.write(SOURCE.read_bytes())
@@ -109,12 +136,13 @@ def policy(binary: Path) -> str:
     )
 
 
-async def probe(binary: Path, expected: dict[str, Any]) -> dict[str, Any]:
+async def probe(binary: Path, inventory_path: Path) -> dict[str, Any]:
     """Execute only wrapper-allowlisted reads as the service account, checking every JSON status."""
     if pwd.getpwuid(os.geteuid()).pw_name != "megaraid":
         raise ValueError(
             "Run probe as megaraid so sudo authorization is tested for the service account"
         )
+    expected = load_inventory(inventory_path)
     verify_binary(binary, LEGACY_HASH if binary == STAGED else ORIGINAL_HASH)
     responses: dict[str, Any] = {}
     for command in READS:
@@ -141,13 +169,16 @@ async def probe(binary: Path, expected: dict[str, Any]) -> dict[str, Any]:
             continue
         responses[command] = payload
     c, v, p = (responses[command] for command in READS[:3])
-    version = c["Controllers"][0]["Command Status"].get("CLI Version", "")
+    command_status = c["Controllers"][0]["Command Status"]
+    version = command_status.get("CLI Version")
     version_pattern = (
         r"(?:1\.23\.02|001\.2302(?:\.\d+)+)(?:\s|$)"
         if binary == STAGED
         else r"007\.37\d*(?:\.\d+)+(?:\s|$)"
     )
-    if not re.match(version_pattern, version):
+    if "CLI Version" in command_status and (
+        not isinstance(version, str) or not re.match(version_pattern, version)
+    ):
         raise ValueError(f"Unexpected CLI version: {version!r}")
     controller = parse_controller_show_all(c)
     drives = parse_physical_drives(p)
@@ -191,6 +222,12 @@ async def probe(binary: Path, expected: dict[str, Any]) -> dict[str, Any]:
         if rebuild.state == "Unknown":
             raise ValueError(f"Required rebuild state is unknown: slot {slot}")
     verify_binary(binary, LEGACY_HASH if binary == STAGED else ORIGINAL_HASH)
+    responses["_binary_identity"] = {
+        "sha256": LEGACY_HASH if binary == STAGED else ORIGINAL_HASH,
+        "pinned_version": "1.23.02" if binary == STAGED else "7.37",
+        "json_cli_version": version,
+        "version_metadata": "reported" if "CLI Version" in command_status else "unavailable",
+    }
     return responses
 
 
@@ -209,9 +246,7 @@ def main() -> None:
         if args.inventory is None:
             parser.error("probe requires --inventory")
         print(
-            json.dumps(
-                asyncio.run(probe(args.binary, json.loads(args.inventory.read_text()))), indent=2
-            ),
+            json.dumps(asyncio.run(probe(args.binary, args.inventory)), indent=2),
         )
 
 

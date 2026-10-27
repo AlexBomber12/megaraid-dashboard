@@ -11,7 +11,7 @@ import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -22,6 +22,7 @@ spec = importlib.util.spec_from_file_location("rollout", ROOT / "scripts/storcli
 assert spec and spec.loader
 rollout = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rollout)
+VERIFY_BINARY = rollout.verify_binary
 FIXTURES = ROOT / "tests/fixtures/storcli/redacted"
 
 
@@ -30,7 +31,40 @@ def load(name: str) -> dict:
 
 
 @pytest.fixture
-def reads(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, AsyncMock]:
+def protected_inventory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    directory = tmp_path / "approved"
+    directory.mkdir(mode=0o755)
+    baseline = directory / "inventory.json"
+    baseline.write_text("{}")
+    baseline.chmod(0o640)
+    real_lstat = Path.lstat
+    real_access = os.access
+
+    def root_owned(path: Path):
+        values = list(real_lstat(path))
+        values[4] = 0
+        values[5] = 0
+        if path == tmp_path or path in tmp_path.parents:
+            values[0] &= ~0o022  # Model protected ancestors outside our temporary sandbox.
+        return os.stat_result(values)
+
+    def service_access(path: Path, mode: int, **kwargs):
+        if mode == os.W_OK:
+            return bool(path.lstat().st_mode & 0o022)
+        if mode == os.R_OK:
+            return bool(path.lstat().st_mode & 0o044)
+        return real_access(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", root_owned)
+    monkeypatch.setattr(rollout.os, "access", service_access)
+    return baseline
+
+
+@pytest.fixture
+def reads(
+    monkeypatch: pytest.MonkeyPatch,
+    protected_inventory: Path,
+) -> tuple[dict, Path, AsyncMock]:
     monkeypatch.setattr(rollout.pwd, "getpwuid", lambda _: SimpleNamespace(pw_name="megaraid"))
     inventory = load("eall_sall_show_all.json")
     # Redacted baseline has two drives; synthesize distinct identities for all 8.
@@ -46,7 +80,8 @@ def reads(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, AsyncMock]:
                 )
                 data.update(json.loads(text))
     controller = load("c0_show_all.json")
-    controller["Controllers"][0]["Command Status"]["CLI Version"] = "1.23.02 test"
+    # The legacy evidence does not include CLI Version. Do not manufacture it.
+    controller["Controllers"][0]["Command Status"].pop("CLI Version")
     summary = controller["Controllers"][0]["Response Data"]
     summary["Physical Drives"] = 8
     summary["PD LIST"] = [
@@ -84,18 +119,25 @@ def reads(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, AsyncMock]:
         )
     fake = AsyncMock(side_effect=lambda args, **kwargs: copy.deepcopy(payloads[" ".join(args)]))
     monkeypatch.setattr(rollout, "run_storcli", fake)
-    monkeypatch.setattr(rollout, "verify_binary", lambda *args: None)
+    monkeypatch.setattr(rollout, "verify_binary", Mock())
     expected = {
         "controller_serial": "SV00000001",
         "drive_serials": {f"252:{slot}": f"SERIAL{slot}" for slot in range(8)},
     }
-    return payloads, expected, fake
+    protected_inventory.write_text(json.dumps(expected))
+    return payloads, protected_inventory, fake
 
 
 async def test_all_reads(reads: tuple) -> None:
     _, expected, fake = reads
     result = await rollout.probe(rollout.STAGED, expected)
-    assert set(result) == set(rollout.READS)
+    assert set(result) == {*rollout.READS, "_binary_identity"}
+    assert result["_binary_identity"] == {
+        "sha256": rollout.LEGACY_HASH,
+        "pinned_version": "1.23.02",
+        "json_cli_version": None,
+        "version_metadata": "unavailable",
+    }
     assert fake.await_count == 25
     assert all(call.kwargs["use_sudo"] for call in fake.await_args_list)
 
@@ -137,9 +179,13 @@ async def test_identity_and_schema_failures(reads: tuple, fault: str) -> None:
     if fault == "version":
         payloads["/c0 show all J"]["Controllers"][0]["Command Status"]["CLI Version"] = "7.37"
     elif fault == "controller":
-        expected["controller_serial"] = "WRONG"
+        baseline = json.loads(expected.read_text())
+        baseline["controller_serial"] = "WRONG"
+        expected.write_text(json.dumps(baseline))
     elif fault == "inventory":
-        expected["drive_serials"]["252:7"] = "WRONG"
+        baseline = json.loads(expected.read_text())
+        baseline["drive_serials"]["252:7"] = "WRONG"
+        expected.write_text(json.dumps(baseline))
     elif fault == "drive":
         data = payloads["/c0/e252/s7 show all J"]["Controllers"][0]["Response Data"]
         data["Drive /c0/e252/s7 - Detailed Information"]["Drive /c0/e252/s7 Device attributes"][
@@ -236,7 +282,10 @@ def test_stage_preserves_originals_and_never_overwrites(
 ) -> None:
     source = tmp_path / "source"
     original = tmp_path / "original"
-    target = tmp_path / "new" / "storcli64"
+    existing = tmp_path / "existing"
+    existing.mkdir(mode=0o751)
+    existing.chmod(0o751)
+    target = existing / "new" / "nested" / "storcli64"
     source.write_bytes(b"legacy fixture")
     original.write_bytes(b"original fixture")
     monkeypatch.setattr(rollout, "SOURCE", source)
@@ -244,6 +293,12 @@ def test_stage_preserves_originals_and_never_overwrites(
     monkeypatch.setattr(rollout, "STAGED", target)
     monkeypatch.setattr(rollout.os, "geteuid", lambda: 0)
     monkeypatch.setattr(rollout.os, "fchown", lambda *args: None)
+    ownership_changes = []
+    monkeypatch.setattr(
+        rollout.os,
+        "chown",
+        lambda path, uid, gid, **kwargs: ownership_changes.append((path, uid, gid)),
+    )
     checks = []
     monkeypatch.setattr(rollout, "verify_binary", lambda *args: checks.append(args))
     real_lstat = Path.lstat
@@ -251,12 +306,22 @@ def test_stage_preserves_originals_and_never_overwrites(
     def root_owned(path: Path):
         values = list(real_lstat(path))
         values[4] = 0
+        values[5] = 0
         values[0] &= ~0o022
         return os.stat_result(values)
 
     monkeypatch.setattr(Path, "lstat", root_owned)
     before = (source.read_bytes(), original.read_bytes())
-    rollout.stage()
+    previous_umask = os.umask(0o077)
+    try:
+        rollout.stage()
+    finally:
+        os.umask(previous_umask)
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o751
+    assert ownership_changes == [(existing / "new", 0, 0), (target.parent, 0, 0)]
+    for directory in (existing / "new", target.parent):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o755
+        assert directory.stat().st_mode & stat.S_IXOTH  # Unprivileged service can traverse.
     assert target.read_bytes() == before[0]
     assert stat.S_IMODE(target.stat().st_mode) == 0o755
     assert (source.read_bytes(), original.read_bytes()) == before
@@ -279,5 +344,110 @@ async def test_probe_requires_service_identity(monkeypatch: pytest.MonkeyPatch) 
     fake = AsyncMock(side_effect=AssertionError("Must not execute"))
     monkeypatch.setattr(rollout, "run_storcli", fake)
     with pytest.raises(ValueError, match="Run probe as megaraid"):
-        await rollout.probe(rollout.STAGED, {})
+        await rollout.probe(rollout.STAGED, Path("/unused-inventory.json"))
+    fake.assert_not_called()
+
+
+@pytest.mark.parametrize("version", ["1.23.02 test", "001.2302.0000.0000 legacy"])
+async def test_optional_version_metadata_is_consistent(reads: tuple, version: str) -> None:
+    payloads, baseline, _ = reads
+    payloads["/c0 show all J"]["Controllers"][0]["Command Status"]["CLI Version"] = version
+    result = await rollout.probe(rollout.STAGED, baseline)
+    assert result["_binary_identity"]["json_cli_version"] == version
+    assert result["_binary_identity"]["version_metadata"] == "reported"
+
+
+@pytest.mark.parametrize("version", ["7.37", "", None, 123])
+async def test_present_version_must_match_pin(reads: tuple, version: object) -> None:
+    payloads, baseline, _ = reads
+    payloads["/c0 show all J"]["Controllers"][0]["Command Status"]["CLI Version"] = version
+    with pytest.raises(ValueError, match="Unexpected CLI version"):
+        await rollout.probe(rollout.STAGED, baseline)
+
+
+async def test_missing_version_still_requires_verified_hash(reads: tuple) -> None:
+    _, baseline, fake = reads
+    result = await rollout.probe(rollout.STAGED, baseline)
+    assert result["_binary_identity"]["version_metadata"] == "unavailable"
+    assert rollout.verify_binary.call_args_list == [
+        ((rollout.STAGED, rollout.LEGACY_HASH),),
+        ((rollout.STAGED, rollout.LEGACY_HASH),),
+    ]
+    fake.reset_mock()
+    rollout.verify_binary.side_effect = ValueError("SHA-256 mismatch")
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        await rollout.probe(rollout.STAGED, baseline)
+    fake.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "group-writable-parent",
+        "service-writable-parent",
+        "writable-file",
+        "symlink-file",
+        "symlink-parent",
+    ],
+)
+async def test_probe_rejects_mutable_or_symlink_baseline(
+    reads: tuple,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    _, baseline, fake = reads
+    if fault == "group-writable-parent":
+        baseline.parent.chmod(0o770)  # File remains root:root 0640 in simulated metadata.
+        assert baseline.lstat().st_uid == 0
+        assert stat.S_IMODE(baseline.stat().st_mode) == 0o640
+    elif fault == "service-writable-parent":
+        access = os.access
+        monkeypatch.setattr(
+            rollout.os,
+            "access",
+            lambda path, mode, **kwargs: (
+                True
+                if path == baseline.parent and mode == os.W_OK
+                else access(path, mode, **kwargs)
+            ),
+        )
+    elif fault == "writable-file":
+        baseline.chmod(0o660)
+    elif fault == "symlink-file":
+        target = baseline.with_name("real.json")
+        baseline.rename(target)
+        baseline.symlink_to(target)
+    else:
+        parent = baseline.parent
+        target = parent.with_name("real-approved")
+        parent.rename(target)
+        parent.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match=r"Unsafe|Service-writable"):
+        await rollout.probe(rollout.STAGED, baseline)
+    fake.assert_not_called()
+    rollout.verify_binary.assert_not_called()
+
+
+async def test_hash_verified_fake_binary_without_version_metadata(
+    reads: tuple,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _, baseline, fake = reads
+    binary = tmp_path / "fake-storcli"
+    binary.write_bytes(b"Offline fake bytes; subprocess boundary remains mocked")
+    binary.chmod(0o755)
+    # Use a fixture pin for fake bytes, while exercising the real hash/path verification.
+    fixture_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
+    monkeypatch.setattr(rollout, "STAGED", binary)
+    monkeypatch.setattr(rollout, "LEGACY_HASH", fixture_hash)
+    monkeypatch.setattr(rollout, "verify_binary", VERIFY_BINARY)
+    result = await rollout.probe(binary, baseline)
+    assert result["_binary_identity"]["sha256"] == fixture_hash
+    assert result["_binary_identity"]["version_metadata"] == "unavailable"
+    assert fake.await_count == 25
+    binary.write_bytes(b"Changed bytes")
+    fake.reset_mock()
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        await rollout.probe(binary, baseline)
     fake.assert_not_called()
