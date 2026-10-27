@@ -9,6 +9,7 @@ import json
 import os
 import stat
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -117,6 +118,8 @@ def reads(
         payloads[f"/c0/e252/s{slot} show rebuild J"] = json.loads(
             json.dumps(load("123_rebuild_idle.json")).replace("/s0", f"/s{slot}")
         )
+    for payload in payloads.values():
+        payload["Controllers"][0]["Command Status"]["Controller"] = 0
     fake = AsyncMock(side_effect=lambda args, **kwargs: copy.deepcopy(payloads[" ".join(args)]))
     monkeypatch.setattr(rollout, "run_storcli", fake)
     monkeypatch.setattr(rollout, "verify_binary", Mock())
@@ -169,6 +172,7 @@ async def test_only_explicit_optional_unsupported_is_tolerated(reads: tuple) -> 
     payloads, expected, _ = reads
     for command in rollout.OPTIONAL:
         payloads[command] = load("737_patrol_unsupported.json")
+        payloads[command]["Controllers"][0]["Command Status"]["Controller"] = 0
     result = await rollout.probe(rollout.STAGED, expected)
     assert all(result[command]["unsupported"] for command in rollout.OPTIONAL)
 
@@ -451,3 +455,101 @@ async def test_hash_verified_fake_binary_without_version_metadata(
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
         await rollout.probe(binary, baseline)
     fake.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "unrelated",
+        "wrong-controller",
+        "multiple",
+        "missing-identity",
+        "required",
+        "serial",
+        "success-nonzero",
+        "detail-success",
+        "multiple-details",
+        "malformed",
+        "stderr",
+        "substring",
+    ],
+)
+async def test_executable_full_probe_bbu_redirect(
+    reads: tuple,
+    scripted_storcli: Callable[[dict[str, tuple[str, int, str]]], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str | None,
+) -> None:
+    from megaraid_dashboard.storcli import run_storcli
+
+    payloads, baseline, _ = reads
+    bbu = {
+        "Command Status": {
+            "Controller": 0,
+            "Status": "Failure",
+            "Description": "command failed",
+            "Detailed Status": [{"Status": "Failed", "Ctrl": 0, "ErrMsg": "use /cx/cv"}],
+        }
+    }
+    payloads["/c0/bbu show all J"] = {"Controllers": [bbu]}
+    # Actual 1.23.02 foreign-absent result is a successful response.
+    payloads["/c0/fall show all J"] = {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Controller": 0,
+                    "Status": "Success",
+                    "Description": "Couldn't find any foreign Configuration",
+                }
+            }
+        ]
+    }
+    if fault == "unrelated":
+        bbu["Command Status"]["Detailed Status"][0]["ErrMsg"] = "device error"
+    elif fault == "wrong-controller":
+        bbu["Command Status"]["Controller"] = 1
+    elif fault == "multiple":
+        payloads["/c0/bbu show all J"]["Controllers"].append(copy.deepcopy(bbu))
+    elif fault == "missing-identity":
+        del bbu["Command Status"]["Controller"]
+    elif fault == "required":
+        payloads["/c0/cv show all J"] = {"Controllers": [bbu]}
+    elif fault == "success-nonzero":
+        bbu["Command Status"]["Status"] = "Success"
+    elif fault == "detail-success":
+        bbu["Command Status"]["Detailed Status"][0]["Status"] = "Success"
+    elif fault == "multiple-details":
+        bbu["Command Status"]["Detailed Status"].append({"ErrMsg": "device error"})
+    elif fault == "substring":
+        bbu["Command Status"]["Detailed Status"][0]["ErrMsg"] = "use /cx/cv after device error"
+    elif fault == "serial":
+        expected = json.loads(baseline.read_text())
+        expected["drive_serials"]["252:7"] = "WRONG"
+        baseline.write_text(json.dumps(expected))
+    responses = {
+        command: (json.dumps(payload), 255 if payload["Controllers"][0] is bbu else 0, "")
+        for command, payload in payloads.items()
+    }
+    if fault == "malformed":
+        responses["/c0/bbu show all J"] = ("not JSON", 255, "")
+    elif fault == "stderr":
+        responses["/c0/bbu show all J"] = (json.dumps({"Controllers": [bbu]}), 255, "device error")
+    binary = scripted_storcli(responses)
+    # Exercise the real runner and sudo argv without using system sudo.
+    sudo = binary.parent / "sudo"
+    sudo.write_text('#!/bin/sh\ntest "$1" = "-n" || exit 1\nshift\nexec "$@"\n')
+    sudo.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binary.parent) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setattr(rollout, "STAGED", binary)
+    runner = AsyncMock(wraps=run_storcli)
+    monkeypatch.setattr(rollout, "run_storcli", runner)
+    if fault:
+        with pytest.raises((StorcliError, ValueError)):
+            await rollout.probe(binary, baseline)
+    else:
+        result = await rollout.probe(binary, baseline)
+        assert result["/c0/bbu show all J"]["unsupported"] is True
+        assert rollout.parse_foreign_config(result["/c0/fall show all J"]).present is False
+        assert runner.await_count == 25
+        assert set(result) == {*rollout.READS, "_binary_identity"}
