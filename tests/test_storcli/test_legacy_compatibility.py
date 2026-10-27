@@ -46,11 +46,11 @@ def test_legacy_idle_rebuild_is_unknown_progress() -> None:
         [{"Drive-ID": "/c0/e252/s1", "Progress%": "100%"}],
         [{"Drive-ID": 42, "Progress%": "100%"}],
         [{"Drive-ID": "invalid", "Progress%": "100%"}],
-        [{"Status": 3}],
-        [{"Progress%": "-"}],
-        [{"Progress%": "101"}],
-        [{"Progress%": True}],
-        [{"Progress%": "broken"}],
+        [{"Drive-ID": "/c0/e252/s0", "Status": 3}],
+        [{"Drive-ID": "/c0/e252/s0", "Progress%": "-"}],
+        [{"Drive-ID": "/c0/e252/s0", "Progress%": "101"}],
+        [{"Drive-ID": "/c0/e252/s0", "Progress%": True}],
+        [{"Drive-ID": "/c0/e252/s0", "Progress%": "broken"}],
         {"Drive /c0/e252/s0 - Rebuild Progress": [{"Drive-ID": "/c0/e252/s1"}]},
         {"Drive /c0/e252/s1 - Rebuild Progress": [{"Progress%": 100}]},
     ],
@@ -228,3 +228,35 @@ def test_matching_rebuild_table_and_drive_id() -> None:
     controller["Response Data"] = {"Drive /c0/e252/s0 - Rebuild Progress": {}}
     with pytest.raises(StorcliParseError):
         parse_rebuild_status(payload)
+
+
+@pytest.mark.parametrize(
+    ("state", "percent", "expected"),
+    [
+        ("In progress", "100%", "In progress"),
+        ("Complete", "100%", "Complete"),
+        ("Completed", "100%", "Complete"),
+        (None, "100%", "Unknown"),
+        ("Unknown", "100%", "Unknown"),
+        ("Complete", "99%", "In progress"),
+        ("Complete", "-", "Unknown"),
+    ],
+)
+def test_rebuild_completion_requires_explicit_state_and_progress(
+    state: str | None, percent: str, expected: str
+) -> None:
+    payload = load("123_rebuild_idle.json")
+    payload["Controllers"][0]["Response Data"][0].update({"Status": state, "Progress%": percent})
+    assert parse_rebuild_status(payload, requested_drive="/c0/e252/s0").state == expected
+
+
+def test_requested_drive_requires_identity_in_row_or_table() -> None:
+    payload = load("123_rebuild_idle.json")
+    controller = payload["Controllers"][0]
+    rows = controller["Response Data"]
+    del rows[0]["Drive-ID"]
+    rows[0].update({"Status": "Complete", "Progress%": "100%"})
+    with pytest.raises(StorcliParseError, match="Drive-ID is missing"):
+        parse_rebuild_status(payload, requested_drive="/c0/e252/s0")
+    controller["Response Data"] = {"Drive /c0/e252/s0 - Rebuild Progress": rows}
+    assert parse_rebuild_status(payload, requested_drive="/c0/e252/s0").state == "Complete"

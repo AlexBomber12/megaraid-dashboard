@@ -607,3 +607,58 @@ def test_unsuccessful_terminal_status_does_not_audit_completion_at_100_percent(
         assert _all_events(app) == []
     assert response.status_code == 200
     assert response.json()["state"] != "Complete"
+
+
+@pytest.mark.parametrize(("state", "completed"), [("In progress", False), ("Complete", True)])
+def test_explicit_state_controls_completion_audit_at_100_percent(
+    monkeypatch: pytest.MonkeyPatch, state: str, completed: bool
+) -> None:
+    async def fake_run(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {"Status": "Success"},
+                    "Response Data": [
+                        {
+                            "Drive-ID": "/c0/e252/s0",
+                            "Progress%": "100%",
+                            "Status": state,
+                        }
+                    ],
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/252:0/replace/rebuild-status")
+        events = _all_events(app)
+    assert response.status_code == 200
+    assert response.json()["state"] == state
+    assert response.json()["percent_complete"] == 100
+    assert [event.summary for event in events] == (
+        ["rebuild complete drive 252:0"] if completed else []
+    )
+
+
+def test_missing_drive_identity_cannot_create_audit_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {"Status": "Success"},
+                    "Response Data": [{"Progress%": "100%", "Status": "Complete"}],
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/252:0/replace/rebuild-status")
+        html = client.get("/drives/252:0/replace/rebuild-status", headers={"HX-Request": "true"})
+        assert _all_events(app) == []
+    assert response.status_code == 502
+    assert "Drive-ID is missing" in response.json()["detail"]
+    assert "Rebuild status unavailable" in html.text

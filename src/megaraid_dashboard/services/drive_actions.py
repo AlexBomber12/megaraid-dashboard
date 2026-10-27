@@ -308,8 +308,8 @@ def parse_rebuild_status(
             raise StorcliParseError("mismatched rebuild Drive-ID and table")
     else:
         drive_id = table_drive
-    if requested_drive is not None and drive_id is not None and drive_id != requested_drive:
-        raise StorcliParseError("rebuild Drive-ID does not match requested drive")
+    if requested_drive is not None and drive_id != requested_drive:
+        raise StorcliParseError("rebuild Drive-ID is missing or does not match requested drive")
     percent_raw = row.get("Progress%")
     if percent_raw in (None, "", "-", "N/A"):
         percent = None
@@ -704,11 +704,11 @@ def _normalize_rebuild_state(raw_state: str | None, percent: int | None) -> str:
         return "Not in progress"
     if any(word in lowered for word in ("fail", "abort", "stop")):
         return "Unknown"
-    if percent == 100:
+    if lowered in {"complete", "completed"} and percent == 100:
         return "Complete"
     if any(word in lowered for word in ("progress", "rebuild", "rbld", "active")):
         return "In progress"
-    if percent is not None and percent > 0:
+    if percent is not None and 0 < percent < 100:
         return "In progress"
     return "Unknown"
 
