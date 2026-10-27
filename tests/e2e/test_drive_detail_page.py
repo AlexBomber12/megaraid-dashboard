@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from playwright.sync_api import Page, Request, Route, expect
+from playwright.sync_api import Page, Route, expect
 from sqlalchemy import select, update
 
 from megaraid_dashboard.db import Event, PhysicalDriveSnapshot, get_engine, get_sessionmaker
@@ -109,6 +109,14 @@ def test_advanced_action_browser_matrix(
     login_and_navigate(page, f"{live_server}/drives/252:0")
     before = database_observation(snapshot_with_drives)
     button = page.locator(f'form[action="{action.path}"] button')
+    if action.name == "mark-ubad":
+        expect(button).to_be_disabled()
+        expect(
+            page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
+        ).to_be_visible()
+        assert fake_storcli.calls == []
+        assert database_observation(snapshot_with_drives) == before
+        return
     expect(button).to_be_enabled()
     button.click()
     dialog = page.locator("dialog.confirm-dialog")
@@ -367,52 +375,14 @@ def _operator_event_exists(database_url: str, summary_fragment: str) -> bool:
         engine.dispose()
 
 
-def test_destructive_drive_action_requires_typed_serial(
+def test_undocumented_legacy_drive_action_is_unavailable(
     authenticated_page: Page,
     live_server: str,
     snapshot_with_drives: str,
 ) -> None:
-    """Mark as UBad requires the drive's serial; its slot and other serials are rejected."""
     _set_drive_state(snapshot_with_drives, slot_id=7, state="UGood")
     login_and_navigate(authenticated_page, f"{live_server}/drives/252:7")
-    posted: list[str] = []
-
-    def record(request: Request) -> None:
-        if request.method == "POST" and "/actions/mark-ubad" in request.url:
-            posted.append(request.url)
-
-    authenticated_page.on("request", record)
-    dialog = authenticated_page.locator("dialog.confirm-dialog")
-    confirm = dialog.get_by_role("button", name="Mark as UBad")
-    phrase_input = dialog.locator("[data-cd-input]")
-
-    authenticated_page.get_by_role("button", name="Spin Down").click()
-    expect(dialog).to_be_visible()
-    expect(phrase_input).to_be_hidden()
-    expect(dialog.get_by_role("button", name="Spin Down")).to_be_enabled()
-    dialog.get_by_role("button", name="Cancel").click()
-    expect(dialog).to_be_hidden()
-
-    authenticated_page.get_by_role("button", name="Mark as UBad").click()
-    expect(dialog).to_be_visible()
-    expect(dialog).to_contain_text("Mark as UBad on drive 252:7?")
-    expect(dialog.locator("[data-cd-phrase]")).to_have_text("WCA275678007")
-    expect(phrase_input).to_be_visible()
-    expect(confirm).to_be_disabled()
-    phrase_input.fill("252:7")
-    expect(confirm).to_be_disabled()
-    phrase_input.fill("WCA275678006")
-    expect(confirm).to_be_disabled()
-    dialog.get_by_role("button", name="Cancel").click()
-    expect(dialog).to_be_hidden()
-    assert posted == []
-
-    authenticated_page.get_by_role("button", name="Mark as UBad").click()
-    expect(phrase_input).to_have_value("")
-    phrase_input.fill("WCA275678007")
-    expect(confirm).to_be_enabled()
-    with authenticated_page.expect_response(lambda response: "/actions/mark-ubad" in response.url):
-        confirm.click()
-    assert posted == [f"{live_server}/drives/252:7/actions/mark-ubad"]
-    # Maintenance mode is off, so the server refuses and the page shows the error.
-    expect(authenticated_page.locator("[data-drive-action-error]")).to_be_visible()
+    expect(authenticated_page.get_by_role("button", name="Mark as UBad")).to_be_disabled()
+    expect(
+        authenticated_page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
+    ).to_be_visible()

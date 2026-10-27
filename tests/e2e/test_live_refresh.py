@@ -174,7 +174,7 @@ def test_confirmation_opened_during_fetch_keeps_connected_form_and_blocks_stale_
     authenticated_page: Page, live_server: str, snapshot_with_drives: str, disk_changed: bool
 ) -> None:
     page = authenticated_page
-    # UGood enables the destructive action under test; the app remains read-only.
+    # UGood enables the action under test; the app remains read-only.
     _replace_disk(snapshot_with_drives)
     login_and_navigate(page, f"{live_server}/drives/252:0")
     if disk_changed:
@@ -190,14 +190,14 @@ def test_confirmation_opened_during_fetch_keeps_connected_form_and_blocks_stale_
             engine.dispose()
     page.evaluate("document.getElementById('drive-live-details').dataset.original = 'yes'")
     _hold_refresh(page)
-    page.get_by_role("button", name="Mark as UBad", exact=True).click()
+    page.get_by_role("button", name="Spin Down", exact=True).click()
     dialog = page.locator("dialog.confirm-dialog")
-    dialog.locator("[data-cd-input]").fill(NEW_SERIAL)
+    dialog.locator("[data-cd-confirm]").focus()
     _release_refresh(page)
 
     expect(page.locator("#drive-live-details")).to_have_attribute("data-original", "yes")
     expect(dialog).to_be_visible()
-    expect(dialog.locator("[data-cd-input]")).to_be_focused()
+    expect(dialog.locator("[data-cd-confirm]")).to_be_focused()
     assert page.locator("[data-drive-advanced-action]").first.evaluate("form => form.isConnected")
     posted: list[str] = []
     page.on(
@@ -219,9 +219,9 @@ def test_confirmation_opened_during_fetch_keeps_connected_form_and_blocks_stale_
         expect(page.locator("[data-live-status]")).to_contain_text("reload before acting")
     else:
         expect(page.locator("[data-live-status]")).to_have_attribute("data-state", "paused")
-        with page.expect_response(lambda response: "/actions/mark-ubad" in response.url):
-            dialog.get_by_role("button", name="Mark as UBad", exact=True).click()
-        assert posted == [f"{live_server}/drives/252:0/actions/mark-ubad"]
+        with page.expect_response(lambda response: "/actions/spindown" in response.url):
+            dialog.get_by_role("button", name="Spin Down", exact=True).click()
+        assert posted == [f"{live_server}/drives/252:0/actions/spindown"]
         expect(page.locator("[data-drive-action-error]")).to_be_visible()
 
 

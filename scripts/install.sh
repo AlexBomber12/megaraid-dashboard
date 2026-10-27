@@ -500,8 +500,8 @@ Cmnd_Alias MEGARAID_DASHBOARD_STORCLI = ${STORCLI_PATH} /c0 show all J, \
   ${STORCLI_PATH} /c0/vall show cc J, \
   ${STORCLI_PATH} ^/c0/v([0-9]+|all) start cc J$, \
   ${STORCLI_PATH} /c0/vall stop cc J, \
-  ${STORCLI_PATH} /c0 set consistencycheck=on mode=auto J, \
-  ${STORCLI_PATH} /c0 set consistencycheck=on mode=manual J
+  ${STORCLI_PATH} /c0 set cc=conc J, \
+  ${STORCLI_PATH} /c0 set cc=seq J
 ${INSTALL_USER} ALL=(root) NOPASSWD: MEGARAID_DASHBOARD_STORCLI
 EOF
   chmod 0440 "${sudoers_tmp}"

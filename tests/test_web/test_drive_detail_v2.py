@@ -199,7 +199,10 @@ def test_drive_detail_v2_replace_card_and_disabled_ubad(
     assert "destructive-card" in html
     assert "Begin Replacement" in html
     assert "disabled" in mark_ubad
-    assert "<li><strong>Mark as UBad</strong> — Only UGood drives can be marked UBad.</li>" in html
+    assert (
+        "<li><strong>Mark as UBad</strong> — "
+        "Unavailable: StorCLI 1.23.02 does not document set bad.</li>" in html
+    )
 
 
 def test_drive_charts_v2_compat_returns_404_without_snapshot() -> None:

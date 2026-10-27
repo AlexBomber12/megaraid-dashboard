@@ -1,0 +1,10 @@
+{
+  "Controllers": [
+    {
+      "Command Status": {
+        "Status": "Failure",
+        "Description": "Un-supported command"
+      }
+    }
+  ]
+}

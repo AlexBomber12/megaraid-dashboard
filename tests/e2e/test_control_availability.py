@@ -33,7 +33,7 @@ def test_drive_state_availability_and_refusal_explanations(
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/drives/252:0")
     expected = {
-        "mark-ubad": state == "UGood",
+        "mark-ubad": False,
         "mark-ugood": state == "UBad",
         "spindown": state in {"Onln", "UGood", "UBad"},
         "hotspare": state == "UGood",

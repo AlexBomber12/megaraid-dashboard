@@ -189,7 +189,12 @@ def test_controller_detail_submit_handler_honors_canceled_submit() -> None:
     assert guard_index < prevent_default_index
 
 
-def test_live_operation_mode_forms_post_required_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("cc_mode", "next_mode"), [("concurrent", "sequential"), ("sequential", "concurrent")]
+)
+def test_live_operation_mode_forms_post_required_mode(
+    monkeypatch: pytest.MonkeyPatch, cc_mode: str, next_mode: str
+) -> None:
     monkeypatch.setattr(
         "megaraid_dashboard.services.controller_detail._load_patrol_read_state",
         lambda _snapshot: PatrolReadStatus(
@@ -203,7 +208,7 @@ def test_live_operation_mode_forms_post_required_mode(monkeypatch: pytest.Monkey
     monkeypatch.setattr(
         "megaraid_dashboard.services.controller_detail._load_consistency_check_state",
         lambda _snapshot: ConsistencyCheckStatus(
-            mode="manual",
+            mode=cc_mode,
             state="stopped",
             progress_percent=None,
             last_run_timestamp=None,
@@ -220,7 +225,7 @@ def test_live_operation_mode_forms_post_required_mode(monkeypatch: pytest.Monkey
     forms = _forms_by_action(response.text)
     assert forms["/controller/patrol-read/mode"].hidden_inputs["mode"] == "manual"
     assert forms["/controller/patrol-read/mode"].is_operation_mode_form is True
-    assert forms["/controller/consistency-check/mode"].hidden_inputs["mode"] == "auto"
+    assert forms["/controller/consistency-check/mode"].hidden_inputs["mode"] == next_mode
     assert forms["/controller/consistency-check/mode"].is_operation_mode_form is True
 
 

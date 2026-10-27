@@ -165,6 +165,7 @@ def test_parse_cachevault_uses_cachevault_info_fallback() -> None:
                     "State": "Optimal",
                     "Temp": "30C",
                     "Capacitance": "100%",
+                    "Replacement required": "No",
                 }
             ]
         }

@@ -453,8 +453,8 @@ def _advanced_actions(drive: PhysicalDriveSnapshot) -> list[AdvancedActionButton
             label="Mark as UBad",
             url=f"/drives/{slot_ref}/actions/mark-ubad",
             destructive=True,
-            enabled=state == "UGood",
-            reason="Only UGood drives can be marked UBad.",
+            enabled=False,
+            reason="Unavailable: StorCLI 1.23.02 does not document set bad.",
         ),
         _action_button(
             label="Mark as UGood",

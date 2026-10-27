@@ -1400,7 +1400,7 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
         )
-        status = parse_rebuild_status(payload)
+        status = parse_rebuild_status(payload, requested_drive=f"/c0/e{enclosure_id}/s{slot_id}")
     except StorcliParseError as exc:
         if _is_htmx_request(request):
             return _rebuild_status_error_partial(
@@ -1421,7 +1421,11 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
             status_code=502,
         )
 
-    if 0 <= status.percent_complete < 100 and status.state == "In progress":
+    if (
+        status.percent_complete is not None
+        and 0 <= status.percent_complete < 100
+        and status.state == "In progress"
+    ):
         await run_in_threadpool(
             _record_rebuild_progress_observed_once_sync,
             request=request,
@@ -1430,21 +1434,12 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
             percent_complete=status.percent_complete,
             state=status.state,
         )
-    if status.percent_complete >= 100 or status.state == "Complete":
+    if status.percent_complete == 100 and status.state == "Complete":
         await run_in_threadpool(
             _record_rebuild_complete_once_sync,
             request=request,
             enclosure_id=enclosure_id,
             slot_id=slot_id,
-            require_replacement_cycle=False,
-        )
-    elif status.state == "Not in progress":
-        await run_in_threadpool(
-            _record_rebuild_complete_once_sync,
-            request=request,
-            enclosure_id=enclosure_id,
-            slot_id=slot_id,
-            require_replacement_cycle=True,
         )
 
     if _accepts_html(request):
@@ -1905,7 +1900,6 @@ def _record_rebuild_complete_once_sync(
     request: Request,
     enclosure_id: int,
     slot_id: int,
-    require_replacement_cycle: bool = False,
 ) -> None:
     try:
         with _session(request) as session:
@@ -1924,19 +1918,6 @@ def _record_rebuild_complete_once_sync(
                 enclosure_id=enclosure_id,
                 slot_id=slot_id,
             )
-            if require_replacement_cycle and cycle_marker is None:
-                session.rollback()
-                return
-            if require_replacement_cycle:
-                progress_marker = _load_rebuild_progress_marker_for_slot(
-                    session,
-                    enclosure_id=enclosure_id,
-                    slot_id=slot_id,
-                    cycle_marker=cycle_marker,
-                )
-                if progress_marker is None:
-                    session.rollback()
-                    return
             completed = _load_rebuild_complete_operator_action_for_slot(
                 session,
                 enclosure_id=enclosure_id,

@@ -1,0 +1,20 @@
+{
+  "Controllers": [
+    {
+      "Command Status": {
+        "CLI Version": "1.23.02 (redacted)",
+        "Controller": 0,
+        "Status": "Success",
+        "Description": "None"
+      },
+      "Response Data": {
+        "Controller Properties": [
+          {
+            "CC Operation Mode": "Concurrent",
+            "CC Current State": "Stopped"
+          }
+        ]
+      }
+    }
+  ]
+}

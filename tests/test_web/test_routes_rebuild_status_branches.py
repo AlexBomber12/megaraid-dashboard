@@ -69,7 +69,7 @@ def test_drive_rebuild_status_returns_502_when_parse_fails_json(
         del args, use_sudo, binary_path
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
-    def fake_parse(_payload: object) -> Any:
+    def fake_parse(_payload: object, *, requested_drive: str) -> Any:
         raise StorcliParseError("malformed rebuild payload")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -101,7 +101,7 @@ def test_drive_rebuild_status_returns_html_partial_when_parse_fails_for_htmx(
         del args, use_sudo, binary_path
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
-    def fake_parse(_payload: object) -> Any:
+    def fake_parse(_payload: object, *, requested_drive: str) -> Any:
         raise StorcliParseError("malformed rebuild payload")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -211,7 +211,6 @@ def test_record_rebuild_complete_propagates_sqlalchemy_error(
             request=request,
             enclosure_id=2,
             slot_id=0,
-            require_replacement_cycle=False,
         )
 
 
@@ -265,7 +264,6 @@ def test_record_rebuild_complete_uses_postgres_advisory_lock_when_dialect_is_pos
             request=request,
             enclosure_id=2,
             slot_id=0,
-            require_replacement_cycle=False,
         )
 
         assert any("pg_advisory_xact_lock" in sql for sql in captured_sql), captured_sql

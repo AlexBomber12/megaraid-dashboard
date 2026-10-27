@@ -1,0 +1,22 @@
+{
+  "Controllers": [
+    {
+      "Command Status": {
+        "CLI Version": "1.23.02 (redacted)",
+        "Controller": 0,
+        "Status": "Success",
+        "Description": "None"
+      },
+      "Response Data": {
+        "VD Operation Status": [
+          {
+            "VD": "0",
+            "Operation": "CC",
+            "Progress%": "-",
+            "Status": "Not in progress"
+          }
+        ]
+      }
+    }
+  ]
+}
