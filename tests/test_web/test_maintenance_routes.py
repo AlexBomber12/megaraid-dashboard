@@ -14,6 +14,7 @@ from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.dao import set_maintenance_state
 from megaraid_dashboard.db.models import Event
 from tests.conftest import TEST_ADMIN_PASSWORD_HASH, TEST_AUTH_HEADER
+from tests.safety.scenarios import ACTIONS
 
 
 @pytest.fixture(autouse=True)
@@ -192,3 +193,44 @@ def _csrf_request_headers(
     headers = csrf_headers(client)
     token = headers["X-CSRF-Token"]
     return {**headers, "Cookie": f"__Host-csrf={token}"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/maintenance/start",
+        "/maintenance/stop",
+        *[action.path for action in ACTIONS],
+    ],
+)
+def test_read_only_capability_refuses_before_any_probe(
+    path: str,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    import megaraid_dashboard.web.routes as routes
+
+    monkeypatch.setenv("CONTROLLER_READ_ONLY", "true")
+    monkeypatch.setenv("MAINTENANCE_MODE", "true")
+    monkeypatch.setenv("DESTRUCTIVE_MODE", "true")
+    get_settings.cache_clear()
+    fake = AsyncMock(side_effect=AssertionError("No controller probe allowed"))
+    monkeypatch.setattr(routes, "run_storcli", fake)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        headers = _csrf_request_headers(client, csrf_headers)
+        with app.state.session_factory() as session, session.begin():
+            set_maintenance_state(
+                session,
+                active=True,
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+                started_by="admin",
+            )
+        response = client.post(path, headers=headers, json={"dry_run": False})
+        assert response.status_code == 403
+        assert response.json()["detail"]["error"] == "controller_read_only"
+        assert "CONTROLLER_READ_ONLY=false" in response.text
+        assert client.get("/maintenance").json()["active"] is True
+    fake.assert_not_called()

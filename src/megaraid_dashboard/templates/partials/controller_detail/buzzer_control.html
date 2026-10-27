@@ -1,3 +1,7 @@
+{% if controller_read_only %}
+<p class="muted">Controller actions disabled: read-only rollout.</p>
+<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% endif %}
 {% set buzzer_on = (view_model.buzzer.current_setting | string | lower) in ("enabled", "on", "true") %}
 <section class="section" data-controller-section="buzzer-control" aria-labelledby="buzzer-control-heading">
   <div class="section-title">
@@ -34,3 +38,5 @@
     <div class="form-error" data-controller-action-error hidden role="alert"></div>
   </div>
 </section>
+
+{% if controller_read_only %}</fieldset>{% endif %}

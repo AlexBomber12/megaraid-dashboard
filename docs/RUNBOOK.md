@@ -381,3 +381,9 @@ monitoring uncertainty as healthy hardware.
    Expected output: the latest backup passes integrity check and row-count sanity checks.
 8. Confirm docs still match deployment reality.
    Expected output: proxy, install, runbook, and architecture notes do not contradict production.
+
+## Existing megaraid production service
+
+For the installed StorCLI 1.23.02 read-only selection and reversible operator
+procedure, follow [the rollout runbook](STORCLI_READ_ONLY_ROLLOUT.md). Production runs as `megaraid`; installer
+`raid-monitor` defaults must not replace its service configuration.

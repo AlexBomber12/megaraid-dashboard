@@ -431,3 +431,32 @@ def test_insert_can_retry_after_audited_read_only_precheck_outage(
     assert retry.status_code == 200
     assert fake_storcli.calls == [["/c0/e252/s0", "show", "all", "J"], list(action.command)]
     assert "succeeded" in database_observation(snapshot_with_drives)[0][-1][1]
+
+
+@pytest.mark.parametrize("action", ACTIONS, ids=lambda a: a.name)
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_rollout_capability_refuses_even_authorized_maintenance(
+    action: Action,
+    dry_run: bool,
+    client: httpx.Client,
+    snapshot_with_drives: str,
+    _live_server_handle: _LiveServerHandle,
+    fake_storcli: FakeStorcli,
+) -> None:
+    body = prepare(action, _live_server_handle, fake_storcli)
+    body["dry_run"] = dry_run
+    app = _live_server_handle.app
+    app.state.settings = app.state.settings.model_copy(
+        update={
+            "controller_read_only": True,
+            "maintenance_mode": True,
+            "destructive_mode": True,
+        }
+    )
+    before = database_observation(snapshot_with_drives)
+    fake_storcli.clear()
+    response = client.post(action.path, json=body)
+    assert response.status_code == 403
+    assert response.json()["detail"]["error"] == "controller_read_only"
+    assert fake_storcli.calls == []
+    assert database_observation(snapshot_with_drives) == before

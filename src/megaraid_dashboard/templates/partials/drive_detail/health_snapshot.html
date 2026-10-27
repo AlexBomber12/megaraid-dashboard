@@ -1,3 +1,7 @@
+{% if controller_read_only %}
+<p class="muted">Controller actions disabled: read-only rollout.</p>
+<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% endif %}
 {% set icons = request.url_for('static', path='icons.svg').path %}
 {% set enc = view_model.position.enclosure %}
 {% set slot = view_model.position.slot %}
@@ -76,3 +80,5 @@
     </dl>
   </div>
 </section>
+
+{% if controller_read_only %}</fieldset>{% endif %}

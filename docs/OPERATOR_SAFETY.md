@@ -146,3 +146,22 @@ browser regressions, and the HTTPS fake-executable harness. The reviewed invento
 includes Locate request synchronization and immediate busy feedback from #126.
 This PR must remain unmerged while acceptance failures remain. The read-only
 production procedure is separate: `PRODUCTION_READ_ONLY_SMOKE.md`.
+
+## Explicit read-only rollout capability
+
+`CONTROLLER_READ_ONLY=true` refuses every controller-action POST and maintenance
+POST before handler probes, even for dry runs and active persisted/configured
+maintenance. The default false preserves the existing gate matrix. Disabled
+fieldsets keep mutation controls disabled after client initialization and refresh;
+GET navigation and history stay available. The reason is “Controller actions
+disabled: read-only rollout.” Tests cover every action in `ACTIONS` with zero
+fake calls and unchanged database observations, plus the controller, drive and
+foreign-configuration pages in Chromium. See `tests/e2e/test_read_only_rollout.py`,
+`tests/integration/test_operator_safety.py` and maintenance route tests.
+
+The operator-only `scripts/storcli_rollout.py` stages a separate hash-checked copy,
+renders 25 exact read permissions and probes as megaraid against a private approved
+inventory. Its tests fake the wrapper boundary and never invoke real StorCLI.
+Follow [the rollout procedure](STORCLI_READ_ONLY_ROLLOUT.md) for complete-policy
+validation, service restrictions, private recovery media and rollback. These
+offline checks do not establish physical write acceptance or rebuild initiation.

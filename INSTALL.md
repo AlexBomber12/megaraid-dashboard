@@ -591,3 +591,9 @@ Use this section as a short index. The full diagnostic reference is
   `LogNamespace=megaraid-dashboard`.
 - Alerts silent during maintenance: stop the maintenance window in the UI before testing
   alert delivery.
+
+## Existing megaraid production service
+
+For the installed StorCLI 1.23.02 read-only selection and reversible operator
+procedure, follow [the rollout runbook](docs/STORCLI_READ_ONLY_ROLLOUT.md). Production runs as `megaraid`; installer
+`raid-monitor` defaults must not replace its service configuration.

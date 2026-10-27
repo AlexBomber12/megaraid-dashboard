@@ -1,3 +1,7 @@
+{% if controller_read_only %}
+<p class="muted">Controller actions disabled: read-only rollout.</p>
+<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% endif %}
 <section
   class="replace-wizard"
   aria-labelledby="replace-drive-heading"
@@ -112,3 +116,5 @@
     </div>
   </div>
 </section>
+
+{% if controller_read_only %}</fieldset>{% endif %}

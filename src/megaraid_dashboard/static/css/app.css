@@ -1183,3 +1183,5 @@ th[aria-sort="descending"] .sort-button::after { content: "↓"; opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.read-only-controls { border: 0; margin: 0; padding: 0; min-width: 0; }

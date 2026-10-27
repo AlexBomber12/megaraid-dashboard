@@ -50,7 +50,10 @@ def create_templates(
 def _maintenance_context_processor(request: Request) -> dict[str, Any]:
     session_factory = cast(sessionmaker[Session], request.app.state.session_factory)
     with session_factory() as session:
-        return {"maintenance_state": get_maintenance_state(session, now=datetime.now(UTC))}
+        return {
+            "maintenance_state": get_maintenance_state(session, now=datetime.now(UTC)),
+            "controller_read_only": request.app.state.settings.controller_read_only,
+        }
 
 
 def iso_utc(value: datetime | None) -> str:
