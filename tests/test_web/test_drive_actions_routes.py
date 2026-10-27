@@ -370,3 +370,42 @@ def test_locate_without_maintenance_never_invokes_controller(
             assert len(events) == (0 if audit_fails else 1)
             if events:
                 assert "rejected: maintenance_mode required" in events[0].summary
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+def test_locate_executable_nonzero_json_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    csrf_headers: Callable[[TestClient], dict[str, str]],
+    scripted_storcli: Callable[[dict[str, tuple[str, int, str]]], Path],
+    action: str,
+) -> None:
+    import json
+
+    payload = {
+        "Controllers": [
+            {
+                "Command Status": {
+                    "Controller": 0,
+                    "Status": "Failure",
+                    "Detailed Status": [{"ErrMsg": "use /cx/cv"}],
+                },
+                "SN": "PRIVATE-SERIAL",
+            }
+        ]
+    }
+    binary = scripted_storcli({f"/c0/e2/s0 {action} locate J": (json.dumps(payload), 255, "")})
+    monkeypatch.setenv("STORCLI_PATH", str(binary))
+    get_settings.cache_clear()
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        response = client.post(
+            f"/drives/2:0/locate/{action}", headers=_csrf_request_headers(client, csrf_headers)
+        )
+        assert response.status_code == 502
+        assert "PRIVATE-SERIAL" not in response.text
+        with test_app.state.session_factory() as session:
+            event = session.scalars(select(Event)).one()
+            assert event.summary.startswith(f"locate {action} drive 2:0 failed:")
+            assert "StorcliResponseFailed" in event.summary
+            assert "PRIVATE-SERIAL" not in event.summary
+            assert "succeeded" not in event.summary

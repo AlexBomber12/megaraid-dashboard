@@ -3,6 +3,7 @@ from megaraid_dashboard.storcli.exceptions import (
     StorcliError,
     StorcliNotAvailable,
     StorcliParseError,
+    StorcliResponseFailed,
 )
 from megaraid_dashboard.storcli.models import (
     BbuInfo,
@@ -40,6 +41,7 @@ __all__ = [
     "StorcliError",
     "StorcliNotAvailable",
     "StorcliParseError",
+    "StorcliResponseFailed",
     "StorcliSnapshot",
     "VirtualDrive",
     "ensure_command_succeeded",

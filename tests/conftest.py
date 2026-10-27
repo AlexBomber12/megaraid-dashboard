@@ -119,3 +119,25 @@ def _load_fixture(name: str) -> dict[str, Any]:
     payload = json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
+
+
+@pytest.fixture
+def scripted_storcli(tmp_path: Path) -> Callable[[dict[str, tuple[str, int, str]]], Path]:
+    """Run a disposable executable with exact scripted argv; never reach hardware."""
+    import sys
+
+    def create(responses: dict[str, tuple[str, int, str]]) -> Path:
+        binary = tmp_path / "scripted-storcli"
+        binary.write_text(
+            f"#!{sys.executable}\n"
+            "import json, sys\n"
+            f"responses = json.loads({json.dumps(responses)!r})\n"
+            "out, code, err = responses[' '.join(sys.argv[1:])]\n"
+            "sys.stdout.write(out)\n"
+            "sys.stderr.write(err)\n"
+            "sys.exit(code)\n"
+        )
+        binary.chmod(0o755)
+        return binary
+
+    return create

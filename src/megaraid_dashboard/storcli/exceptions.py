@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 
 class StorcliError(Exception):
     """Base exception for storcli wrapper failures."""
@@ -19,3 +21,16 @@ class StorcliNotAvailable(StorcliError):  # noqa: N818
 
 class StorcliParseError(StorcliError):
     """Raised when storcli output is invalid JSON or does not match the expected schema."""
+
+
+class StorcliResponseFailed(StorcliCommandFailed):
+    """Nonzero process with validated failed JSON; still a command failure.
+
+    Payload is private evidence, deliberately excluded from exception text/repr.
+    Only callers with an explicit optional-read policy may inspect it.
+    """
+
+    def __init__(self, exit_code: int, payload: dict[str, Any]) -> None:
+        super().__init__(f"storcli exited with code {exit_code}: controller reported Failure")
+        self.exit_code = exit_code
+        self.payload = payload

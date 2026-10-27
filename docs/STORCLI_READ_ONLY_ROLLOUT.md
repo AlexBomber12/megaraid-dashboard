@@ -15,6 +15,9 @@ host actually runs the service as **megaraid**.
 | Installed 1.23.02 source | `/usr/local/MegaRAID Storage Manager/StorCLI/storcli64` | `642fff8a3976dbc85406d9f7e8f5f5ce4ceab2753ac68cab5245888b281c8547` |
 | New 1.23.02 copy | `/usr/local/libexec/megaraid-dashboard/storcli-1.23.02/storcli64` | Same as installed 1.23.02 source |
 
+Production remains at application revision `9bbc1e5`; `7ec18c3` is staged separately,
+not active. This fix must pass review before any later operator rollout.
+
 Both original binaries remain untouched, including ownership and permissions.
 No executable or distribution package belongs in this public repository, CI
 artifacts or PR attachments. Never download a substitute based on its filename.
@@ -87,7 +90,10 @@ policy as part of preparing this PR.
 
 ## 2. Stage the separate binary
 
-From the reviewed release, run:
+The inspected host already has the separate staged binary. Retain it and verify
+its hash and root-controlled path against the recorded selection; do not overwrite
+it or rerun exclusive staging over it. The following command is for first-time
+staging only, when the target is absent. From the reviewed release, run:
 
 ```sh
 "$rollout_release/.venv/bin/python" "$rollout_release/scripts/storcli_rollout.py" stage
@@ -168,33 +174,42 @@ of megaraid: use a dedicated **root-owned, non-service-writable** directory outs
 the service's data directory. A root-owned file inside a service-writable parent
 can be replaced and is not an approved trust anchor.
 
-Inspect every ancestor of `/etc/megaraid-dashboard/rollout-baselines` first:
+Inspect every ancestor of `/etc/megaraid-dashboard-rollout` first:
 require root ownership, no symlinks, no group/other write permissions, and no
-megaraid write access (including ACL grants). Create this new directory only;
-stop if it already exists rather than overwriting permissions or a prior baseline:
+megaraid write access (including ACL grants). Verify the existing protected
+directory and baseline; stop on any mismatch rather than changing permissions:
 
 ```sh
-test ! -e /etc/megaraid-dashboard/rollout-baselines
-test ! -L /etc/megaraid-dashboard/rollout-baselines
-install -d -o root -g megaraid -m 0750 /etc/megaraid-dashboard/rollout-baselines
-install -o root -g megaraid -m 0640 "$rollout_backup/approved-inventory.json" /etc/megaraid-dashboard/rollout-baselines/inventory.json
+# Already inspected on this host; do not recreate or chmod existing paths.
+stat -c '%U:%G %a %n' /etc/megaraid-dashboard-rollout /etc/megaraid-dashboard-rollout/inventory.json
+# Require root:megaraid 750 for the directory and root:megaraid 640 for inventory.json.
+# Verify the existing inventory against the approved private baseline; do not overwrite it.
 ```
 
-Root controls the directory and file; megaraid can traverse/read through its group
+`/etc/megaraid-dashboard` is megaraid:megaraid 0750 and is unsafe for a
+root-trusted baseline or rollout EnvironmentFile: megaraid can replace its entries.
+The protected `/etc/megaraid-dashboard-rollout` is root:megaraid 0750 and its
+`inventory.json` is root:megaraid 0640, without megaraid write access. Inspect every
+ancestor for root control and symlinks as well. Root controls the directory and
+file; megaraid can traverse/read through its group
 without write access. Keep raw response evidence private. Run as the actual account:
 
 ```sh
-sudo -u megaraid -- "$rollout_release/.venv/bin/python" "$rollout_release/scripts/storcli_rollout.py" probe --inventory /etc/megaraid-dashboard/rollout-baselines/inventory.json > "$rollout_backup/preflight.json"
+(set -C; sudo -u megaraid -- "$rollout_release/.venv/bin/python" "$rollout_release/scripts/storcli_rollout.py" probe --inventory /etc/megaraid-dashboard-rollout/inventory.json > "$rollout_backup/preflight-bbu-fix.json")
 sha256sum -c "$rollout_backup/binaries-before.sha256"
 ```
+
+The failed operator attempt created an empty private `preflight.json` before the
+fifth read failed. Retain it; use a new evidence filename on every later attempt.
+The exclusive redirection above refuses to overwrite even an empty evidence file.
 
 All actual invocations go through the application's allowlisted JSON wrapper
 using `sudo -n`. Before reading baseline contents or invoking StorCLI, probe
 validates the baseline file and every ancestor: root-owned, no symlinks, no
 group/other write permissions and no effective megaraid write access. It also
 requires a readable regular baseline file. Permission or identity failures stop
-before any controller read. A nonzero process, sudo rejection, timeout, malformed
-JSON,
+before any controller read. Except for the explicit optional failures below, a
+nonzero process, sudo rejection, timeout, malformed JSON,
 missing/unknown command status, wrong controller, wrong CLI version, incomplete
 inventory, changed serial or mismatched per-drive identity stops the preflight.
 The exact recorded SHA-256 is checked before and after the reads and identifies
@@ -215,7 +230,13 @@ reported accurately, never called idle/completed.
 
 Only BBU and foreign show may return explicit `Un-supported command` or
 `Unsupported command`; BBU's explicit `use /cx/cv` redirect is also accepted
-because this procedure requires CV. Foreign `No foreign configuration` is a
+because this procedure requires CV. This includes the observed exit 255, empty
+stderr, valid single-controller JSON with Status=Failure and Detailed Status
+ErrMsg exactly `use /cx/cv`; the wrapper still raises a structured command failure
+and only this optional-read policy accepts it. Controller identity must be explicit
+and zero. Nonzero exits with Success, contradictory statuses or stderr stay fatal.
+Foreign exit-zero Status=Success with Description="Couldn't find any foreign Configuration"
+is parsed as absent. Foreign `No foreign configuration` is a
 validated absence, not an unsupported success. Other failures, missing statuses,
 transport errors and malformed successful payloads remain fatal even for these
 optional probes. Evidence retains optional unsupported results as such. Do not
@@ -227,7 +248,8 @@ before continuing; unhealthy hardware requires separate investigation, not write
 The following concrete activation uses an additive systemd drop-in and a small
 last-loaded EnvironmentFile. It keeps the existing release in place. It assumes
 step 1 confirmed the current command is uvicorn's factory entrypoint with
-`--host 0.0.0.0 --port 8090`, and that moving WorkingDirectory preserves all
+`--host 0.0.0.0 --port 8090 --workers 1 --log-level info --no-access-log`,
+and that moving WorkingDirectory preserves all
 relative config/data paths (DATABASE_URL and lock paths must be absolute).
 If those assumptions fail, STOP and adapt the reviewed procedure to the recorded
 unit before the operator window; do not guess arguments or data locations.
@@ -235,12 +257,16 @@ The new release must be root-owned and not writable by megaraid. Its virtualenv
 must contain the reviewed application wheel and dependencies, and have no
 editable-install reference to the old checkout. Require all existing non-rollout
 dependencies/config to resolve identically. No new `.env` may override missing
-service settings. Confirm `/health` will report the reviewed application SHA.
+service settings. `/health` does not report a Git commit SHA. Independently record
+`git -C "$rollout_release" rev-parse HEAD` (or the build's trusted release revision
+manifest for a wheel-only release) and compare it with the reviewed PR head. Verify
+the installed wheel came from that revision; a checkout SHA alone cannot prove it.
+Record the previous release revision independently in the same way for rollback.
 
 From the same operator Bash shell, create exclusive files (noclobber is intentional):
 
 ```sh
-rollout_env=/etc/megaraid-dashboard/storcli-read-only.env
+rollout_env=/etc/megaraid-dashboard-rollout/storcli-read-only.env
 rollout_dropin_dir="/etc/systemd/system/$rollout_unit.d"
 rollout_dropin="$rollout_dropin_dir/90-storcli-read-only.conf"
 test ! -e "$rollout_env" && test ! -L "$rollout_env"
@@ -275,13 +301,14 @@ MAINTENANCE_MODE=false
 DESTRUCTIVE_MODE=false
 ENV
 )
+chown root:root "$rollout_env"
 chmod 0600 "$rollout_env"
 (set -C; cat > "$rollout_dropin" <<EOF
 [Service]
 WorkingDirectory=$rollout_release
 EnvironmentFile=$rollout_env
 ExecStart=
-ExecStart=$rollout_release/.venv/bin/uvicorn megaraid_dashboard.app:create_app --factory --host 0.0.0.0 --port 8090
+ExecStart=$rollout_release/.venv/bin/uvicorn megaraid_dashboard.app:create_app --factory --host 0.0.0.0 --port 8090 --workers 1 --log-level info --no-access-log
 EOF
 )
 chmod 0644 "$rollout_dropin"
@@ -317,7 +344,13 @@ a separate reviewed rollout and physical validation; simply turning off this fla
 is not write acceptance testing.
 
 After the staged-unit review, run `systemctl restart "$rollout_unit"`.
-Privately recheck effective User/environment, application SHA and logs. Require
+Privately recheck effective User/environment, independent release revision and logs.
+Read MainPID with `systemctl show "$rollout_unit" -p MainPID --value`; inspect
+`/proc/<MainPID>/cmdline`, `/proc/<MainPID>/cwd` and `/proc/<MainPID>/exe` locally.
+Match the selected release/virtualenv, factory entrypoint and **all** recorded
+uvicorn arguments, including `--workers 1 --log-level info --no-access-log`, against
+the effective unit. Combine this process evidence with the installed-release
+revision evidence; `/health` proves neither revision nor executable selection. Require
 two fresh collector polls **inside the service's actual systemd restrictions**;
 stop and roll back on denied elevation/device access or stale polls. Check CV,
 patrol/CC, all 8 drives, unknown learn time, no invented completion. Use the
@@ -331,6 +364,11 @@ For the additive activation above, the exact reversal of application selection i
 
 ```sh
 systemctl stop "$rollout_unit"  # Only if the new selection was already restarted.
+# In a later shell restore rollout_unit/release/backup from the private change log,
+# then reconstruct these exact additive paths before removing anything:
+rollout_env=/etc/megaraid-dashboard-rollout/storcli-read-only.env
+rollout_dropin_dir="/etc/systemd/system/$rollout_unit.d"
+rollout_dropin="$rollout_dropin_dir/90-storcli-read-only.conf"
 rm -- "$rollout_dropin" "$rollout_env"  # Only the two exclusively created files.
 # Begin recorded drop-in directory cleanup.
 case "$(cat -- "$rollout_backup/dropin-directory-created")" in
@@ -388,6 +426,7 @@ environment again. The strict 1.23.02 preflight is not a 7.37 acceptance gate:
 7.37's known patrol unsupported result fails the required probe deliberately.
 
 Once no environment, unit or sudoers rule references the new copy, remove only
-that new staging directory and the newly created root-controlled baseline
-directory/file, or quarantine them root-only for diagnosis. Retain offline recovery media and change evidence
+that new staging directory and rollout-created files only, or quarantine them
+root-only for diagnosis. Preserve the pre-existing `/etc/megaraid-dashboard-rollout`
+directory and inventory.json. Retain offline recovery media and change evidence
 under the actual license. There is no RAID-state reversal: this rollout uses reads.

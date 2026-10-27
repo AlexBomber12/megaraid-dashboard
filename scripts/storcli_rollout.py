@@ -24,6 +24,7 @@ from megaraid_dashboard.services.drive_actions import (
 )
 from megaraid_dashboard.storcli import (
     StorcliCommandFailed,
+    StorcliResponseFailed,
     ensure_command_succeeded,
     parse_bbu,
     parse_cachevault,
@@ -146,27 +147,52 @@ async def probe(binary: Path, inventory_path: Path) -> dict[str, Any]:
     verify_binary(binary, LEGACY_HASH if binary == STAGED else ORIGINAL_HASH)
     responses: dict[str, Any] = {}
     for command in READS:
-        payload = await run_storcli(command.split(), binary_path=str(binary), use_sudo=True)
+        process_failure = None
+        try:
+            payload = await run_storcli(command.split(), binary_path=str(binary), use_sudo=True)
+        except StorcliResponseFailed as exc:
+            process_failure = exc
+            payload = exc.payload
         controllers = payload.get("Controllers")
         if not isinstance(controllers, list) or len(controllers) != 1:
             raise ValueError(f"Expected exactly one controller: {command}")
+        if not isinstance(controllers[0], dict):
+            raise ValueError(f"Malformed controller: {command}")
         status = controllers[0].get("Command Status", {})
-        if status.get("Controller", 0) != 0:
+        if not isinstance(status, dict) or type(status.get("Controller")) is not int:
+            raise ValueError(f"Missing controller identity: {command}")
+        if status["Controller"] != 0:
             raise ValueError(f"Wrong controller: {command}")
-        try:
-            ensure_command_succeeded(payload)
-        except StorcliCommandFailed as exc:
-            reason = exc.err_msg.strip().casefold()
-            if command == "/c0/fall show all J" and reason == "no foreign configuration":
+        # Inspect exact reasons directly: generic failure messages/logs must not
+        # contain the private JSON. Multiple or contradictory details are fatal.
+        if status.get("Status") == "Failure":
+            details = status.get("Detailed Status")
+            if details is None:
+                reason = status.get("Description")
+            elif (
+                isinstance(details, list)
+                and len(details) == 1
+                and isinstance(details[0], dict)
+                and details[0].get("Status", "Failure") in ("Failure", "Failed")
+                and details[0].get("Controller", 0) == 0
+                and details[0].get("Ctrl", 0) == 0
+            ):
+                reason = details[0].get("ErrMsg")
+            else:
+                reason = None
+            if command == "/c0/fall show all J" and reason == "No foreign configuration":
                 parse_foreign_config(payload)
                 responses[command] = payload
                 continue
-            unsupported = reason in {"un-supported command", "unsupported command"}
+            unsupported = reason in ("Un-supported command", "Unsupported command")
             bbu_redirect = command == "/c0/bbu show all J" and reason == "use /cx/cv"
             if command not in OPTIONAL or not (unsupported or bbu_redirect):
-                raise
+                raise process_failure or StorcliCommandFailed("Preflight read failed unexpectedly")
             responses[command] = {"unsupported": True, "payload": payload}
             continue
+        if process_failure is not None:
+            raise process_failure
+        ensure_command_succeeded(payload)
         responses[command] = payload
     c, v, p = (responses[command] for command in READS[:3])
     command_status = c["Controllers"][0]["Command Status"]

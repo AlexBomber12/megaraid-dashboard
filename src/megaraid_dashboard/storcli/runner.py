@@ -4,14 +4,16 @@ import asyncio
 import json
 import re
 from time import monotonic
-from typing import Any
+from typing import Any, Literal, cast
 
 import structlog
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from megaraid_dashboard.storcli.exceptions import (
     StorcliCommandFailed,
     StorcliNotAvailable,
     StorcliParseError,
+    StorcliResponseFailed,
 )
 
 LOGGER = structlog.get_logger(__name__)
@@ -42,6 +44,46 @@ _ALLOWED_COMMAND_PATTERNS = (
     re.compile(r"^/c0/e\d+/s\d+ add hotsparedrive dgs=\d+ J$"),
     re.compile(r"^/c0/e\d+/s\d+ insert dg=\d+ array=\d+ row=\d+ J$"),
 )
+
+
+class _FailedDetail(BaseModel):
+    model_config = ConfigDict(strict=True)
+    status: Literal["Failure", "Failed"] | None = Field(default=None, alias="Status")
+    controller: int | None = Field(default=None, alias="Controller")
+    ctrl: int | None = Field(default=None, alias="Ctrl")
+    reason: str = Field(alias="ErrMsg", min_length=1)
+
+
+class _FailedStatus(BaseModel):
+    model_config = ConfigDict(strict=True)
+    controller: int = Field(alias="Controller")
+    status: Literal["Failure"] = Field(alias="Status")
+    details: list[_FailedDetail] | None = Field(default=None, alias="Detailed Status", min_length=1)
+
+
+class _FailedController(BaseModel):
+    status: _FailedStatus = Field(alias="Command Status")
+
+
+class _FailedResponse(BaseModel):
+    controllers: list[_FailedController] = Field(alias="Controllers", min_length=1, max_length=1)
+
+
+def _failed_response(stdout: bytes) -> dict[str, Any] | None:
+    """Retain only unambiguous failed JSON, without leaking validation input."""
+    try:
+        payload = json.loads(stdout)
+        response = _FailedResponse.model_validate(payload)
+    except (ValueError, UnicodeDecodeError, ValidationError):
+        return None
+    status = response.controllers[0].status
+    if status.details and any(
+        identity is not None and identity != status.controller
+        for detail in status.details
+        for identity in (detail.controller, detail.ctrl)
+    ):
+        return None
+    return dict(payload)
 
 
 async def run_storcli(
@@ -86,6 +128,11 @@ async def run_storcli(
     if use_sudo and _sudo_blocked(stderr_text):
         raise StorcliNotAvailable(f"storcli sudo access is not available: {_tail(stderr_text)}")
     if process.returncode != 0:
+        # Any stderr (including sudo diagnostics) remains a transport failure.
+        # Never return a failed payload as a successful command, even for writes.
+        payload = _failed_response(stdout) if not stderr_text else None
+        if payload is not None:
+            raise StorcliResponseFailed(cast(int, process.returncode), payload)
         err_msg = _tail(stderr_text)
         raise StorcliCommandFailed(
             f"storcli exited with code {process.returncode}: {err_msg}",
