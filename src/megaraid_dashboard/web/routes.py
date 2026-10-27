@@ -13,7 +13,7 @@ from typing import Any, Literal, Protocol, cast, runtime_checkable
 from urllib.parse import urlencode
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, StrictInt, ValidationError, field_validator
 from sqlalchemy import or_, select, text
@@ -190,7 +190,22 @@ HealthStatus = Literal["ok", "degraded"]
 DatabaseHealth = Literal["ok", "error"]
 CollectorHealth = Literal["ok", "idle", "lock_held"]
 
-router = APIRouter()
+
+async def require_controller_capability(request: Request) -> None:
+    """Reject action requests before handlers can probe or mutate the controller."""
+    if request.method == "POST" and request.app.state.settings.controller_read_only:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "controller_read_only",
+                "message": "Controller actions are disabled for this read-only rollout. "
+                "An operator must review write permissions and explicitly set "
+                "CONTROLLER_READ_ONLY=false before using maintenance controls.",
+            },
+        )
+
+
+router = APIRouter(dependencies=[Depends(require_controller_capability)])
 
 
 def _audit_persistence_failure_response(**extras: Any) -> JSONResponse:

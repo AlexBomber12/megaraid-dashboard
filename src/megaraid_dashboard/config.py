@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
     storcli_use_sudo: bool = False
+    controller_read_only: bool = False
     maintenance_mode: bool = False
     destructive_mode: bool = False
     metrics_interval_seconds: int = Field(...)
