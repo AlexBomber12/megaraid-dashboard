@@ -69,7 +69,7 @@ def test_drive_rebuild_status_returns_502_when_parse_fails_json(
         del args, use_sudo, binary_path
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
-    def fake_parse(_payload: object) -> Any:
+    def fake_parse(_payload: object, *, requested_drive: str) -> Any:
         raise StorcliParseError("malformed rebuild payload")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -101,7 +101,7 @@ def test_drive_rebuild_status_returns_html_partial_when_parse_fails_for_htmx(
         del args, use_sudo, binary_path
         return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
 
-    def fake_parse(_payload: object) -> Any:
+    def fake_parse(_payload: object, *, requested_drive: str) -> Any:
         raise StorcliParseError("malformed rebuild payload")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)

@@ -4,7 +4,10 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
+LOGGER = structlog.get_logger(__name__)
 
 
 class StorcliModel(BaseModel):
@@ -297,25 +300,47 @@ class CacheVault(StorcliModel):
     replacement_required: bool = Field(alias="Replacement required")
     next_learn_cycle: datetime | None = Field(default=None, alias="Next Learn time")
 
+    @field_validator("state", "type", mode="before")
+    @classmethod
+    def validate_health_text(cls, value: Any) -> str:
+        if not isinstance(value, str) or not value.strip() or value.strip() in {"-", "N/A"}:
+            raise ValueError("CacheVault health field must be a non-empty string")
+        return value
+
     @field_validator("temperature_celsius", mode="before")
     @classmethod
     def parse_temperature(cls, value: Any) -> int | None:
+        if isinstance(value, bool):
+            raise ValueError("invalid CacheVault temperature")
         return _parse_temperature(value)
 
     @field_validator("capacitance_percent", mode="before")
     @classmethod
     def parse_capacitance_percent(cls, value: Any) -> int | None:
-        return _parse_percent(value)
+        if isinstance(value, bool):
+            raise ValueError("invalid CacheVault capacitance")
+        parsed = _parse_percent(value)
+        if parsed is not None and not 0 <= parsed <= 100:
+            raise ValueError("CacheVault capacitance outside [0, 100]")
+        return parsed
 
     @field_validator("replacement_required", mode="before")
     @classmethod
     def parse_replacement_required(cls, value: Any) -> bool:
-        return _yes_no_to_bool(value)
+        if isinstance(value, bool):
+            return value
+        if not isinstance(value, str) or value.strip().lower() not in {"yes", "no"}:
+            raise ValueError("CacheVault replacement flag must be Yes or No")
+        return value.strip().lower() == "yes"
 
     @field_validator("next_learn_cycle", mode="before")
     @classmethod
     def parse_next_learn_cycle(cls, value: Any) -> datetime | None:
-        return _parse_optional_datetime(value)
+        try:
+            return _parse_optional_datetime(value)
+        except (ValueError, TypeError):
+            LOGGER.warning("cachevault_next_learn_time_invalid", value=value)
+            return None
 
 
 class BbuInfo(StorcliModel):

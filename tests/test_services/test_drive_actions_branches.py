@@ -92,15 +92,15 @@ def test_parse_rebuild_status_complete_state_without_percent() -> None:
                 {
                     "Command Status": {"Status": "Success"},
                     "Response Data": {
-                        "Drive Rebuild": [{"State": "Complete"}],
+                        "Drive /c0/e2/s0 - Rebuild Progress": [{"State": "Complete"}],
                     },
                 }
             ]
         }
     )
 
-    assert status.state == "Complete"
-    assert status.percent_complete == 100
+    assert status.state == "Unknown"
+    assert status.percent_complete is None
 
 
 # ---------------------------------------------------------------------------
@@ -649,7 +649,7 @@ def test_parse_minutes_parses_unitless_numeric_string() -> None:
 
 
 def test_normalize_rebuild_state_complete_text() -> None:
-    assert _normalize_rebuild_state("Complete", None) == "Complete"
+    assert _normalize_rebuild_state("Complete", None) == "Unknown"
 
 
 def test_normalize_rebuild_state_complete_text_with_not_is_idle() -> None:
@@ -667,7 +667,7 @@ def test_normalize_rebuild_state_percent_only_in_progress() -> None:
 
 
 def test_normalize_rebuild_state_zero_percent_no_state() -> None:
-    assert _normalize_rebuild_state(None, 0) == "Not in progress"
+    assert _normalize_rebuild_state(None, 0) == "Unknown"
 
 
 def test_normalize_rebuild_state_none_state_unrecognised_value_with_percent() -> None:
@@ -677,7 +677,7 @@ def test_normalize_rebuild_state_none_state_unrecognised_value_with_percent() ->
 
 
 def test_normalize_rebuild_state_none_state_unrecognised_value_zero_percent() -> None:
-    assert _normalize_rebuild_state("mystery firmware string", 0) == "Not in progress"
+    assert _normalize_rebuild_state("mystery firmware string", 0) == "Unknown"
 
 
 # ---------------------------------------------------------------------------

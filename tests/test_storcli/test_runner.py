@@ -285,7 +285,7 @@ async def test_rebuild_status_template_is_allowed(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("verb", ["offline", "missing", "bad", "good"])
+@pytest.mark.parametrize("verb", ["offline", "missing", "good"])
 async def test_drive_set_templates_are_allowed(monkeypatch: pytest.MonkeyPatch, verb: str) -> None:
     captured: dict[str, tuple[str, ...]] = {}
 

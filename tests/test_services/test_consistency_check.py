@@ -72,18 +72,16 @@ def test_consistency_check_command_builders_are_exact() -> None:
     assert build_consistency_check_start_command(None) == ["/c0/vall", "start", "cc", "J"]
     assert build_consistency_check_start_command(2) == ["/c0/v2", "start", "cc", "J"]
     assert build_consistency_check_stop_command() == ["/c0/vall", "stop", "cc", "J"]
-    assert build_consistency_check_mode_command("auto") == [
+    assert build_consistency_check_mode_command("concurrent") == [
         "/c0",
         "set",
-        "consistencycheck=on",
-        "mode=auto",
+        "cc=conc",
         "J",
     ]
-    assert build_consistency_check_mode_command("manual") == [
+    assert build_consistency_check_mode_command("sequential") == [
         "/c0",
         "set",
-        "consistencycheck=on",
-        "mode=manual",
+        "cc=seq",
         "J",
     ]
 
@@ -95,11 +93,11 @@ def test_consistency_check_mode_builder_rejects_unknown_mode() -> None:
 
 def test_parse_consistency_check_status_from_controller_properties() -> None:
     status = parse_consistency_check_status(
-        _cc_show_payload(mode="Auto"),
+        _cc_show_payload(mode="Concurrent"),
         _cc_progress_payload(state="Active 25%", extra_props=[("CC Inconsistencies", "0")]),
     )
 
-    assert status.mode == "auto"
+    assert status.mode == "concurrent"
     assert status.state == "active"
     assert status.progress_percent == 25
     assert status.last_run_timestamp == "2026/05/04 02:00:00"
@@ -109,7 +107,7 @@ def test_parse_consistency_check_status_from_controller_properties() -> None:
 
 def test_parse_consistency_check_status_detects_inconsistency() -> None:
     status = parse_consistency_check_status(
-        _cc_show_payload(mode="Manual"),
+        _cc_show_payload(mode="Sequential"),
         _cc_progress_payload(state="Stopped", extra_props=[("CC Inconsistencies", "3")]),
     )
 
@@ -120,7 +118,7 @@ def test_parse_consistency_check_status_detects_inconsistency() -> None:
 
 def test_parse_consistency_check_status_ignores_negative_inconsistency_phrase() -> None:
     status = parse_consistency_check_status(
-        _cc_show_payload(mode="Manual"),
+        _cc_show_payload(mode="Sequential"),
         _cc_progress_payload(
             state="Stopped",
             extra_props=[("CC Inconsistencies", "No inconsistencies found")],
@@ -134,7 +132,7 @@ def test_parse_consistency_check_status_ignores_negative_inconsistency_phrase() 
 
 def test_parse_consistency_check_status_from_vd_operation_status_row() -> None:
     status = parse_consistency_check_status(
-        _cc_show_payload(mode="Manual"),
+        _cc_show_payload(mode="Sequential"),
         {
             "Controllers": [
                 {
@@ -166,8 +164,8 @@ def test_parse_consistency_check_status_from_vd_operation_status_row() -> None:
         ["/c0/vall", "start", "cc", "J"],
         ["/c0/v2", "start", "cc", "J"],
         ["/c0/vall", "stop", "cc", "J"],
-        ["/c0", "set", "consistencycheck=on", "mode=auto", "J"],
-        ["/c0", "set", "consistencycheck=on", "mode=manual", "J"],
+        ["/c0", "set", "cc=conc", "J"],
+        ["/c0", "set", "cc=seq", "J"],
     ],
 )
 async def test_consistency_check_runner_templates_are_allowed(
@@ -192,7 +190,7 @@ def test_consistency_check_get_returns_current_state(monkeypatch: pytest.MonkeyP
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         calls.append(list(args))
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Auto")
+            return _cc_show_payload(mode="Concurrent")
         return _cc_progress_payload(state="Stopped")
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -203,7 +201,7 @@ def test_consistency_check_get_returns_current_state(monkeypatch: pytest.MonkeyP
 
     assert response.status_code == 200
     assert response.json() == {
-        "mode": "auto",
+        "mode": "concurrent",
         "state": "stopped",
         "progress_percent": None,
         "last_run_timestamp": "2026/05/04 02:00:00",
@@ -224,7 +222,7 @@ def test_consistency_check_start_specific_vd_succeeds_and_audits(
         nonlocal progress_calls
         calls.append(list(args))
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Manual")
+            return _cc_show_payload(mode="Sequential")
         if list(args) == ["/c0/vall", "show", "cc", "J"]:
             progress_calls += 1
             return _cc_progress_payload(state="Stopped" if progress_calls == 1 else "Active")
@@ -272,7 +270,7 @@ def test_consistency_check_mode_rejects_without_maintenance_mode_and_audits(
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            json={"mode": "manual"},
+            json={"mode": "sequential"},
         )
         event = _read_single_event(test_app)
 
@@ -280,7 +278,7 @@ def test_consistency_check_mode_rejects_without_maintenance_mode_and_audits(
     assert response.json()["error"] == "consistency check changes require maintenance_mode"
     assert calls == []
     assert event.summary == (
-        "consistency check mode set to manual rejected: maintenance_mode required"
+        "consistency check mode set to sequential rejected: maintenance_mode required"
     )
 
 
@@ -289,7 +287,7 @@ def test_consistency_check_get_records_inconsistency_event_once(
 ) -> None:
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Auto")
+            return _cc_show_payload(mode="Concurrent")
         return _cc_progress_payload(state="Stopped", extra_props=[("CC Inconsistencies", "2")])
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -320,7 +318,7 @@ def test_consistency_check_get_records_recurring_inconsistency_after_resolution(
 
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Auto")
+            return _cc_show_payload(mode="Concurrent")
         return progress_payloads.pop(0)
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
@@ -352,7 +350,7 @@ def test_consistency_check_mutation_command_error_is_swappable_for_htmx(
     async def fake_run_storcli(args: list[str], **_: Any) -> dict[str, Any]:
         calls.append(list(args))
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Manual")
+            return _cc_show_payload(mode="Sequential")
         if list(args) == ["/c0/vall", "show", "cc", "J"]:
             return _cc_progress_payload(state="Stopped")
         raise StorcliNotAvailable("storcli unavailable")

@@ -122,7 +122,6 @@ def parse_cachevault(payload: dict[str, Any]) -> CacheVault | None:
                 data["Type"] = data["Model"]
             if "Temp" in data:
                 data["Temperature"] = data["Temp"]
-            data.setdefault("Replacement required", "No")
         return CacheVault.model_validate(data)
     except (KeyError, TypeError, IndexError, ValidationError) as exc:
         raise StorcliParseError("cachevault payload does not match expected schema") from exc

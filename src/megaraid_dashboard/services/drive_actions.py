@@ -4,11 +4,15 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from megaraid_dashboard.storcli import StorcliCommandFailed, StorcliParseError
+from megaraid_dashboard.storcli import (
+    StorcliCommandFailed,
+    StorcliParseError,
+    ensure_command_succeeded,
+)
 
 LocateAction = Literal["start", "stop"]
 PatrolReadMode = Literal["auto", "manual", "disable"]
-ConsistencyCheckMode = Literal["auto", "manual"]
+ConsistencyCheckMode = Literal["concurrent", "sequential"]
 ReplaceStep = Literal["offline", "missing"]
 
 _LOCATE_VERB: dict[LocateAction, str] = {
@@ -146,10 +150,10 @@ def build_consistency_check_stop_command() -> list[str]:
 
 
 def build_consistency_check_mode_command(mode: ConsistencyCheckMode) -> list[str]:
-    if mode == "auto":
-        return ["/c0", "set", "consistencycheck=on", "mode=auto", "J"]
-    if mode == "manual":
-        return ["/c0", "set", "consistencycheck=on", "mode=manual", "J"]
+    if mode == "concurrent":
+        return ["/c0", "set", "cc=conc", "J"]
+    if mode == "sequential":
+        return ["/c0", "set", "cc=seq", "J"]
     raise ValueError(f"unknown consistency check mode: {mode!r}")
 
 
@@ -238,7 +242,7 @@ def can_transition_step3(latest_audit_message: str | None) -> bool:
 
 @dataclass(frozen=True)
 class RebuildStatus:
-    percent_complete: int
+    percent_complete: int | None
     state: str
     time_remaining_minutes: int | None
 
@@ -276,27 +280,56 @@ class ConsistencyCheckStatus:
         return self.inconsistency_detail is not None
 
 
-def parse_rebuild_status(payload: dict[str, Any]) -> RebuildStatus:
-    response_data = _single_controller_response_data(payload)
-    percent = _find_percent_complete(response_data)
-    explicit_state = _find_text_value(
-        response_data,
-        key_fragments=("state", "status"),
-        value_hints=("rebuild", "rbld", "progress", "complete", "not in progress", "none"),
-    )
-    time_remaining = _find_time_remaining_minutes(response_data)
-
-    if percent is None and explicit_state is None:
+def parse_rebuild_status(
+    payload: dict[str, Any], *, requested_drive: str | None = None
+) -> RebuildStatus:
+    # Only the legacy row list and the named per-drive progress table are supported.
+    response = _single_controller_response_data(payload, allow_list=True)
+    ensure_command_succeeded(payload)
+    table_drive = None
+    if isinstance(response, dict):
+        if len(response) != 1:
+            raise StorcliParseError("ambiguous rebuild progress tables")
+        name, rows = next(iter(response.items()))
+        match = re.fullmatch(r"Drive (/c0/e\d+/s\d+) - Rebuild Progress", name)
+        if match is None:
+            raise StorcliParseError("unsupported rebuild progress table")
+        table_drive = match.group(1)
+    else:
+        rows = response
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        raise StorcliParseError("expected exactly one rebuild progress row")
+    row = rows[0]
+    if "Drive-ID" in row:
+        drive_id = row["Drive-ID"]
+        if not isinstance(drive_id, str) or re.fullmatch(r"/c0/e\d+/s\d+", drive_id) is None:
+            raise StorcliParseError("invalid rebuild Drive-ID")
+        if table_drive is not None and drive_id != table_drive:
+            raise StorcliParseError("mismatched rebuild Drive-ID and table")
+    else:
+        drive_id = table_drive
+    if requested_drive is not None and drive_id is not None and drive_id != requested_drive:
+        raise StorcliParseError("rebuild Drive-ID does not match requested drive")
+    percent_raw = row.get("Progress%")
+    if percent_raw in (None, "", "-", "N/A"):
+        percent = None
+    elif (
+        isinstance(percent_raw, bool)
+        or re.fullmatch(r"\d{1,3}%?", str(percent_raw)) is None
+        or not 0 <= int(str(percent_raw).removesuffix("%")) <= 100
+    ):
+        raise StorcliParseError("invalid rebuild progress")
+    else:
+        percent = int(str(percent_raw).removesuffix("%"))
+    explicit_state = row.get("Status", row.get("State"))
+    if explicit_state is not None and not isinstance(explicit_state, str):
+        raise StorcliParseError("invalid rebuild status")
+    if percent is None and not explicit_state:
         raise StorcliParseError("storcli rebuild status missing progress data")
-
-    state = _normalize_rebuild_state(explicit_state, percent)
-    resolved_percent = percent
-    if resolved_percent is None:
-        resolved_percent = 100 if state == "Complete" else 0
     return RebuildStatus(
-        percent_complete=max(0, min(100, resolved_percent)),
-        state=state,
-        time_remaining_minutes=time_remaining,
+        percent_complete=percent,
+        state=_normalize_rebuild_state(explicit_state, percent),
+        time_remaining_minutes=_parse_minutes(row.get("Estimated Time Left")),
     )
 
 
@@ -378,9 +411,9 @@ def consistency_check_can_stop(status: ConsistencyCheckStatus) -> bool:
     return status.is_running
 
 
-def _single_controller_response_data(payload: dict[str, Any]) -> dict[str, Any]:
+def _single_controller_response_data(payload: dict[str, Any], *, allow_list: bool = False) -> Any:
     controllers = payload.get("Controllers")
-    if not isinstance(controllers, list) or not controllers:
+    if not isinstance(controllers, list) or len(controllers) != 1:
         raise StorcliParseError("storcli rebuild status missing Controllers")
     controller = controllers[0]
     if not isinstance(controller, dict):
@@ -393,7 +426,7 @@ def _single_controller_response_data(payload: dict[str, Any]) -> dict[str, Any]:
         err_msg = _command_error_message(command_status)
         raise StorcliCommandFailed(f"storcli command failed: {err_msg}", err_msg=err_msg)
     response_data = controller.get("Response Data")
-    if not isinstance(response_data, dict):
+    if not isinstance(response_data, dict) and not (allow_list and isinstance(response_data, list)):
         raise StorcliParseError("storcli rebuild status missing Response Data")
     return response_data
 
@@ -405,16 +438,6 @@ def _command_error_message(command_status: dict[str, Any]) -> str:
             if isinstance(item, dict) and item.get("ErrMsg"):
                 return str(item["ErrMsg"])
     return str(command_status.get("Description") or command_status.get("Status") or "unknown error")
-
-
-def _find_percent_complete(value: Any) -> int | None:
-    for key, candidate in _walk_key_values(value):
-        normalized_key = key.lower().replace(" ", "").replace("_", "")
-        if "%" in key or "percent" in normalized_key or "progress" in normalized_key:
-            percent = _parse_int(candidate)
-            if percent is not None:
-                return percent
-    return None
 
 
 def _find_patrol_read_progress_percent(value: Any) -> int | None:
@@ -471,34 +494,6 @@ def _is_patrol_read_progress_key(key: str) -> bool:
     if "patrol" in normalized_key:
         return True
     return re.search(r"(?:^|[^a-z0-9])pr(?:[^a-z0-9]|$)", lowered_key) is not None
-
-
-def _find_time_remaining_minutes(value: Any) -> int | None:
-    for key, candidate in _walk_key_values(value):
-        normalized_key = key.lower().replace(" ", "").replace("_", "")
-        if "time" in normalized_key and (
-            "remain" in normalized_key or "left" in normalized_key or "eta" in normalized_key
-        ):
-            return _parse_minutes(candidate)
-    return None
-
-
-def _find_text_value(
-    value: Any,
-    *,
-    key_fragments: tuple[str, ...],
-    value_hints: tuple[str, ...],
-) -> str | None:
-    for key, candidate in _walk_key_values(value):
-        if not isinstance(candidate, str):
-            continue
-        lowered_key = key.lower()
-        lowered_value = candidate.lower()
-        if any(fragment in lowered_key for fragment in key_fragments) and any(
-            hint in lowered_value for hint in value_hints
-        ):
-            return candidate
-    return None
 
 
 def _find_patrol_read_text(value: Any, key_hints: tuple[str, ...]) -> str | None:
@@ -704,24 +699,18 @@ def _unit_value(text: str, units: tuple[str, ...]) -> float | None:
 
 
 def _normalize_rebuild_state(raw_state: str | None, percent: int | None) -> str:
-    if percent is not None and percent >= 100:
+    lowered = (raw_state or "").strip().lower()
+    if "not" in lowered or "none" in lowered or "idle" in lowered:
+        return "Not in progress"
+    if any(word in lowered for word in ("fail", "abort", "stop")):
+        return "Unknown"
+    if percent == 100:
         return "Complete"
-    if raw_state is not None:
-        lowered = raw_state.lower()
-        if "complete" in lowered and "not" not in lowered:
-            return "Complete"
-        if "not" in lowered or "none" in lowered or "idle" in lowered:
-            return "Not in progress"
-        if (
-            "progress" in lowered
-            or "rebuild" in lowered
-            or "rbld" in lowered
-            or "active" in lowered
-        ):
-            return "In progress"
+    if any(word in lowered for word in ("progress", "rebuild", "rbld", "active")):
+        return "In progress"
     if percent is not None and percent > 0:
         return "In progress"
-    return "Not in progress"
+    return "Unknown"
 
 
 def _normalize_patrol_read_state(raw_state: str | None) -> str:

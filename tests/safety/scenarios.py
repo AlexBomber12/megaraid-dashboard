@@ -53,7 +53,7 @@ ACTIONS = (
             ("patrol-read", "mode", ("/c0", "set", "patrolread=on", "mode=auto", "J")),
             ("consistency-check", "start", ("/c0/vall", "start", "cc", "J")),
             ("consistency-check", "stop", ("/c0/vall", "stop", "cc", "J")),
-            ("consistency-check", "mode", ("/c0", "set", "consistencycheck=on", "mode=auto", "J")),
+            ("consistency-check", "mode", ("/c0", "set", "cc=conc", "J")),
         )
     ),
     Action("mark-ubad", "/drives/252:0/actions/mark-ubad", ("/c0/e252/s0", "set", "bad", "J")),

@@ -157,7 +157,7 @@ def test_position_diagram_severity_reflects_drive_tile_severity(session: Session
     assert layout[3].severity == "critical"
 
 
-def test_advanced_actions_mark_ubad_enabled_only_for_ugood(session: Session) -> None:
+def test_advanced_actions_mark_ubad_unavailable_for_legacy_cli(session: Session) -> None:
     _seed_snapshot(session, states={4: "UGood", 5: "Failed"})
     ugood_view_model = load_drive_detail_view_model(
         session,
@@ -167,7 +167,7 @@ def test_advanced_actions_mark_ubad_enabled_only_for_ugood(session: Session) -> 
         app_version="test",
     )
 
-    assert _action(ugood_view_model.advanced_actions, "Mark as UBad").is_enabled is True
+    assert _action(ugood_view_model.advanced_actions, "Mark as UBad").is_enabled is False
 
     failed_view_model = load_drive_detail_view_model(
         session,

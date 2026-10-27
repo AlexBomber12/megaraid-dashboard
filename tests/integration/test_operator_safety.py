@@ -81,6 +81,8 @@ def test_mutation_result_matrix(
     expected = (
         500
         if fault == "audit"
+        else 502
+        if action.name == "mark-ubad"
         else (303 if action.family in {"advanced", "buzzer"} else 200)
         if fault == "success"
         else 502
@@ -89,7 +91,9 @@ def test_mutation_result_matrix(
     if fault == "unavailable":
         assert fake_storcli.calls == []
     else:
-        assert fake_storcli.mutations == [list(action.command)]
+        assert fake_storcli.mutations == (
+            [] if action.name == "mark-ubad" else [list(action.command)]
+        )
     if fault == "audit":
         assert events == before[0]
         assert "audit" in response.text.lower()
@@ -100,7 +104,9 @@ def test_mutation_result_matrix(
             assert audit is not None
             assert audit.operator_username == E2E_ADMIN_USERNAME
             assert started_at <= audit.occurred_at <= datetime.now(UTC)
-        assert ("succeeded" if fault == "success" else "fail") in events[-1][1].lower()
+        assert (
+            "succeeded" if fault == "success" and action.name != "mark-ubad" else "fail"
+        ) in events[-1][1].lower()
     assert response.status_code == expected, response.text
     if fault not in {"success", "audit"}:
         assert "fail" in response.text.lower()

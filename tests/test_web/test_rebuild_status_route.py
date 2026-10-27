@@ -193,7 +193,7 @@ def test_drive_rebuild_status_records_completion_audit_once(
     assert events[0].operator_username == "admin"
 
 
-def test_drive_rebuild_status_records_completion_on_terminal_idle_after_replacement_cycle(
+def test_drive_rebuild_status_does_not_infer_completion_on_terminal_idle_after_replacement_cycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     statuses = [
@@ -229,11 +229,10 @@ def test_drive_rebuild_status_records_completion_on_terminal_idle_after_replacem
     assert [event.summary for event in events] == [
         "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded",
         "rebuild progress observed drive 2:0",
-        "rebuild complete drive 2:0",
     ]
 
 
-def test_drive_rebuild_status_records_completion_after_zero_percent_active_rebuild(
+def test_drive_rebuild_status_does_not_infer_completion_after_zero_percent_active_rebuild(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     statuses = [
@@ -269,7 +268,6 @@ def test_drive_rebuild_status_records_completion_after_zero_percent_active_rebui
     assert [event.summary for event in events] == [
         "replace step insert drive 2:0 serial replacement-2 dg=0 array=0 row=0 succeeded",
         "rebuild progress observed drive 2:0",
-        "rebuild complete drive 2:0",
     ]
     assert events[1].after_json == {"percent_complete": 0, "state": "In progress"}
 
@@ -539,3 +537,57 @@ def _request_for_app(test_app: FastAPI) -> Any:
         (),
         {"app": test_app, "scope": {"user_username": "admin"}},
     )()
+
+
+@pytest.mark.parametrize("state", ["Not in progress", "Complete", "In progress"])
+def test_legacy_unknown_progress_never_records_completion(
+    monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    async def fake_run(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {"Status": "Success"},
+                    "Response Data": [
+                        {
+                            "Drive-ID": "/c0/e252/s0",
+                            "Progress%": "-",
+                            "Status": state,
+                            "Estimated Time Left": "-",
+                        }
+                    ],
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/252:0/replace/rebuild-status")
+        html = client.get("/drives/252:0/replace/rebuild-status", headers={"Accept": "text/html"})
+        assert _all_events(app) == []
+    assert response.status_code == 200
+    assert response.json()["percent_complete"] is None
+    assert response.json()["state"] != "Complete"
+    assert "Progress unknown" in html.text
+    assert "ETA unknown" in html.text
+    assert 'value="None"' not in html.text
+
+
+def test_legacy_wrong_drive_cannot_record_completion(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run(args: list[str], **kwargs: Any) -> dict[str, Any]:
+        return {
+            "Controllers": [
+                {
+                    "Command Status": {"Status": "Success"},
+                    "Response Data": [{"Drive-ID": "/c0/e252/s1", "Progress%": "100%"}],
+                }
+            ]
+        }
+
+    monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run)
+    app = create_app()
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        response = client.get("/drives/252:0/replace/rebuild-status")
+        assert _all_events(app) == []
+    assert response.status_code == 502

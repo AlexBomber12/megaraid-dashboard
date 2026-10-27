@@ -61,7 +61,7 @@ def _csrf_request_headers(
     return {**headers, "Cookie": f"__Host-csrf={token}"}
 
 
-def _cc_show_payload(*, mode: str = "Manual") -> dict[str, Any]:
+def _cc_show_payload(*, mode: str = "Sequential") -> dict[str, Any]:
     return {
         "Controllers": [
             {
@@ -208,10 +208,10 @@ def test_consistency_check_mode_accepts_form_encoded_body(
 
     async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
         calls.append(list(args))
-        if list(args) == ["/c0", "set", "consistencycheck=on", "mode=manual", "J"]:
+        if list(args) == ["/c0", "set", "cc=seq", "J"]:
             return {"Controllers": [{"Command Status": {"Status": "Success"}}]}
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Manual")
+            return _cc_show_payload(mode="Sequential")
         if list(args) == ["/c0/vall", "show", "cc", "J"]:
             return _cc_progress_payload(state="Stopped")
         raise AssertionError(f"unexpected storcli invocation: {args!r}")
@@ -223,11 +223,11 @@ def test_consistency_check_mode_accepts_form_encoded_body(
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            data={"mode": "manual"},
+            data={"mode": "sequential"},
         )
 
     assert response.status_code == 200
-    assert ["/c0", "set", "consistencycheck=on", "mode=manual", "J"] in calls
+    assert ["/c0", "set", "cc=seq", "J"] in calls
 
 
 def test_consistency_check_start_rejects_non_object_body(
@@ -657,7 +657,7 @@ def test_consistency_check_mode_returns_400_when_builder_raises(
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            json={"mode": "manual"},
+            json={"mode": "sequential"},
         )
 
     assert response.status_code == 400
@@ -762,7 +762,7 @@ def test_consistency_check_mode_returns_500_when_storcli_failure_and_audit_fails
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            json={"mode": "auto"},
+            json={"mode": "concurrent"},
         )
         events = _read_events(test_app)
 
@@ -770,7 +770,7 @@ def test_consistency_check_mode_returns_500_when_storcli_failure_and_audit_fails
     body = response.json()
     assert body["error"] == "audit persistence failed"
     assert body["action"] == "mode"
-    assert body["argv"] == ["/c0", "set", "consistencycheck=on", "mode=auto", "J"]
+    assert body["argv"] == ["/c0", "set", "cc=conc", "J"]
     assert body["result"]["Controllers"][0]["Command Status"]["Status"] == "Failure"
     assert "cc mode change rejected by firmware" in body["storcli_error"]
     assert events == []
@@ -804,7 +804,7 @@ def test_consistency_check_mode_returns_500_when_storcli_unavailable_and_audit_f
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            json={"mode": "manual"},
+            json={"mode": "sequential"},
         )
         events = _read_events(test_app)
 
@@ -813,7 +813,7 @@ def test_consistency_check_mode_returns_500_when_storcli_unavailable_and_audit_f
     assert body == {
         "error": "audit persistence failed",
         "action": "mode",
-        "argv": ["/c0", "set", "consistencycheck=on", "mode=manual", "J"],
+        "argv": ["/c0", "set", "cc=seq", "J"],
         "storcli_error": "storcli unavailable",
     }
     assert "result" not in body
@@ -848,7 +848,7 @@ def test_consistency_check_mode_returns_500_when_storcli_succeeds_but_audit_fail
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            json={"mode": "auto"},
+            json={"mode": "concurrent"},
         )
         events = _read_events(test_app)
 
@@ -857,7 +857,7 @@ def test_consistency_check_mode_returns_500_when_storcli_succeeds_but_audit_fail
     assert body == {
         "error": "audit persistence failed",
         "action": "mode",
-        "argv": ["/c0", "set", "consistencycheck=on", "mode=auto", "J"],
+        "argv": ["/c0", "set", "cc=conc", "J"],
         "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
     }
     assert "storcli_error" not in body
@@ -891,7 +891,7 @@ def test_consistency_check_mode_returns_502_when_refresh_fails(
     refresh failure does not invalidate the recorded mutation.
     """
 
-    set_command = ["/c0", "set", "consistencycheck=on", "mode=manual", "J"]
+    set_command = ["/c0", "set", "cc=seq", "J"]
     show_command = ["/c0", "show", "cc", "J"]
     progress_command = ["/c0/vall", "show", "cc", "J"]
     calls: list[list[str]] = []
@@ -911,7 +911,7 @@ def test_consistency_check_mode_returns_502_when_refresh_fails(
         response = client.post(
             "/controller/consistency-check/mode",
             headers=_csrf_request_headers(client, csrf_headers),
-            json={"mode": "manual"},
+            json={"mode": "sequential"},
         )
         events = _read_events(test_app)
 
@@ -924,7 +924,7 @@ def test_consistency_check_mode_returns_502_when_refresh_fails(
     assert calls[0] == set_command
     assert calls[1] == show_command
     assert len(events) == 1
-    assert events[0].summary == "consistency check mode set to manual succeeded"
+    assert events[0].summary == "consistency check mode set to sequential succeeded"
 
 
 # ---------------------------------------------------------------------------
@@ -997,7 +997,7 @@ def test_consistency_check_get_propagates_inconsistency_event_failure(
 
     async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
         if list(args) == ["/c0", "show", "cc", "J"]:
-            return _cc_show_payload(mode="Auto")
+            return _cc_show_payload(mode="Concurrent")
         return _cc_progress_payload(
             state="Stopped",
             extra_props=[("CC Inconsistencies", "2")],

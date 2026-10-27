@@ -10,7 +10,11 @@
       <div class="ops-list">
         {% for operation in view_model.live_operations %}
           {% set operation_mode_text = operation.mode_text | lower %}
-          {% set next_operation_mode = "auto" if "manual" in operation_mode_text else "manual" %}
+          {% if operation.name == "Consistency Check" %}
+            {% set next_operation_mode = "sequential" if "concurrent" in operation_mode_text else "concurrent" %}
+          {% else %}
+            {% set next_operation_mode = "auto" if "manual" in operation_mode_text else "manual" %}
+          {% endif %}
           <article class="op-item" data-action-scope>
             <div>
               <h3>{{ operation.name }}</h3>

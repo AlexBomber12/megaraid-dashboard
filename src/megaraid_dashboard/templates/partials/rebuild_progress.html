@@ -1,14 +1,15 @@
 <div class="rebuild-progress">
-  <progress
-    class="rebuild-progress__bar"
-    max="100"
-    value="{{ status.percent_complete }}"
-  >{{ status.percent_complete }} %</progress>
+  {% if status.percent_complete is not none %}
+    <progress class="rebuild-progress__bar" max="100" value="{{ status.percent_complete }}">{{ status.percent_complete }} %</progress>
+  {% endif %}
   <div class="rebuild-progress__fields">
-    <span class="mono">{{ status.percent_complete }} %</span>
+    <span class="mono">{% if status.percent_complete is not none %}{{ status.percent_complete }} %{% else %}Progress unknown{% endif %}</span>
     <span>{{ status.state }}</span>
     {% if status.time_remaining_minutes is not none %}
       <span>ETA: {{ status.time_remaining_minutes }} min</span>
+    {% else %}
+      <span>ETA unknown</span>
     {% endif %}
+    {% if status.state == "Not in progress" %}<span>Completion unconfirmed</span>{% endif %}
   </div>
 </div>

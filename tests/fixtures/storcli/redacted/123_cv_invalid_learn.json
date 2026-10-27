@@ -1,0 +1,46 @@
+{
+  "Controllers": [
+    {
+      "Command Status": {
+        "CLI Version": "1.23.02 (redacted)",
+        "Controller": 0,
+        "Status": "Success",
+        "Description": "None"
+      },
+      "Response Data": {
+        "Cachevault_Info": [
+          {
+            "Property": "Type",
+            "Value": "CVPM02"
+          },
+          {
+            "Property": "Temperature",
+            "Value": "29 C"
+          },
+          {
+            "Property": "State",
+            "Value": "Optimal"
+          }
+        ],
+        "Firmware_Status": [
+          {
+            "Property": "Replacement required",
+            "Value": "No"
+          }
+        ],
+        "GasGaugeStatus": [
+          {
+            "Property": "Capacitance",
+            "Value": "89 %"
+          }
+        ],
+        "Properties": [
+          {
+            "Property": "Next Learn time",
+            "Value": "2026/13/07 17:50:43 (847389043 seconds)"
+          }
+        ]
+      }
+    }
+  ]
+}
