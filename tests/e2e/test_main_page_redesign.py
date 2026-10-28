@@ -18,7 +18,7 @@ def test_main_page_redesign_navigation_and_live_refresh(
     login_and_navigate(authenticated_page, f"{live_server}/")
 
     primary_nav = authenticated_page.locator("nav[aria-label='Primary navigation'] a")
-    expect(primary_nav).to_have_count(5)
+    expect(primary_nav).to_have_text(["Overview", "Controller", "Drives", "Events"])
     expect(primary_nav.filter(has_text="Overview")).to_have_attribute("aria-current", "page")
 
     controller_card = authenticated_page.locator(".controller-card")

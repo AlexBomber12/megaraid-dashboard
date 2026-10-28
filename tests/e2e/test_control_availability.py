@@ -112,7 +112,7 @@ def test_read_only_controls_never_post_or_mutate(
     )
     login_and_navigate(page, f"{live_server}/")
     nav = page.locator('nav[aria-label="Primary navigation"]')
-    for name in ("Controller", "Drives", "Events", "Audit", "Overview"):
+    for name in ("Controller", "Drives", "Events", "Overview"):
         nav.get_by_text(name, exact=True).click()
         expect(nav.get_by_text(name, exact=True)).to_have_attribute("aria-current", "page")
     page.goto(f"{live_server}/drives")
@@ -152,7 +152,9 @@ def test_read_only_controls_never_post_or_mutate(
     page.goto(f"{live_server}/events")
     page.get_by_role("button", name="Load Older Events").click()
     expect(page.locator("[data-event-id]")).to_have_count(65)
-    chips = page.locator('nav[aria-label="Event filters"] a')
+    chips = page.locator(
+        'nav[aria-label="Event filters"] .filter-chips__group:not([aria-label="Quick filters"]) a'
+    )
     # Every filter is a GET navigation; toggle on and off, preserving a working page.
     for index in range(chips.count()):
         chip = chips.nth(index)

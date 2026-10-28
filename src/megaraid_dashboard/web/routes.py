@@ -176,7 +176,7 @@ _EVENT_CATEGORY_FILTERS = (
     "foreign_config_detected",
     "consistency_check_inconsistency",
 )
-_AUDIT_LOG_CATEGORIES = (
+_OPERATOR_ACTION_CATEGORIES = (
     "operator_action",
     AUDIT_CATEGORY_DRIVE_MARK_UBAD,
     AUDIT_CATEGORY_DRIVE_MARK_UGOOD,
@@ -3760,7 +3760,7 @@ def events(
         request=request,
         name="pages/events.html",
         context={
-            "active_nav": _events_nav_active(categories),
+            "active_nav": "events",
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "system_health": _load_system_health(request),
@@ -3778,7 +3778,7 @@ async def audit_log(request: Request) -> RedirectResponse:
     target = _events_query_path(
         request=request,
         route_name="events",
-        categories=_AUDIT_LOG_CATEGORIES,
+        categories=_OPERATOR_ACTION_CATEGORIES,
         severities=(),
     )
     return RedirectResponse(url=target, status_code=302)
@@ -3876,7 +3876,7 @@ def _events_fragment_response(
         request=request,
         name=template_name,
         context={
-            "active_nav": _events_nav_active(categories),
+            "active_nav": "events",
             "events_poll_since": max(since_id or 0, view_model.latest_event_id),
             "render_events_data_oob": render_events_data_oob,
             "render_events_load_more_oob": render_events_load_more_oob,
@@ -4182,12 +4182,6 @@ def _event_filter_values(request: Request) -> tuple[tuple[str, ...], tuple[str, 
     return categories, severities
 
 
-def _events_nav_active(categories: tuple[str, ...]) -> str:
-    if categories == _AUDIT_LOG_CATEGORIES:
-        return "audit"
-    return "events"
-
-
 def _normalize_query_values(values: tuple[str, ...]) -> tuple[str, ...]:
     normalized: list[str] = []
     for value in values:
@@ -4215,6 +4209,30 @@ def _events_filter_context(
             route_name="events_partial",
             categories=categories,
             severities=severities,
+        ),
+        "quick_filter_chips": (
+            FilterChip(
+                label="All events",
+                value="all",
+                active=not categories and not severities,
+                href=_events_query_path(
+                    request=request,
+                    route_name="events",
+                    categories=(),
+                    severities=(),
+                ),
+            ),
+            FilterChip(
+                label="Operator actions",
+                value="operator_actions",
+                active=set(categories) == set(_OPERATOR_ACTION_CATEGORIES),
+                href=_events_query_path(
+                    request=request,
+                    route_name="events",
+                    categories=_OPERATOR_ACTION_CATEGORIES,
+                    severities=severities,
+                ),
+            ),
         ),
         "severity_filter_chips": tuple(
             _filter_chip(

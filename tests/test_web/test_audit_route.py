@@ -61,7 +61,7 @@ def test_audit_route_redirects_to_operator_action_events_filter() -> None:
     )
 
 
-def test_audit_route_marks_audit_nav_link_active() -> None:
+def test_audit_route_marks_events_nav_link_active() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         response = client.get("/audit", follow_redirects=True)
@@ -70,9 +70,10 @@ def test_audit_route_marks_audit_nav_link_active() -> None:
     parser.feed(response.text)
 
     assert response.status_code == 200
-    assert parser.links["Audit"]["href"] == "/audit"
-    assert "site-nav-v2__link--active" in parser.links["Audit"]["class"]
-    assert parser.links["Audit"]["aria-current"] == "page"
+    assert "Audit" not in parser.links
+    assert parser.links["Events"]["href"] == "/events"
+    assert "site-nav-v2__link--active" in parser.links["Events"]["class"]
+    assert parser.links["Events"]["aria-current"] == "page"
 
 
 def test_events_operator_action_filter_shows_audit_rows_only() -> None:

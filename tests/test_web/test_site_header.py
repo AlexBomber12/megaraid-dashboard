@@ -39,7 +39,9 @@ def test_overview_renders_new_header_with_all_nav_links() -> None:
 
     assert response.status_code == 200
     assert '<header class="site-header-v2">' in response.text
-    for label in ("Overview", "Controller", "Drives", "Events", "Audit"):
+    assert ">Audit</a>" not in response.text
+    assert response.text.count(">Events</a>") == 1
+    for label in ("Overview", "Controller", "Drives", "Events"):
         assert f">{label}</a>" in response.text
 
 
@@ -64,18 +66,15 @@ def test_controller_nav_link_points_to_controller_detail() -> None:
     assert controller_link["href"] == "/controller"
 
 
-def test_audit_nav_link_is_marked_active_after_redirect() -> None:
+def test_events_nav_link_is_marked_active_after_legacy_redirect() -> None:
     response = _get_path("/audit")
     parser = _LinkParser()
     parser.feed(response.text)
 
-    audit_link = parser.links["Audit"]
+    assert "Audit" not in parser.links
     events_link = parser.links["Events"]
-
-    assert "site-nav-v2__link--active" in audit_link["class"]
-    assert audit_link["aria-current"] == "page"
-    assert "site-nav-v2__link--active" not in events_link["class"]
-    assert "aria-current" not in events_link
+    assert "site-nav-v2__link--active" in events_link["class"]
+    assert events_link["aria-current"] == "page"
 
 
 def test_nav_active_marker_text_does_not_render_before_header() -> None:
