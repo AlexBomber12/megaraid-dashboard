@@ -202,7 +202,7 @@ async def require_controller_capability(request: Request) -> None:
                 "message": "Controller actions are disabled for this read-only rollout. "
                 "An operator must review write permissions and explicitly set "
                 "CONTROLLER_READ_ONLY=false and CONTROLLER_ACTION_CAPABILITY=locate. "
-                "Locate also requires an active maintenance window.",
+                "Locate Start also requires an active maintenance window.",
             },
         )
 
@@ -540,7 +540,7 @@ async def _run_locate(
         return JSONResponse({"error": str(exc)}, status_code=400)
 
     settings = _write_settings(request)
-    if not settings.maintenance_mode:
+    if action == "start" and not settings.maintenance_mode:
         try:
             await run_in_threadpool(
                 _record_locate_operator_action_sync,
@@ -555,7 +555,10 @@ async def _run_locate(
         return JSONResponse(
             {
                 "error": "locate requires maintenance_mode",
-                "message": "Locate requires an active maintenance window.",
+                "message": (
+                    "Locate Start requires an active maintenance window. "
+                    "Stop Locate remains available."
+                ),
             },
             status_code=403,
         )
@@ -563,6 +566,10 @@ async def _run_locate(
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     message = ""
+    recovery_guidance = (
+        "LED state is unverified. Inspect the physical LED and audit log before another Start. "
+        "Do not repeat Start blindly. Stop Locate can request LED shutdown without maintenance."
+    )
     try:
         result = await run_storcli(
             argv,
@@ -574,13 +581,15 @@ async def _run_locate(
     except StorcliError as exc:
         storcli_error = exc
         outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
-        message = "StorCLI could not confirm the command. Check controller access and retry."
+        message = "StorCLI could not confirm the command. Check controller access."
         if result is not None:
-            message = f"Locate {action} was not confirmed: {exc}. Check the drive and retry."
+            message = f"Locate {action} was not confirmed: {exc}."
         elif isinstance(exc, StorcliNotAvailable):
-            message = "StorCLI is unavailable. Check its installation and sudo access, then retry."
+            message = "StorCLI is unavailable. Check its installation and sudo access."
         elif "timed out" in str(exc):
-            message = "StorCLI timed out. LED state is unverified; check it or try Stop Locate."
+            message = "StorCLI timed out."
+
+        message = f"{message} {recovery_guidance}"
 
     try:
         await run_in_threadpool(
@@ -597,10 +606,7 @@ async def _run_locate(
             enclosure=enclosure_id,
             slot=slot_id,
             result=result,
-            message=(
-                "Audit could not be saved. "
-                + (message or "LED state is unverified; check it or try Stop Locate.")
-            ),
+            message=("Audit could not be saved. " + (message or recovery_guidance)),
         )
     if storcli_error is not None:
         return JSONResponse(

@@ -21,7 +21,8 @@ input/identity refusals return before the existing audit path.
 
 | POST route(s) | Existing handler gates | Locate-only availability |
 | --- | --- | --- |
-| `/drives/{drive}/locate/start`, `/locate/stop` | Valid enclosure/slot, effective maintenance; explicit Success, audit | Allowed during maintenance |
+| `/drives/{drive}/locate/start` | Valid enclosure/slot, effective maintenance; explicit Success, audit | Allowed during maintenance |
+| `/drives/{drive}/locate/stop` | Valid enclosure/slot; explicit Success, audit | Recovery allowed with inactive or expired maintenance |
 | `/drives/{drive}/replace/offline`, `/replace/missing` | Snapshot and typed serial; maintenance + destructive modes for execution; live serial and legal state transition; dry-run validation | Unavailable |
 | `/drives/{drive}/replace/insert` | Prior missing-step audit; new typed serial, topology and state; maintenance + destructive modes; live identity; dry-run validation | Unavailable |
 | `/drives/{drive}/actions/mark-ubad` | Snapshot/live serial, valid state, maintenance + destructive modes; unsupported set-bad command deliberately fails closed | Unavailable |
@@ -48,8 +49,12 @@ With `CONTROLLER_READ_ONLY=false` and `CONTROLLER_ACTION_CAPABILITY=locate`, onl
 the two locate routes and database maintenance controls pass the outer gate.
 Every other action receives 403 `controller_action_unavailable` before handler
 execution, with an operator-facing reason. Future unnamed POST actions also deny
-by default. The same policy disables the UI, and locate additionally displays an
-active-maintenance requirement. Existing inner checks remain in place.
+by default. Locate Start additionally requires effective active maintenance.
+Locate Stop remains available with inactive or expired maintenance as a recovery
+action. The UI disables Start with a clear reason outside maintenance and keeps
+Stop usable; read-only mode or capability=none disables both. Authentication,
+CSRF, exact sudo authorization, controller-result and audit checks still apply
+to Stop. No other action gains an exception.
 
 This is a UI/API gate, **not a substitute for sudoers**. It does not establish
 binary identity or restrict the wrapper's independent command inventory. The
@@ -156,21 +161,22 @@ access, systemd compatibility, controller acceptance or physical LED behavior.
    `DESTRUCTIVE_MODE=false`. Record the prior values and exact additive files.
    Use the inspected release/systemd activation procedure; verify precedence,
    restart only at the approved activation, then recheck process env/revision,
-   fresh polls and GET-only disabled controls. No maintenance window yet.
+   fresh polls and GET-only controls: Start disabled with its maintenance reason,
+   Stop available for recovery, all other controller writes disabled. No
+   maintenance window yet.
 4. **An active maintenance window suppresses alerts. Do not start a test window
    merely to prove a button.** Use local fake acceptance tests for that evidence.
    A physical test is a separate operator decision during a real approved window,
    with alert suppression understood, an observer at the chassis and independently
-   confirmed slot/serial. UI Start/Stop then requires that active window. Success
+   confirmed slot/serial. UI Start requires that active window; Stop does not. Success
    means command acceptance plus persisted audit; LED state stays unverified until
    physically observed. Never retry blindly after timeout or audit failure; the
    command may have run. Inspect audit/controller access and physical state first.
 5. End the actual window promptly and verify alerting resumes. Record physical
    observations privately; this PR supplies no physical verification.
 
-Rollback: if Locate Start may have run, have the operator resolve the LED state
-(and Stop during the still-authorized real window if appropriate) before removing
-permissions. Ending maintenance or reverting config does not stop a physical LED.
+Rollback: if Locate Start may have run, have the operator inspect the LED and
+use the Stop recovery procedure below before removing permissions. Ending maintenance or reverting config does not stop a physical LED.
 Restore `CONTROLLER_READ_ONLY=true`, `CONTROLLER_ACTION_CAPABILITY=none`, and
 `MAINTENANCE_MODE=false` in the effective protected configuration; explicitly end
 any persisted window through the authorized UI before locking POSTs, or wait for
@@ -183,3 +189,30 @@ Remove only `/etc/sudoers.d/megaraid-dashboard-locate`; run `visudo -c`, inspect
 refuse. Preserve the pinned read binary, read policy, audit history and database;
 there is no migration or RAID-state rollback in this PR. Do not restore the database
 and discard later audit events. Keep private evidence and recovery media.
+
+
+## Stop recovery after an inactive or expired window
+
+A Start timeout, unknown/missing result, transport failure or audit persistence
+failure can leave a possibly blinking LED. Do not repeat Start blindly: inspect
+the physical LED, available audit records and controller access first. A 500 audit
+failure can follow controller acceptance; it does not prove the LED stayed off.
+Neither ending maintenance nor a restart stops a physical LED.
+
+With the existing approved locate-only selection still active
+(`CONTROLLER_READ_ONLY=false`, `CONTROLLER_ACTION_CAPABILITY=locate`, and the
+same exact sudoers policy), authenticate to the HTTPS dashboard, refresh the
+correct drive page and use **Stop Locate**. Its CSRF-protected POST is permitted
+even after a persisted window expires and even if the prior Start has no saved
+audit record. Start stays disabled with an active-maintenance reason. **Do not
+open another window merely to recover Stop:** doing so would suppress alerts.
+Stop does not start, extend or otherwise change maintenance or alert suppression.
+
+A 200 Stop response requires explicit controller Success and a persisted audit
+result. Physical LED state is still unverified until observed. If Stop fails or
+its audit cannot be saved, inspect the physical LED, audit/database health and
+controller access before deciding the next action; do not loop on either button.
+When read-only is true or capability is none, both actions remain denied. Do not
+bypass those gates or broaden sudoers; escalate to the operator responsible for
+the separately approved rollout/recovery procedure. Physical LED behavior remains
+unverified by this PR.

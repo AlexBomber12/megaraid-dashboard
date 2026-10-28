@@ -177,7 +177,7 @@ def _set_drive_state(database_url: str, *, slot_id: int, state: str) -> None:
 @pytest.mark.parametrize(
     ("status", "body"),
     [
-        (502, '{"message":"Controller busy. Check the drive and retry."}'),
+        (502, '{"message":"Controller busy. Inspect the LED and audit log before another Start."}'),
         (500, '{"message":"Audit could not be saved. Try Stop Locate."}'),
         (403, "CSRF token missing"),
         (200, "{}"),
@@ -238,7 +238,7 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     elif '"message"' in body and isinstance(json.loads(body)["message"], str):
         expect(feedback).to_have_text(json.loads(body)["message"])
     else:
-        expect(feedback).to_contain_text("Check controller access")
+        expect(feedback).to_contain_text("Do not repeat Start blindly")
     expect(feedback.locator("img")).to_have_count(0)
 
     page.unroute("**/locate/stop")

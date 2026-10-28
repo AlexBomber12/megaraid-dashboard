@@ -61,12 +61,15 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
             "maintenance_state": get_maintenance_state(session, now=datetime.now(UTC)),
             "controller_read_only": request.app.state.settings.controller_read_only,
         }
-        if context["locate_disabled_reason"] is None and not maintenance_writes_enabled(
+        context["locate_start_disabled_reason"] = context["locate_disabled_reason"]
+        if context["locate_start_disabled_reason"] is None and not maintenance_writes_enabled(
             session,
             configured=request.app.state.settings.maintenance_mode,
             now=datetime.now(UTC),
         ):
-            context["locate_disabled_reason"] = "Locate requires an active maintenance window."
+            context["locate_start_disabled_reason"] = (
+                "Locate Start requires an active maintenance window."
+            )
         return context
 
 

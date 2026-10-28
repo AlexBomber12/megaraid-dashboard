@@ -102,9 +102,10 @@ def test_locate_result_and_window_matrix(
     finally:
         if fault == "audit":
             event.remove(app.state.engine, "after_cursor_execute", fail_audit)
-    assert fake_storcli.calls == ([["/c0/e252/s7", action, "locate", "J"]] if active else [])
+    permitted = active or action == "stop"
+    assert fake_storcli.calls == ([["/c0/e252/s7", action, "locate", "J"]] if permitted else [])
     assert response.status_code == (
-        500 if fault == "audit" else 403 if not active else 200 if fault == "success" else 502
+        500 if fault == "audit" else 403 if not permitted else 200 if fault == "success" else 502
     )
     with app.state.session_factory() as session:
         audit = session.scalars(select(Event).where(Event.category == "operator_action")).all()
@@ -112,10 +113,10 @@ def test_locate_result_and_window_matrix(
         if audit:
             assert audit[0].operator_username == E2E_ADMIN_USERNAME
             assert f"locate {action} drive 252:7" in audit[0].summary
-    if active and fault == "success":
+    if permitted and fault == "success":
         assert response.json()["command_accepted"] is True
         assert response.json()["led_state"] == "unverified"
-    if active and fault == "timeout":
+    if permitted and fault == "timeout":
         assert "LED state is unverified" in response.json()["message"]
 
 
@@ -135,3 +136,110 @@ def test_maintenance_controls_require_capability(client, _live_server_handle, fa
     )
     assert client.post("/maintenance/stop").status_code == 200
     assert fake_storcli.calls == []
+
+
+@pytest.mark.parametrize(
+    "fault", ["success", "failure", "missing", "unknown", "nonzero", "timeout", "audit"]
+)
+def test_stop_recovers_after_start_and_persisted_window_expiry(
+    fault,
+    client,
+    _live_server_handle,
+    fake_storcli,
+):
+    app = _live_server_handle.app
+    app.state.settings = app.state.settings.model_copy(
+        update={
+            "controller_read_only": False,
+            "controller_action_capability": "locate",
+            "maintenance_mode": True,
+        }
+    )
+    with app.state.session_factory() as session, session.begin():
+        set_maintenance_state(
+            session,
+            active=True,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            started_by=E2E_ADMIN_USERNAME,
+        )
+    fake_storcli.configure(fault="success" if fault == "audit" else fault)
+
+    def fail_audit(*args):
+        if args[2].lstrip().lower().startswith("insert into events "):
+            raise SQLAlchemyError("injected Start audit failure")
+
+    if fault == "audit":
+        event.listen(app.state.engine, "after_cursor_execute", fail_audit)
+    try:
+        start = client.post("/drives/252:0/locate/start")
+    finally:
+        if fault == "audit":
+            event.remove(app.state.engine, "after_cursor_execute", fail_audit)
+    assert start.status_code == (500 if fault == "audit" else 200 if fault == "success" else 502)
+    if fault != "success":
+        assert "Do not repeat Start blindly" in start.json()["message"]
+        assert "without maintenance" in start.json()["message"]
+        assert "retry" not in start.json()["message"].lower()
+    with app.state.session_factory() as session, session.begin():
+        set_maintenance_state(
+            session,
+            active=True,
+            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            started_by=E2E_ADMIN_USERNAME,
+        )
+    assert client.get("/maintenance").json()["active"] is False
+    denied = client.post("/drives/252:0/locate/start")
+    assert denied.status_code == 403
+    assert fake_storcli.calls == [["/c0/e252/s0", "start", "locate", "J"]]
+    fake_storcli.configure(fault="success")
+    stop = client.post("/drives/252:0/locate/stop")
+    assert stop.status_code == 200, stop.text
+    assert stop.json()["command_accepted"] is True
+    assert stop.json()["led_state"] == "unverified"
+    assert fake_storcli.calls == [
+        ["/c0/e252/s0", "start", "locate", "J"],
+        ["/c0/e252/s0", "stop", "locate", "J"],
+    ]
+    assert client.get("/maintenance").json()["active"] is False
+    with app.state.session_factory() as session:
+        audits = session.scalars(
+            select(Event).where(Event.category == "operator_action").order_by(Event.id)
+        ).all()
+        assert len(audits) == (2 if fault == "audit" else 3)
+        assert audits[-1].summary == "locate stop drive 252:0 succeeded"
+        assert audits[-1].operator_username == E2E_ADMIN_USERNAME
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize("gate", ["read-only", "capability", "authentication", "csrf"])
+def test_expired_window_preserves_outer_locate_gates(
+    action,
+    gate,
+    client,
+    _live_server_handle,
+    fake_storcli,
+):
+    app = _live_server_handle.app
+    app.state.settings = app.state.settings.model_copy(
+        update={
+            "controller_read_only": gate == "read-only",
+            "controller_action_capability": "none" if gate == "capability" else "locate",
+            "maintenance_mode": True,
+        }
+    )
+    with app.state.session_factory() as session, session.begin():
+        set_maintenance_state(
+            session,
+            active=True,
+            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            started_by=E2E_ADMIN_USERNAME,
+        )
+    if gate == "authentication":
+        client.auth = None
+    elif gate == "csrf":
+        del client.headers["X-CSRF-Token"]
+    response = client.post(f"/drives/252:0/locate/{action}")
+    assert response.status_code == (401 if gate == "authentication" else 403)
+    assert fake_storcli.calls == []
+    with app.state.session_factory() as session:
+        assert session.scalars(select(Event).where(Event.category == "operator_action")).all() == []
