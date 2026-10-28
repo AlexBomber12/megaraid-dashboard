@@ -177,3 +177,6 @@ def test_wizard_cancel_keeps_controller_and_database_unchanged(
     expect(page.locator("[data-replace-stepper]")).to_be_hidden()
     assert fake_storcli.calls == []
     assert database_observation(snapshot_with_drives) == before
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

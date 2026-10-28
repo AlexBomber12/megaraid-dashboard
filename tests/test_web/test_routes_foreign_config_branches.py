@@ -697,3 +697,6 @@ def _load_fixture(name: str) -> dict[str, Any]:
     payload = json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

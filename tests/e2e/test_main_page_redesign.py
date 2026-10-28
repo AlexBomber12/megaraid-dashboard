@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import login_and_navigate, wait_for_live_update
@@ -60,3 +61,6 @@ def test_main_page_redesign_navigation_and_live_refresh(
     ):
         authenticated_page.get_by_role("button", name="Refresh now").click()
     expect(live_status).to_contain_text("Live · ")
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

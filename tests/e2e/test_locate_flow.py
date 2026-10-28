@@ -55,3 +55,6 @@ def test_locate_browser_result(
     if fault == "success" and action == "start":
         expect(page.locator('[data-locate-action="start"]')).to_be_disabled()
         expect(page.locator('[data-locate-action="stop"]')).to_be_enabled()
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

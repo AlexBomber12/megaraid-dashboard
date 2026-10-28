@@ -733,3 +733,6 @@ def _read_single_event(test_app: Any) -> Event:
     with session_factory() as session:
         assert isinstance(session, Session)
         return session.scalars(select(Event)).one()
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

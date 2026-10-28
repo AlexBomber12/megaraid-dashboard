@@ -137,6 +137,18 @@ def policy(binary: Path) -> str:
     )
 
 
+def locate_policy() -> str:
+    """Render an additive policy for exactly eight slots on the pinned selection."""
+    commands = ", \\\n  ".join(
+        f"{STAGED} /c0/e252/s{slot} {action} locate J"
+        for slot in range(8)
+        for action in ("start", "stop")
+    )
+    return (
+        f"Cmnd_Alias MEGARAID_LOCATE = {commands}\nmegaraid ALL=(root) NOPASSWD: MEGARAID_LOCATE\n"
+    )
+
+
 async def probe(binary: Path, inventory_path: Path) -> dict[str, Any]:
     """Execute only wrapper-allowlisted reads as the service account, checking every JSON status."""
     if pwd.getpwuid(os.geteuid()).pw_name != "megaraid":
@@ -260,7 +272,7 @@ async def probe(binary: Path, inventory_path: Path) -> dict[str, Any]:
 def main() -> None:
     structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["stage", "policy", "probe"])
+    parser.add_argument("action", choices=["stage", "policy", "locate-policy", "probe"])
     parser.add_argument("--binary", type=Path, choices=[STAGED, ORIGINAL], default=STAGED)
     parser.add_argument("--inventory", type=Path, help="Approved private baseline JSON")
     args = parser.parse_args()
@@ -268,6 +280,10 @@ def main() -> None:
         stage()
     elif args.action == "policy":
         print(policy(args.binary), end="")
+    elif args.action == "locate-policy":
+        if args.binary != STAGED or args.inventory is not None:
+            parser.error("locate-policy accepts only the pinned binary and no inventory")
+        print(locate_policy(), end="")
     else:
         if args.inventory is None:
             parser.error("probe requires --inventory")

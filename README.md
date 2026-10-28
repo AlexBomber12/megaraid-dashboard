@@ -261,8 +261,14 @@ Routes:
 - `/health` returns the health JSON used by smoke checks.
 - `/healthz` returns JSON liveness; 200 ok / 503 degraded; whitelisted from auth.
 
-All controller writes, including Locate and buzzer changes, require maintenance mode.
-The UI window authorizes writes; Stop and expiration revoke access across restarts.
+Controller writes, including Locate Start and buzzer changes, require maintenance mode.
+Locate Stop is the sole recovery exception: with `CONTROLLER_READ_ONLY=false` and
+`CONTROLLER_ACTION_CAPABILITY=locate`, it remains available after maintenance ends or
+expires. Authentication, CSRF, exact sudoers authorization, controller Success and audit
+persistence still apply. Read-only mode or capability `none` denies both Locate actions;
+all other controller writes remain unavailable in the locate-only rollout.
+The UI window authorizes maintenance-gated writes; ending it or expiry revokes that
+maintenance authorization across restarts.
 Before the first UI window, an explicit configured maintenance flag remains supported.
 Replacement and Mark as UBad also require destructive mode. Drive changes recheck the
 serial displayed to the operator against the snapshot and the live device. Controller
@@ -709,7 +715,8 @@ Successful manual delivery does not verify or enable automatic monitoring or del
 5. [x] Read-only web dashboard.
 6. Email alerts via SMTP.
 7. Basic auth.
-8. Maintenance mode for locate LED, alarm, patrol read, and consistency check.
+8. Maintenance mode for Locate Start, alarm, patrol read, and consistency check;
+   Locate Stop remains a gated recovery action outside maintenance.
 9. Destructive mode for drive replace workflow.
 10. Production deployment with systemd and nginx.
 

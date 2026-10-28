@@ -303,3 +303,6 @@ def test_refresh_keeps_keyboard_focus_and_control_state(
     page.evaluate("window.liveRefresh.refresh()")
     expect(page.locator("#drive-live-details")).not_to_have_attribute("data-original", "yes")
     expect(page.locator("[data-live-status]")).to_have_attribute("data-state", "live")
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

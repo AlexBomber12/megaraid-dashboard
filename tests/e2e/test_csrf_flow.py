@@ -54,3 +54,6 @@ def test_csrf_refusal_from_browser_click(
     assert database_observation(fresh_db) == before
     # Product requirement: refusals must be visible, including HTMX 403 responses.
     expect(page.get_by_role("alert")).to_contain_text("csrf")
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

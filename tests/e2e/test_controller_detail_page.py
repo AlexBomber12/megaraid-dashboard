@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import assert_chart_height_within, login_and_navigate
@@ -48,3 +49,6 @@ def test_controller_detail_sections_and_roc_chart(
         "true",
     )
     assert_chart_height_within(authenticated_page, "#roc-history-chart", 280)
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

@@ -78,10 +78,11 @@ state, and runs as the `raid-monitor` service user.
    Expected output: enclosure, slot, serial number, state, and recent errors are visible.
 2. Confirm the physical slot against the chassis labeling before touching hardware.
    Expected output: the dashboard slot matches the drive to replace.
-3. Start locate LED for the affected slot if needed.
-   Expected output: the expected bay LED turns on and the audit log records the action.
-4. Start maintenance mode before write actions.
-   Expected output: notifier sends no new emails while maintenance is active.
+3. Start an approved maintenance window before Locate Start or other maintenance-gated writes.
+   Expected output: alerts are suppressed only for the intentional, bounded maintenance work.
+4. Start locate LED for the affected slot if needed and permitted by the selected capability.
+   Expected output: explicit controller acceptance and a saved audit record; physically verify
+   the LED because command acceptance does not prove LED behavior.
 5. Use the drive replacement UI for the offline and missing steps.
    Expected output: each step requires the affected drive serial number and records an audit entry.
 6. Replace the physical disk only after the UI confirms the controller accepted the missing step.
@@ -90,6 +91,14 @@ state, and runs as the `raid-monitor` service user.
    Expected output: rebuild percentage advances or completes.
 8. Stop maintenance mode after rebuild is complete and the virtual drive is optimal.
    Expected output: dashboard returns to normal and new alerts are no longer suppressed.
+
+Locate Stop is the sole maintenance exception. With read-only disabled and locate
+capability selected, use the authenticated, CSRF-protected Stop action after an inactive
+or expired window without reopening maintenance. Exact sudoers, explicit controller
+Success and audit persistence still apply; read-only or capability `none` denies both
+Locate actions. Follow [Stop recovery](STORCLI_LOCATE_ONLY_ROLLOUT.md#stop-recovery-after-an-inactive-or-expired-window)
+for an uncertain Start; never open a window merely to recover Stop or repeat Start blindly.
+The locate-only rollout does not enable the replacement steps in this general incident workflow.
 
 ### Drive temperature warning or critical; what now?
 
@@ -387,3 +396,7 @@ monitoring uncertainty as healthy hardware.
 For the installed StorCLI 1.23.02 read-only selection and reversible operator
 procedure, follow [the rollout runbook](STORCLI_READ_ONLY_ROLLOUT.md). Production runs as `megaraid`; installer
 `raid-monitor` defaults must not replace its service configuration.
+
+A separate [locate-only rollout](STORCLI_LOCATE_ONLY_ROLLOUT.md) inventories action
+POSTs and documents the additive 16-command policy, capability gates, activation
+and rollback. Preparation does not authorize a production window or verify LEDs.

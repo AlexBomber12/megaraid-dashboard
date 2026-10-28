@@ -457,3 +457,6 @@ class _FormParser(HTMLParser):
             is_operation_mode_form=self.current_is_operation_mode_form,
         )
         self.current_action = None
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

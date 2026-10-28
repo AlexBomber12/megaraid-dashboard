@@ -1417,3 +1417,6 @@ def test_insert_retry_preserves_only_proven_read_only_precheck_failures(
             assert retry.status_code == 409
             assert "complete replace step missing" in retry.json()["error"]
             assert calls == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

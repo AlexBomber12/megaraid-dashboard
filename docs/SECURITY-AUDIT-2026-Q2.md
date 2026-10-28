@@ -184,6 +184,13 @@ Locate LED operations are not destructive and do not require maintenance mode. T
 audited, but audit persistence failure is logged without failing the locate operation. This
 is acceptable for low-risk LED state but should stay limited to non-destructive commands.
 
+**Superseded finding:** the paragraph above records behavior at this audit's date, not
+current authorization policy. The current [security model](../AGENTS.md#security-model)
+requires maintenance for Locate Start and permits only Locate Stop as a recovery exception
+with read-only disabled and locate capability selected. Both require authentication,
+CSRF, exact sudoers authorization, explicit controller Success and audit persistence;
+audit failure now returns an error. Read-only or capability `none` denies both actions.
+
 ## Configuration Audit
 
 ### Environment File

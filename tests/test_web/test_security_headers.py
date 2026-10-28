@@ -126,3 +126,6 @@ def test_unhandled_exception_response_includes_security_headers() -> None:
 
     assert response.status_code == 500
     _assert_security_headers(response.headers)
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

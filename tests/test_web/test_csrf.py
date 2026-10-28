@@ -150,3 +150,6 @@ async def _ok_app(scope: Scope, receive: Receive, send: Send) -> None:
         }
     )
     await send({"type": "http.response.body", "body": b"ok"})
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

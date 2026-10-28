@@ -44,7 +44,15 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
 - `sudo` is allowed only through a narrow sudoers entry that whitelists exact `storcli` commands.
 - The web layer is protected by HTTP basic auth via nginx in front of FastAPI.
 - The app starts in read-only mode by default.
-- Write operations require an explicit `maintenance_mode` flag toggled in the UI.
+- Write operations require an explicit `maintenance_mode` flag toggled in the UI, except
+  for the narrowly authorized Locate Stop recovery action below.
+- Locate Start requires active maintenance. Locate Stop may run with inactive or expired
+  maintenance only when `CONTROLLER_READ_ONLY=false` and
+  `CONTROLLER_ACTION_CAPABILITY=locate`. This exception lets an operator stop a possibly
+  blinking LED after an uncertain Start without opening another alert-suppressing window.
+  Both Locate actions still require authentication, CSRF protection, exact sudoers command
+  authorization, explicit controller Success, and persisted audit results. Read-only mode
+  or capability `none` denies both. No other controller write receives this exception.
 - Destructive operations such as set offline, set missing, and force rebuild require an additional `destructive_mode` flag plus typed confirmation of the affected drive serial number.
 - Every write and destructive operation is recorded in an audit table with timestamp, actor, command, and result.
 

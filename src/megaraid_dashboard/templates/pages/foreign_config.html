@@ -83,7 +83,7 @@
 
       <div class="section">
         <div class="section-title"><h2>Actions</h2></div>
-        {% if controller_read_only %}<p class="muted">Controller actions disabled: read-only rollout.</p>{% endif %}
+        {% if other_writes_disabled_reason %}<p class="muted">{{ other_writes_disabled_reason }}</p>{% endif %}
 
         <details class="disclosure disclosure--warning" id="foreign-import">
           <summary>Import Foreign Configuration — High Risk</summary>
@@ -92,7 +92,7 @@
               Importing adopts the foreign configuration onto this controller. This is irreversible.
               Type the digest shown above exactly to confirm.
             </p>
-            {% if controller_read_only %}<fieldset disabled class="read-only-controls">{% endif %}
+            {% if other_writes_disabled_reason %}<fieldset disabled class="read-only-controls">{% endif %}
             <form
               class="form-grid foreign-config__form"
               data-foreign-config-form="import"
@@ -113,7 +113,7 @@
               </label>
               <button type="submit" class="button button--warning">Import Foreign Configuration</button>
             </form>
-            {% if controller_read_only %}</fieldset>{% endif %}
+            {% if other_writes_disabled_reason %}</fieldset>{% endif %}
             <pre id="foreign-config-import-result" class="foreign-config__result" aria-live="polite"></pre>
           </div>
         </details>
@@ -125,7 +125,7 @@
               Clearing tells the controller to forget the foreign metadata. This is the most destructive
               operation in the application: the metadata may be the only path back to the data on those drives.
             </p>
-            {% if controller_read_only %}<fieldset disabled class="read-only-controls">{% endif %}
+            {% if other_writes_disabled_reason %}<fieldset disabled class="read-only-controls">{% endif %}
             <form
               class="form-grid foreign-config__form"
               data-foreign-config-form="clear"
@@ -146,7 +146,7 @@
               </label>
               <button type="submit" class="button button--danger">Clear Foreign Configuration</button>
             </form>
-            {% if controller_read_only %}</fieldset>{% endif %}
+            {% if other_writes_disabled_reason %}</fieldset>{% endif %}
             <pre id="foreign-config-clear-result" class="foreign-config__result" aria-live="polite"></pre>
           </div>
         </details>

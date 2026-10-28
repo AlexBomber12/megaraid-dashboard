@@ -1,6 +1,6 @@
-{% if controller_read_only %}
-<p class="muted">Controller actions disabled: read-only rollout.</p>
-<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% if locate_disabled_reason %}
+<p class="muted">{{ locate_disabled_reason }}</p>
+<fieldset disabled class="read-only-controls" title="{{ locate_disabled_reason }}">
 {% endif %}
 {% set icons = request.url_for('static', path='icons.svg').path %}
 {% set enc = view_model.position.enclosure %}
@@ -8,7 +8,7 @@
 <section class="section" data-drive-detail-section="health-snapshot" aria-labelledby="drive-health-heading">
   <div class="section-title">
     <h2 id="drive-health-heading">Health Snapshot</h2>
-    <div class="drive-actions" data-locate-state="{{ view_model.health.locate_last_action or 'unknown' }}">
+    <div class="drive-actions" data-locate-state="{{ view_model.health.locate_last_action or 'unknown' }}" data-locate-start-disabled="{{ 'true' if locate_start_disabled_reason else 'false' }}">
       <div class="drive-actions__controls">
         <button
           type="button"
@@ -19,7 +19,8 @@
           hx-on::before-request="window.driveActions.begin(this)"
           hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
           data-locate-action="start"
-          {% if not view_model.health.can_locate_start %}disabled{% endif %}
+          {% if locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %}
+          {% if locate_start_disabled_reason %}title="{{ locate_start_disabled_reason }}"{% endif %}
         >
           <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
           <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
@@ -40,6 +41,7 @@
           <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
           Stop Locate
         </button>
+        {% if locate_start_disabled_reason and not locate_disabled_reason %}<p class="muted" data-locate-start-reason>{{ locate_start_disabled_reason }} Stop Locate remains available for recovery.</p>{% endif %}
         <span data-locate-status>LED state unverified.{% if view_model.health.locate_last_action %} Last accepted command: {{ view_model.health.locate_last_action }}.{% endif %}</span>
         <span class="drive-actions__feedback" data-action-feedback aria-live="polite"></span>
       </div>
@@ -81,4 +83,4 @@
   </div>
 </section>
 
-{% if controller_read_only %}</fieldset>{% endif %}
+{% if locate_disabled_reason %}</fieldset>{% endif %}

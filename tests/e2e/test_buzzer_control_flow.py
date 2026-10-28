@@ -53,3 +53,6 @@ def test_buzzer_control_flow(
     assert {"success": "succeeded", "failure": "failed", "maintenance": "rejected"}[
         outcome
     ] in after[0][-1][1]
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

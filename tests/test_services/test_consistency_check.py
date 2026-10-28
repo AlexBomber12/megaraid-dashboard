@@ -435,3 +435,6 @@ def _read_events(test_app: Any) -> list[Event]:
     with session_factory() as session:
         assert isinstance(session, Session)
         return list(session.scalars(select(Event).order_by(Event.id.asc())))
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

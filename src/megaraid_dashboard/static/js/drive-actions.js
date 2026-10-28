@@ -40,7 +40,7 @@
     const action = el.getAttribute("data-locate-action");
     const started = accepted && action === "start";
     section.setAttribute("data-locate-state", accepted ? action : "unknown");
-    start.disabled = started;
+    start.disabled = started || section.getAttribute("data-locate-start-disabled") === "true";
     // An accepted command does not verify the physical LED, including after stop.
     stop.disabled = false;
     label.textContent = started ? "Blink command accepted" : "Blink Locate LED";
@@ -57,7 +57,10 @@
         fb.textContent = "CSRF token missing or mismatched. Reload the HTTPS page and retry.";
       } else {
         fb.textContent = typeof response.message === "string" ? response.message :
-          "Command not confirmed. Check controller access, then retry or try Stop Locate.";
+          "Command not confirmed. LED state is unverified. " +
+          "Inspect the physical LED and audit log before another Start. " +
+          "Do not repeat Start blindly. " +
+          "Stop Locate can request LED shutdown without maintenance.";
       }
       fb.className = "drive-actions__feedback drive-actions__feedback--error";
     }

@@ -21,7 +21,7 @@ from tests.e2e.conftest import E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME, _LiveServ
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("legacy_controller_handlers")]
 
 
 @pytest.fixture
@@ -132,6 +132,14 @@ def test_rejected_request_cannot_mutate(
         del client.headers["X-CSRF-Token"]
     before = database_observation(snapshot_with_drives)
     response = client.post(action.path, json=body)
+    if gate == "maintenance" and action.name == "locate-stop":
+        assert response.status_code == 200, response.text
+        assert fake_storcli.calls == [list(action.command)]
+        after = database_observation(snapshot_with_drives)
+        assert after[1] == before[1]
+        assert len(after[0]) == len(before[0]) + 1
+        assert "locate stop drive 252:0 succeeded" in after[0][-1][1]
+        return
     assert fake_storcli.mutations == []
     assert database_observation(snapshot_with_drives)[1] == before[1]
     if gate != "maintenance":

@@ -234,3 +234,6 @@ def test_read_only_capability_refuses_before_any_probe(
         assert "CONTROLLER_READ_ONLY=false" in response.text
         assert client.get("/maintenance").json()["active"] is True
     fake.assert_not_called()
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

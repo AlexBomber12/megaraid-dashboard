@@ -60,3 +60,6 @@ def test_controller_operation_browser_matrix(
     assert after[1] == before[1]
     assert len(after[0]) == len(before[0]) + 1
     assert ("succeeded" if fault == "success" else "failed") in after[0][-1][1]
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

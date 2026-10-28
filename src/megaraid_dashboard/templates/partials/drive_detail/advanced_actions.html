@@ -1,6 +1,6 @@
-{% if controller_read_only %}
-<p class="muted">Controller actions disabled: read-only rollout.</p>
-<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% if other_writes_disabled_reason %}
+<p class="muted">{{ other_writes_disabled_reason }}</p>
+<fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
 {% endif %}
 {% set drive_dg_id = view_model.position.dg_span_row_text.split(" : ")[0] %}
 {% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
@@ -138,4 +138,4 @@
   </script>
 </section>
 
-{% if controller_read_only %}</fieldset>{% endif %}
+{% if other_writes_disabled_reason %}</fieldset>{% endif %}

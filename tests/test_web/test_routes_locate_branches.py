@@ -154,3 +154,6 @@ def test_drive_locate_stop_returns_500_when_audit_fails(
         with session_factory() as session:
             assert isinstance(session, Session)
             assert session.scalars(select(Event)).all() == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

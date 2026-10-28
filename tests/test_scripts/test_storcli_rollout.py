@@ -553,3 +553,55 @@ async def test_executable_full_probe_bbu_redirect(
         assert rollout.parse_foreign_config(result["/c0/fall show all J"]).present is False
         assert runner.await_count == 25
         assert set(result) == {*rollout.READS, "_binary_identity"}
+
+
+def test_additive_locate_policy_inventory() -> None:
+    rendered = rollout.locate_policy()
+    commands = rendered.split(" = ", 1)[1].split("\nmegaraid ", 1)[0]
+    actual = commands.replace("\\\n  ", "").split(", ")
+    expected = {
+        f"{rollout.STAGED} /c0/e252/s{slot} {action} locate J"
+        for slot in range(8)
+        for action in ("start", "stop")
+    }
+    assert len(actual) == 16
+    assert set(actual) == expected
+    assert "megaraid ALL=(root) NOPASSWD: MEGARAID_LOCATE\n" in rendered
+    assert "*" not in rendered
+    assert len(rollout.READS) == 25
+    assert rollout.policy(rollout.STAGED).count(f"{rollout.STAGED} ") == 25
+    assert "locate" not in rollout.policy(rollout.STAGED)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--slots", "0-9"],
+        ["--binary", str(rollout.ORIGINAL)],
+        ["--inventory", "/tmp/unused.json"],
+        ["/c0", "set", "offline"],
+    ],
+)
+def test_locate_policy_rejects_extra_arguments(extra) -> None:
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/storcli_rollout.py"), "locate-policy", *extra],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+
+
+def test_locate_policy_cli() -> None:
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/storcli_rollout.py"), "locate-policy"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == rollout.locate_policy()

@@ -37,6 +37,7 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
 )
 from megaraid_dashboard.services import scheduler as scheduler_state
+from megaraid_dashboard.services.action_capabilities import action_disabled_reason
 from megaraid_dashboard.services.audit import (
     AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     AUDIT_CATEGORY_DRIVE_MARK_UBAD,
@@ -200,9 +201,26 @@ async def require_controller_capability(request: Request) -> None:
                 "error": "controller_read_only",
                 "message": "Controller actions are disabled for this read-only rollout. "
                 "An operator must review write permissions and explicitly set "
-                "CONTROLLER_READ_ONLY=false before using maintenance controls.",
+                "CONTROLLER_READ_ONLY=false and CONTROLLER_ACTION_CAPABILITY=locate. "
+                "Locate Start also requires an active maintenance window.",
             },
         )
+
+    if request.method == "POST":
+        route_name = request.scope["route"].name
+        family = (
+            "locate"
+            if route_name in {"drive_locate_start", "drive_locate_stop"}
+            else "maintenance"
+            if route_name in {"maintenance_start", "maintenance_stop"}
+            else "other writes"
+        )
+        reason = action_disabled_reason(request.app.state.settings, family)
+        if reason is not None:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "controller_action_unavailable", "message": reason},
+            )
 
 
 router = APIRouter(dependencies=[Depends(require_controller_capability)])
@@ -522,7 +540,7 @@ async def _run_locate(
         return JSONResponse({"error": str(exc)}, status_code=400)
 
     settings = _write_settings(request)
-    if not settings.maintenance_mode:
+    if action == "start" and not settings.maintenance_mode:
         try:
             await run_in_threadpool(
                 _record_locate_operator_action_sync,
@@ -537,7 +555,10 @@ async def _run_locate(
         return JSONResponse(
             {
                 "error": "locate requires maintenance_mode",
-                "message": "Locate requires an active maintenance window.",
+                "message": (
+                    "Locate Start requires an active maintenance window. "
+                    "Stop Locate remains available."
+                ),
             },
             status_code=403,
         )
@@ -545,6 +566,10 @@ async def _run_locate(
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     message = ""
+    recovery_guidance = (
+        "LED state is unverified. Inspect the physical LED and audit log before another Start. "
+        "Do not repeat Start blindly. Stop Locate can request LED shutdown without maintenance."
+    )
     try:
         result = await run_storcli(
             argv,
@@ -556,13 +581,15 @@ async def _run_locate(
     except StorcliError as exc:
         storcli_error = exc
         outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
-        message = "StorCLI could not confirm the command. Check controller access and retry."
+        message = "StorCLI could not confirm the command. Check controller access."
         if result is not None:
-            message = f"Locate {action} was not confirmed: {exc}. Check the drive and retry."
+            message = f"Locate {action} was not confirmed: {exc}."
         elif isinstance(exc, StorcliNotAvailable):
-            message = "StorCLI is unavailable. Check its installation and sudo access, then retry."
+            message = "StorCLI is unavailable. Check its installation and sudo access."
         elif "timed out" in str(exc):
-            message = "StorCLI timed out. LED state is unverified; check it or try Stop Locate."
+            message = "StorCLI timed out."
+
+        message = f"{message} {recovery_guidance}"
 
     try:
         await run_in_threadpool(
@@ -579,10 +606,7 @@ async def _run_locate(
             enclosure=enclosure_id,
             slot=slot_id,
             result=result,
-            message=(
-                "Audit could not be saved. "
-                + (message or "LED state is unverified; check it or try Stop Locate.")
-            ),
+            message=("Audit could not be saved. " + (message or recovery_guidance)),
         )
     if storcli_error is not None:
         return JSONResponse(

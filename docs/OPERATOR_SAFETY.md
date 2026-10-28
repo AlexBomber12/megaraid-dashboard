@@ -25,7 +25,7 @@ exact argument tuples in `tests/safety/scenarios.py`.
 | --- | --- | --- | --- |
 | Start Maintenance; duration (15/30/60/240/1440 minutes); required reason | POST `/maintenance/start`; persist active window, expiry, actor and audit; suppress alerts | Form only when inactive. Browser required reason; server rejects blank, <1 or >1440 duration. Audit failure must roll back state. The persisted UI window authorizes controller operations. Stop and expiration override a legacy configured write flag across workers and restarts. | `tests/e2e/test_maintenance_flow.py`, `tests/test_web/test_maintenance_routes.py`, `tests/integration/test_operator_safety.py` |
 | Stop Maintenance in controller section and global banner | POST `/maintenance/stop`; clear window; audit active-to-inactive transition | Buttons only during an active window; stop after stop is idempotent. Audit failure must roll back. Banner and controller form must agree after refresh. | Same maintenance suites; `tests/test_web/test_maintenance_banner.py` |
-| Blink Locate LED / Locate LED On; Stop Locate | POST `/drives/{e}:{s}/locate/start` and `/stop`; `/c0/eE/sS start/stop locate J`; audit controller result | Active LED changes start label and stop availability. Absent/unknown drive, no snapshot and refused controller status must not be presented as successful. Explicit controller acceptance updates Blink/Stop immediately; physical LED state stays unverified. Maintenance is required. | `tests/e2e/test_locate_flow.py`, `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_actions_routes.py`, integration result matrix |
+| Blink Locate LED / Locate LED On; Stop Locate | POST `/drives/{e}:{s}/locate/start` and `/stop`; `/c0/eE/sS start/stop locate J`; audit controller result | Active LED changes start label and stop availability. Absent/unknown drive, no snapshot and refused controller status must not be presented as successful. Explicit controller acceptance updates Blink/Stop immediately; physical LED state stays unverified. Start requires maintenance; Stop remains available after expiry with locate capability and read-only disabled. | `tests/e2e/test_locate_flow.py`, `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_actions_routes.py`, `tests/e2e/test_locate_rollout.py`, `tests/integration/test_locate_rollout.py`, integration result matrix |
 | Buzzer Silence; Enabled; Disabled | POST `/controller/buzzer/silence`, `/enable`, `/disable`; `/c0 set alarm=silence/on/off J`; audit operational change | Maintenance required. On disables Enable; Off disables Disable. Unknown alarm state covered. Failed command leaves snapshot unchanged and presents refusal. | `tests/e2e/test_buzzer_control_flow.py`, `tests/e2e/test_control_availability.py`, `tests/test_web/test_buzzer_routes.py`, integration matrix |
 | Patrol Read Start / Stop; Switch to Auto / Manual | POST `/controller/patrol-read/start`, `/stop`, `/mode`; `/c0 start/stop patrolread J`, `/c0 set patrolread=on mode=auto/manual J` | Only when patrol status exists; Start ready/stopped, Stop active/paused/running, modes depend on current mode. Maintenance required; running/not-running conflict refused. API disable mode (`patrolread=off`) has existing service/route tests, no rendered disable control. | `tests/e2e/test_controller_operations.py`, `tests/test_web/test_routes_patrol_read_branches.py`, `tests/test_services/test_patrol_read.py`, integration matrix |
 | Consistency Check Start / Stop; Switch to Concurrent / Sequential | POST `/controller/consistency-check/start`, `/stop`, `/mode`; `/c0/vall start/stop cc J`, `/c0 set cc=conc/seq J` | Only when CC status exists; ready/stopped vs running gates and maintenance. API VD-specific start has existing tests; UI targets all VDs. Read-only refresh must not manufacture snapshot updates. | Controller browser suite; `tests/test_web/test_routes_consistency_check_branches.py`, `tests/test_services/test_consistency_check.py`, integration matrix |
@@ -94,8 +94,13 @@ threshold. The application now enforces the failures originally exposed by them:
   including missing/unknown status rejection. Locate updates the accepted-command
   buttons immediately, retains Stop for uncertain state, and labels physical LED
   state unverified. CSRF refusals instruct the operator to reload the HTTPS page.
-- Every controller write requires effective maintenance authorization. Starting the
-  UI window enables writes; expiration and Stop revoke them durably. An inactive
+- Controller writes require effective maintenance authorization, except Locate Stop
+  under the narrowly authorized recovery policy in `AGENTS.md`. Locate Start still
+  requires maintenance; Stop requires read-only disabled, locate capability,
+  authentication, CSRF, exact sudoers authorization, explicit Success and audit
+  persistence. Read-only or capability `none` denies both. Starting the UI window
+  supplies maintenance authorization; expiration and ending it revoke that authorization
+  durably without disabling this Stop recovery path. An inactive
   state record is retained so a configured startup flag cannot reactivate a stopped
   window in another worker or after restart. The explicit configured flag remains
   a compatibility fallback only before any UI window exists.
@@ -151,7 +156,11 @@ production procedure is separate: `PRODUCTION_READ_ONLY_SMOKE.md`.
 
 `CONTROLLER_READ_ONLY=true` refuses every controller-action POST and maintenance
 POST before handler probes, even for dry runs and active persisted/configured
-maintenance. The default false preserves the existing gate matrix. Disabled
+maintenance. The default is true. `CONTROLLER_ACTION_CAPABILITY=none` also fails closed;
+selecting `locate` permits only Locate Start/Stop and maintenance controls after
+read-only is explicitly disabled. Legacy handler regression modules explicitly
+bypass only the capability gate to keep testing their inner checks. The separate
+locate rollout acceptance suites exercise the actual gate without that bypass. Disabled
 fieldsets keep mutation controls disabled after client initialization and refresh;
 GET navigation and history stay available. The reason is “Controller actions
 disabled: read-only rollout.” Tests cover every action in `ACTIONS` with zero
@@ -165,3 +174,6 @@ inventory. Its tests fake the wrapper boundary and never invoke real StorCLI.
 Follow [the rollout procedure](STORCLI_READ_ONLY_ROLLOUT.md) for complete-policy
 validation, service restrictions, private recovery media and rollback. These
 offline checks do not establish physical write acceptance or rebuild initiation.
+
+See the [locate-only operator procedure](STORCLI_LOCATE_ONLY_ROLLOUT.md) for
+policy generation, alert suppression constraints, activation and rollback.

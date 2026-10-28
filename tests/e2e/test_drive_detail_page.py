@@ -177,7 +177,7 @@ def _set_drive_state(database_url: str, *, slot_id: int, state: str) -> None:
 @pytest.mark.parametrize(
     ("status", "body"),
     [
-        (502, '{"message":"Controller busy. Check the drive and retry."}'),
+        (502, '{"message":"Controller busy. Inspect the LED and audit log before another Start."}'),
         (500, '{"message":"Audit could not be saved. Try Stop Locate."}'),
         (403, "CSRF token missing"),
         (200, "{}"),
@@ -192,6 +192,7 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     snapshot_with_drives: str,
     status: int,
     body: str,
+    maintenance_mode: None,
 ) -> None:
     """Exercise HTMX responses with browser-only mocks; no hardware commands run."""
     page = authenticated_page
@@ -237,7 +238,7 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     elif '"message"' in body and isinstance(json.loads(body)["message"], str):
         expect(feedback).to_have_text(json.loads(body)["message"])
     else:
-        expect(feedback).to_contain_text("Check controller access")
+        expect(feedback).to_contain_text("Do not repeat Start blindly")
     expect(feedback.locator("img")).to_have_count(0)
 
     page.unroute("**/locate/stop")
@@ -259,6 +260,7 @@ def test_locate_csrf_refusal_instructs_https_reload_and_keeps_stop_available(
     snapshot_with_drives: str,
     token: str | None,
     action: str,
+    maintenance_mode: None,
 ) -> None:
     """Use the real CSRF middleware; rejected requests never reach StorCLI."""
     page = authenticated_page
@@ -386,3 +388,6 @@ def test_undocumented_legacy_drive_action_is_unavailable(
     expect(
         authenticated_page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
     ).to_be_visible()
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

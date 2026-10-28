@@ -47,3 +47,6 @@ def test_read_only_rollout_controls(
         expect(button).to_be_disabled()
     assert posts == []
     assert fake_storcli.mutations == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")
