@@ -210,10 +210,19 @@ the full command string against exact regular expressions, and uses
 
 ### Destructive Operation Gating
 
-Every controller write, including Locate, requires effective maintenance authorization.
-After first use, the persisted UI window overrides the legacy configured flag: Start
-allows writes, while Stop and expiration revoke them across workers and restarts.
-Stop retains an inactive state record so a configured flag cannot reactivate access.
+Controller writes require effective maintenance authorization, except for Locate Stop.
+Locate Start still requires maintenance. The sole recovery exception permits Locate Stop
+with inactive or expired maintenance only when `CONTROLLER_READ_ONLY=false` and
+`CONTROLLER_ACTION_CAPABILITY=locate`; authentication, CSRF, exact sudoers authorization,
+explicit controller Success and audit persistence remain required. Read-only mode or
+capability `none` denies both Locate actions. No other write is enabled by this exception
+or by an active window under the locate-only rollout.
+
+After first use, the persisted UI window overrides the legacy configured flag: starting
+it supplies maintenance authorization, while ending it or expiry revokes that authorization
+across workers and restarts. Ending maintenance retains an inactive state record so a
+configured flag cannot reactivate maintenance-gated access. Stop Locate does not start,
+extend or otherwise change the window or alert suppression.
 
 Replacement and Mark as UBad additionally require `destructive_mode` and serial
 confirmation. Advanced-action requests carry `serial_number` from the displayed drive;

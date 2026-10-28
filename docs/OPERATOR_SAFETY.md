@@ -94,8 +94,13 @@ threshold. The application now enforces the failures originally exposed by them:
   including missing/unknown status rejection. Locate updates the accepted-command
   buttons immediately, retains Stop for uncertain state, and labels physical LED
   state unverified. CSRF refusals instruct the operator to reload the HTTPS page.
-- Every controller write requires effective maintenance authorization. Starting the
-  UI window enables writes; expiration and Stop revoke them durably. An inactive
+- Controller writes require effective maintenance authorization, except Locate Stop
+  under the narrowly authorized recovery policy in `AGENTS.md`. Locate Start still
+  requires maintenance; Stop requires read-only disabled, locate capability,
+  authentication, CSRF, exact sudoers authorization, explicit Success and audit
+  persistence. Read-only or capability `none` denies both. Starting the UI window
+  supplies maintenance authorization; expiration and ending it revoke that authorization
+  durably without disabling this Stop recovery path. An inactive
   state record is retained so a configured startup flag cannot reactivate a stopped
   window in another worker or after restart. The explicit configured flag remains
   a compatibility fallback only before any UI window exists.

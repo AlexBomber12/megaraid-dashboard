@@ -342,9 +342,15 @@ nginx site configuration
 4. Templates render HTML fragments or pages.
 5. HTMX refreshes partials for overview, events, maintenance state, and rebuild progress.
 
-Write requests follow the same HTTP path, but they also require maintenance-mode state,
-destructive-mode state where applicable, typed serial-number confirmation, command building
+Write requests follow the same HTTP path, with read-only/capability gates and maintenance
+state, destructive mode and typed serial confirmation where applicable, command building
 through service helpers, execution through the storcli wrapper, and audit recording.
+Locate Start requires maintenance. Locate Stop is the sole authorized maintenance
+exception: it remains available with an inactive or expired window only when read-only is
+disabled and locate capability is selected. Both still require authentication, CSRF, exact
+sudoers authorization, explicit controller Success and audit persistence. Stop changes no
+maintenance state; read-only or capability `none` denies both Locate actions. No other
+controller write is available under the locate-only rollout.
 
 ## Operational Boundaries
 
