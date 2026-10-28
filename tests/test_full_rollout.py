@@ -127,3 +127,91 @@ def test_insert_uses_explicit_row_instead_of_slot_order(full_app):
     assert "/c0/e252/s0 insert dg=0 array=3 row=6 J" in policy.load_policy(str(contract)).sudoers(
         ()
     )
+
+
+@pytest.mark.parametrize("step", ["offline", "missing", "insert"])
+def test_replacement_requires_every_step_before_offline(full_app, step):
+    client, app, fake, contract = full_app
+    data = policy_data()
+    verb = f"set {step}" if step != "insert" else "insert dg="
+    data["commands"] = [item for item in data["commands"] if verb not in item["command"]]
+    contract.write_text(json.dumps(data))
+    action = next(item for item in ACTIONS if item.name == "replace-offline")
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    html = client.get("/drives/252:0").text
+    assert f"{step.title()} command or topology is not approved" in html
+    response = client.post(action.path, json=body)
+    assert response.status_code == 403
+    assert f"{step.title()} command or topology is not approved" in response.text
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "name,keep,approved,refused",
+    [
+        ("consistency-check-start", "/c0/vall start cc J", {}, {"vd_id": 0}),
+        ("consistency-check-start", "/c0/v0 start cc J", {"vd_id": 0}, {}),
+        (
+            "patrol-read-mode",
+            "/c0 set patrolread=on mode=auto J",
+            {"mode": "auto"},
+            {"mode": "disable"},
+        ),
+        (
+            "patrol-read-mode",
+            "/c0 set patrolread=on mode=manual J",
+            {"mode": "manual"},
+            {"mode": "auto"},
+        ),
+        (
+            "consistency-check-mode",
+            "/c0 set cc=conc J",
+            {"mode": "concurrent"},
+            {"mode": "sequential"},
+        ),
+    ],
+)
+def test_only_selected_alternative_requires_approval(full_app, name, keep, approved, refused):
+    client, app, fake, contract = full_app
+    action = next(item for item in ACTIONS if item.name == name)
+    prepare(action, SimpleNamespace(app=app), fake)
+    data = policy_data()
+    candidates = policy.action_commands(policy.CommandPolicy.model_validate(data), action.path)
+    data["commands"] = [
+        item
+        for item in data["commands"]
+        if item["command"] not in candidates or item["command"] == keep
+    ]
+    contract.write_text(json.dumps(data))
+    from sqlalchemy import select
+
+    from megaraid_dashboard.db.models import ControllerSnapshot
+
+    with app.state.session_factory() as session, session.begin():
+        snapshot = session.scalar(select(ControllerSnapshot))
+        snapshot.raw_json = {
+            **(snapshot.raw_json or {}),
+            "patrol_read": {"mode": "manual", "state": "stopped"},
+            "consistency_check": {"mode": "concurrent", "state": "stopped"},
+        }
+    assert client.get("/controller").status_code == 200
+    assert client.post(action.path, json=refused).status_code == 403
+    assert fake.calls == []
+    assert client.post(action.path, json=approved).status_code == 200
+    assert fake.mutations == [keep.split()]
+
+
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        ("/controller/patrol-read/mode", {"mode": "wrong"}),
+        ("/controller/consistency-check/mode", {"mode": "wrong"}),
+        ("/controller/consistency-check/start", {"vd_id": -1}),
+    ],
+)
+def test_invalid_selected_request_is_refused_without_probes(full_app, path, body):
+    client, _app, fake, _contract = full_app
+    response = client.post(path, json=body)
+    assert response.status_code == 400
+    assert "Invalid action request" in response.text
+    assert fake.calls == []

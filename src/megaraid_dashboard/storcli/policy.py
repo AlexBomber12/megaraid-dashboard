@@ -165,11 +165,29 @@ def action_commands(policy: CommandPolicy, path: str) -> list[str]:
     return [f"{drive} {tails[action]}"] if action in tails else []
 
 
-def action_refusal(policy: CommandPolicy, path: str) -> str | None:
+def action_refusal(
+    policy: CommandPolicy, path: str, selected: list[str] | None = None
+) -> str | None:
     commands = action_commands(policy, path)
-    if not commands or not all(policy.permits(command.split()) for command in commands):
+    if selected is not None:
+        command = " ".join(selected if selected[-1:] == ["J"] else [*selected, "J"])
+        commands = [candidate for candidate in commands if candidate == command]
+    if not any(policy.permits(command.split()) for command in commands):
         return (
             "Unavailable: exact StorCLI 1.23.02 syntax or topology is not approved. "
             "Ask the administrator to review read-only help and regenerate the exact sudo policy."
         )
+    return None
+
+
+def replacement_refusal(policy: CommandPolicy, path: str) -> str | None:
+    """Approve the entire combined workflow before it can take a drive offline."""
+    base = path.rsplit("/", 1)[0]
+    for step in ("offline", "missing", "insert"):
+        if action_refusal(policy, f"{base}/{step}") is not None:
+            return (
+                f"Replacement unavailable: {step.title()} command or topology is not approved. "
+                "Ask the administrator to approve every replacement step "
+                "before taking a drive offline."
+            )
     return None

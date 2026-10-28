@@ -1,4 +1,4 @@
-{% set replacement_reason = approved_action_reason(request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path) %}
+{% set replacement_reason = approved_action_reason(request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path, workflow=true) %}
 {% if replacement_reason %}<p class="muted">{{ replacement_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
 {% if other_writes_disabled_reason %}
 <p class="muted">{{ other_writes_disabled_reason }}</p>

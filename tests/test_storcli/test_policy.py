@@ -47,6 +47,10 @@ def test_route_matrix_and_exact_policy():
     assert policy.action_commands(value, "/unrecognized") == []
     assert policy.action_commands(value, "/drives/252:1/replace/insert") == []
     assert policy.action_refusal(value, "/drives/252:1/locate/start")
+    assert (
+        policy.action_refusal(value, "/controller/buzzer/enable", ["/c0", "set", "alarm=on"])
+        is None
+    )
     assert value.permits(["/c0", "set", "alarm=on"])
     assert not value.permits(["/c0", "set", "alarm=on", "J", "force"])
     text = value.sudoers(("/c0 show all J",))

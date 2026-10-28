@@ -615,8 +615,11 @@ def test_full_policy_and_authorization_only_checks(protected_inventory, tmp_path
     assert "*" not in rendered
     assert "set bad" not in rendered
     assert "megaraid ALL=(root)" in rendered
-    for action in policy_data()["commands"]:
-        assert f"{rollout.STAGED} {action['command']}" in rendered
+    from megaraid_dashboard.storcli.runner import _validate_command
+
+    for command in (*rollout.READS, *(item["command"] for item in policy_data()["commands"])):
+        _validate_command(command.split())
+        assert f"{rollout.STAGED} {command}" in rendered
     checks = rollout.authorization_checks(protected_inventory)
     assert checks.count("sudo -n -l -- ") == len(rollout.READS) + len(
         policy_data()["commands"]

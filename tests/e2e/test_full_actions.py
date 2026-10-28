@@ -103,3 +103,98 @@ def test_full_browser_action_matrix(
         replacement.test_replacement_insert_browser(*common, *extra, outcome)
     else:
         replacement.test_replace_offline_missing_browser(*common, *extra, outcome)
+
+
+@pytest.mark.parametrize("step", ["offline", "missing", "insert"])
+def test_incomplete_replacement_policy_disables_whole_wizard(
+    authenticated_page,
+    live_server,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    full_controller_handlers,
+    step,
+):
+    from tests.safety.harness import prepare
+
+    action = next(item for item in ACTIONS if item.name == "replace-offline")
+    prepare(action, _live_server_handle, fake_storcli)
+    data = json.loads(full_controller_handlers.read_text())
+    tail = f"set {step} J" if step != "insert" else "insert dg=0 array=0 row=0 J"
+    data["commands"] = [
+        item for item in data["commands"] if item["command"] != f"/c0/e252/s0 {tail}"
+    ]
+    full_controller_handlers.write_text(json.dumps(data))
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+    expect(page.get_by_role("button", name="Begin Replacement", exact=True)).to_be_disabled()
+    expect(page.locator("body")).to_contain_text(
+        f"{step.title()} command or topology is not approved"
+    )
+    assert fake_storcli.calls == []
+
+
+@pytest.mark.parametrize("approve_next", [False, True])
+@pytest.mark.parametrize("name", ["consistency-check-start", "patrol-read-mode"])
+def test_selected_ui_option_has_independent_approval(
+    authenticated_page,
+    live_server,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    full_controller_handlers,
+    approve_next,
+    name,
+):
+    from sqlalchemy import select
+
+    from megaraid_dashboard.db import ControllerSnapshot
+    from tests.safety.harness import prepare
+
+    action = next(item for item in ACTIONS if item.name == name)
+    prepare(action, _live_server_handle, fake_storcli)
+    data = json.loads(full_controller_handlers.read_text())
+    alternatives = (
+        {"/c0/vall start cc J", "/c0/v0 start cc J"}
+        if name == "consistency-check-start"
+        else {
+            "/c0 set patrolread=on mode=auto J",
+            "/c0 set patrolread=on mode=manual J",
+            "/c0 set patrolread=off J",
+        }
+    )
+    selected = (
+        "/c0/vall start cc J"
+        if name == "consistency-check-start"
+        else "/c0 set patrolread=on mode=auto J"
+    )
+    other = (
+        "/c0/v0 start cc J"
+        if name == "consistency-check-start"
+        else "/c0 set patrolread=on mode=manual J"
+    )
+    data["commands"] = [
+        item
+        for item in data["commands"]
+        if item["command"] not in alternatives
+        or item["command"] == (selected if approve_next else other)
+    ]
+    full_controller_handlers.write_text(json.dumps(data))
+    with _live_server_handle.app.state.session_factory() as session, session.begin():
+        snapshot = session.scalar(select(ControllerSnapshot))
+        snapshot.raw_json = {
+            **snapshot.raw_json,
+            action.family.replace("-", "_"): {"mode": "manual", "state": "stopped"},
+        }
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/controller")
+    button = page.locator(f'form[action="{action.path}"] button')
+    if approve_next:
+        expect(button).to_be_enabled()
+        with page.expect_response(lambda response: response.url.endswith(action.path)) as response:
+            button.click()
+        assert response.value.status == 200
+        assert fake_storcli.mutations == [selected.split()]
+    else:
+        expect(button).to_be_disabled()
+        assert fake_storcli.calls == []

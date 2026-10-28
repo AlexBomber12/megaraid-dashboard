@@ -141,7 +141,7 @@ from megaraid_dashboard.storcli import (
     parse_foreign_config,
     run_storcli,
 )
-from megaraid_dashboard.storcli.policy import action_refusal, load_policy
+from megaraid_dashboard.storcli.policy import action_refusal, load_policy, replacement_refusal
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -224,12 +224,39 @@ async def require_controller_capability(request: Request) -> None:
             and family != "maintenance"
         ):
             policy = load_policy(request.app.state.settings.controller_command_policy)
-            reason = action_refusal(policy, request.url.path)
+            selected = await _requested_approval_command(request)
+            reason = (
+                replacement_refusal(policy, request.url.path)
+                if route_name == "drive_replace_offline"
+                else action_refusal(policy, request.url.path, selected)
+            )
         if reason is not None:
             raise HTTPException(
                 status_code=403,
                 detail={"error": "controller_action_unavailable", "message": reason},
             )
+
+
+async def _requested_approval_command(request: Request) -> list[str] | None:
+    """Use the handler's validated request and builder for parameterized commands."""
+    name = request.scope["route"].name
+    if name == "controller_patrol_read_mode":
+        patrol = await _parse_patrol_read_mode_request_body(request)
+        if not isinstance(patrol, JSONResponse):
+            return build_patrol_read_mode_command(patrol.mode)
+    elif name == "controller_consistency_check_mode":
+        cc = await _parse_consistency_check_mode_request_body(request)
+        if not isinstance(cc, JSONResponse):
+            return build_consistency_check_mode_command(cc.mode)
+    elif name == "controller_consistency_check_start":
+        start = await _parse_consistency_check_start_request_body(request)
+        if not isinstance(start, JSONResponse):
+            return build_consistency_check_start_command(start.vd_id)
+    else:
+        return None
+    raise HTTPException(
+        status_code=400, detail="Invalid action request. Review the selected option."
+    )
 
 
 class _AuthorizationKwargs(TypedDict, total=False):

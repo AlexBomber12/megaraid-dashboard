@@ -54,6 +54,13 @@ physical verification. API state/identity checks remain authoritative after rend
 | Foreign Import `/controller/foreign-config/import` | `/c0/fall import` | Fresh configuration; maintenance + destructive; typed digest; dry-run defaults on; rebuild/state safety checks | Configuration request accepted. Changed/absent/unsupported foreign inventory: refresh and inspect; do not retry stale digest. |
 | Foreign Clear `/controller/foreign-config/clear` | `/c0/fall delete` | Fresh configuration; maintenance + destructive; type `CLEAR FOREIGN CONFIG`; dry-run defaults on | Metadata request accepted. Rebuild/conflicting states refused; inspect controller. |
 
+Alternative commands are approved independently: the POST validates its selected
+VD/mode, and each rendered control checks the exact option it submits. An approved
+CC All start does not require a grant for a separate per-VD start; Patrol Auto and
+Manual do not require an unrequested Disable grant. Before enabling Begin Replacement
+or accepting Offline, all three Offline → Missing → Insert commands/topology must
+be approved. An incomplete policy is refused before the first mutation.
+
 Non-mutating controls are inventoried in `docs/operator-controls.json`: navigation,
 Events severity/category/operator filters and pagination, chart ranges, disclosure
 panels, wizard cancel/close, confirmations, dry-run toggles and status polling.

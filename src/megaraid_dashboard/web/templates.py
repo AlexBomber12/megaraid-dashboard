@@ -16,7 +16,14 @@ from starlette.requests import Request
 
 from megaraid_dashboard.db.dao import get_maintenance_state, maintenance_writes_enabled
 from megaraid_dashboard.services.action_capabilities import action_disabled_reason
-from megaraid_dashboard.storcli.policy import action_refusal, load_policy
+from megaraid_dashboard.services.drive_actions import (
+    ConsistencyCheckMode,
+    PatrolReadMode,
+    build_consistency_check_mode_command,
+    build_consistency_check_start_command,
+    build_patrol_read_mode_command,
+)
+from megaraid_dashboard.storcli.policy import action_refusal, load_policy, replacement_refusal
 
 _SLOT_TOKEN_RE = re.compile(
     r"(?P<event_slot_ref>e(?P<enclosure>\d+):s(?P<slot>\d+))"
@@ -85,7 +92,9 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
                 "Locate Start requires an active maintenance window."
             )
 
-        def approved_action_reason(path: str) -> str | None:
+        def approved_action_reason(
+            path: str, mode: str | None = None, *, workflow: bool = False
+        ) -> str | None:
             settings = request.app.state.settings
             if settings.controller_action_capability != "full-supported-actions":
                 return None
@@ -97,7 +106,17 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
                 "/replace/" in path or "/foreign-config/" in path
             ) and not settings.destructive_mode:
                 return "Ask the administrator to enable destructive mode before this action."
-            return action_refusal(load_policy(settings.controller_command_policy), path)
+            policy = load_policy(settings.controller_command_policy)
+            if workflow:
+                return replacement_refusal(policy, path)
+            selected = None
+            if path.endswith("/controller/consistency-check/start"):
+                selected = build_consistency_check_start_command(None)
+            elif path.endswith("/controller/consistency-check/mode"):
+                selected = build_consistency_check_mode_command(cast(ConsistencyCheckMode, mode))
+            elif path.endswith("/controller/patrol-read/mode"):
+                selected = build_patrol_read_mode_command(cast(PatrolReadMode, mode))
+            return action_refusal(policy, path, selected)
 
         context["approved_action_reason"] = approved_action_reason
         return context
