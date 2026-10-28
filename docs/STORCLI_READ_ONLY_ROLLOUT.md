@@ -1,3 +1,7 @@
+> Superseded for the requested final release by [STORCLI_FULL_ROLLOUT.md](STORCLI_FULL_ROLLOUT.md).
+> Do not deploy this historical intermediate release. Its binary staging and read-only
+> probe instructions remain reference material for the single final activation.
+
 # Operator procedure: StorCLI 1.23.02 read-only rollout
 
 This is a separate operator action after PR CI and current-head Codex review.

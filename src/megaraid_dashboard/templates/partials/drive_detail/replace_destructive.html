@@ -1,3 +1,5 @@
+{% set replacement_reason = approved_action_reason(request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path) %}
+{% if replacement_reason %}<p class="muted">{{ replacement_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
 {% if other_writes_disabled_reason %}
 <p class="muted">{{ other_writes_disabled_reason }}</p>
 <fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
@@ -22,7 +24,9 @@
         <h2 class="replace-wizard__title" id="replace-drive-heading">Replace Drive</h2>
         <p class="muted">{{ view_model.replace.warning_text }}</p>
       </div>
-      <button type="button" class="button button--danger" data-replace-action="open">Begin Replacement</button>
+      {% set replacement_state_blocked = view_model.health.state not in ("ONLN", "OFFLN", "FAILED", "UBAD", "UGOOD") %}
+      {% if replacement_state_blocked %}<p class="muted">Replacement cannot start in {{ view_model.health.state }} state. Refresh inventory and inspect the drive; monitor an existing rebuild instead.</p>{% endif %}
+      <button type="button" class="button button--danger" data-replace-action="open" {% if replacement_state_blocked %}disabled{% endif %}>Begin Replacement</button>
     </div>
 
     <ol class="stepper" data-replace-stepper hidden aria-label="Replacement progress">
@@ -118,3 +122,5 @@
 </section>
 
 {% if other_writes_disabled_reason %}</fieldset>{% endif %}
+
+{% if replacement_reason %}</fieldset>{% endif %}

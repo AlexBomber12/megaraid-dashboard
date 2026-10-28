@@ -454,7 +454,10 @@ def _advanced_actions(drive: PhysicalDriveSnapshot) -> list[AdvancedActionButton
             url=f"/drives/{slot_ref}/actions/mark-ubad",
             destructive=True,
             enabled=False,
-            reason="Unavailable: StorCLI 1.23.02 does not document set bad.",
+            reason=(
+                "Unavailable: StorCLI 1.23.02 does not document set bad. "
+                "Review read-only help; no command is guessed."
+            ),
         ),
         _action_button(
             label="Mark as UGood",
@@ -467,8 +470,8 @@ def _advanced_actions(drive: PhysicalDriveSnapshot) -> list[AdvancedActionButton
             label="Spin Down",
             url=f"/drives/{slot_ref}/actions/spindown",
             destructive=False,
-            enabled=state in {"Onln", "UGood", "UBad"},
-            reason="Only Onln, UGood, or UBad drives can be spun down.",
+            enabled=state in {"UGood", "UBad"},
+            reason="Only unconfigured UGood or UBad drives can be spun down. Refresh drive state.",
         ),
         _action_button(
             label="Hot Spare",

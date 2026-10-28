@@ -60,7 +60,7 @@ def test_can_mark_ugood_only_allows_ubad(state: str) -> None:
 
 @pytest.mark.parametrize("state", DRIVE_STATES)
 def test_can_spin_down_allows_online_ugood_or_ubad(state: str) -> None:
-    assert can_spin_down(state) is (state in {"Onln", "UGood", "UBad"})
+    assert can_spin_down(state) is (state in {"UGood", "UBad"})
 
 
 @pytest.mark.parametrize("state", DRIVE_STATES)

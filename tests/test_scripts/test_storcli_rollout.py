@@ -605,3 +605,26 @@ def test_locate_policy_cli() -> None:
         check=True,
     )
     assert result.stdout == rollout.locate_policy()
+
+
+def test_full_policy_and_authorization_only_checks(protected_inventory, tmp_path):
+    from tests.test_storcli.test_policy import policy_data
+
+    protected_inventory.write_text(json.dumps(policy_data()))
+    rendered = rollout.full_policy(protected_inventory)
+    assert "*" not in rendered
+    assert "set bad" not in rendered
+    assert "megaraid ALL=(root)" in rendered
+    for action in policy_data()["commands"]:
+        assert f"{rollout.STAGED} {action['command']}" in rendered
+    checks = rollout.authorization_checks(protected_inventory)
+    assert checks.count("sudo -n -l -- ") == len(rollout.READS) + len(
+        policy_data()["commands"]
+    ) + 8 + len(policy_data()["replacements"])
+    assert "sudo -n /" not in checks
+    assert "Unexpected permission" in checks
+    file = tmp_path / "sudoers"
+    file.write_text(rendered)
+    # Parse the real sudoers grammar without installing policy or executing a command.
+    result = subprocess.run(["visudo", "-c", "-f", str(file)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

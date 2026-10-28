@@ -19,12 +19,14 @@ Telegram delivery, send a live test, merge or deploy anything.
    before the explicit `monitoring_outage=true` critical event. Success records recovery.
    Incomplete/uncertain inventories and CV probes reject the poll before persistence,
    leaving the last reliable snapshot intact; they never count as successful monitoring.
-3. `db/dao.py::record_event` permanently skips Telegram events born during maintenance;
-   migration `0009` permanently skips prior warning/critical events (`pre_migration`).
+3. `db/dao.py::record_event` preserves hardware events regardless of maintenance.
+   Migration `0009` still permanently excludes pre-migration warning/critical events.
+   Only old `skipped/maintenance` rows are reconsidered through current relevance;
+   other terminal skips, sent rows and pre-migration exclusions remain intact.
 4. The scheduler's optional Telegram phase precedes independent SMTP.
    `services/telegram_notifier.py::_load_candidates` filters complete eligibility before
    LIMIT 100; terminal deliveries and future events/due times are excluded.
-5. The cycle checks maintenance, warning confirmation, current relevance and deduplication
+5. The cycle checks warning confirmation, current relevance and deduplication
    before claiming. `services/telegram_relevance.py` uses saved fresh readings and disk
    identity; missing evidence waits, positive recovery/replacement evidence skips.
 6. Only then `services/telegram_messages.py::build_telegram_text` renders content.
@@ -95,7 +97,7 @@ suites; P exercises collection through the real bounded transport using mocked H
 | Unrelated critical system event or non-boolean outage marker | Suppress before LIMIT | — | 0 | R policy/query tests |
 | Other-error counters, capacitance warnings, unknown VD warnings, disk-space, unsupported categories | Suppress before LIMIT | — | 0 | D; N; R |
 | Routine replacement, rebuild, buzzer, foreign config and other operation events | Suppress info/unsupported categories | — | 0 | D; N; R |
-| Born during maintenance or pending when maintenance is active | Permanently skip maintenance | — | 0 | N maintenance tests; A |
+| Born/pending during maintenance; legacy maintenance skip | Normal relevance, confirmation, dedup and retry; maintenance does not suppress real incidents | Catalog when active | Catalog | N maintenance/retry tests; A |
 | Existed before migration 0009 | Permanently skip pre_migration | — | 0 | A |
 | Already sent/skipped, event in future, retry not due | Exclude from candidates | — | 0 | N; R |
 | Warning before confirmation deadline (default 15 min) | Defer awaiting_confirmation; no attempt | — | 0 | N; R |
@@ -127,8 +129,7 @@ suites; P exercises collection through the real bounded transport using mocked H
 A failed request can already have been accepted remotely; the table does not claim
 exactly-once receipt or that zero remotely received messages can be proved on timeout.
 Claim and outcome are committed separately. Database locks are released during HTTP;
-collection, retention and disk checks continue, and later candidates recheck time/data/
-maintenance. The process notifier lock spans both channels. SMTP markers and policy stay
+collection, retention and disk checks continue, and later candidates recheck time/data. The process notifier lock spans both channels. SMTP markers and policy stay
 independent; each phase runs even when the other fails. Response handling retains the
 10-second absolute deadline, 64 KiB cap, compression/redirect restrictions and token
 redaction. These delivery controls are preserved.
@@ -225,7 +226,7 @@ Paths are relative to `tests/`; every transport/hardware boundary is mocked.
   `test_event_detector_foreign_config.py`: baseline/transitions and behavioral regressions
   for the corrected gaps.
 - **A:** `test_db/test_alembic.py::test_alembic_0009_backfills_telegram_state_and_preserves_smtp_marker`
-  and DAO/maintenance tests: durable skips and unchanged email marker.
+  and DAO/maintenance tests: maintenance eligibility and unchanged email marker.
 - **C:** `test_services/test_telegram_concurrency.py`: locks released during HTTP,
   concurrent collector/retention/disk checks, next-send revalidation and independent SMTP.
 - **E:** `test_services/test_telegram_controller_episodes.py`: recovery proof and

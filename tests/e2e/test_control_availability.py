@@ -35,7 +35,7 @@ def test_drive_state_availability_and_refusal_explanations(
     expected = {
         "mark-ubad": False,
         "mark-ugood": state == "UBad",
-        "spindown": state in {"Onln", "UGood", "UBad"},
+        "spindown": state in {"UGood", "UBad"},
         "hotspare": state == "UGood",
     }
     for action in (a for a in ACTIONS if a.family == "advanced"):

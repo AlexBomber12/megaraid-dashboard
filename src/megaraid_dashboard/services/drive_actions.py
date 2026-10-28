@@ -22,7 +22,7 @@ _LOCATE_VERB: dict[LocateAction, str] = {
 
 _OFFLINE_ALLOWED_STATES: frozenset[str] = frozenset({"Onln", "Offln", "Failed", "UBad", "UGood"})
 _MISSING_ALLOWED_STATES: frozenset[str] = frozenset({"Offln"})
-_SPIN_DOWN_ALLOWED_STATES: frozenset[str] = frozenset({"Onln", "UGood", "UBad"})
+_SPIN_DOWN_ALLOWED_STATES: frozenset[str] = frozenset({"UGood", "UBad"})
 
 # Matches the exact success-audit format written by the route layer for the
 # missing step: ``replace step missing drive {e}:{s} serial {sn} succeeded``.

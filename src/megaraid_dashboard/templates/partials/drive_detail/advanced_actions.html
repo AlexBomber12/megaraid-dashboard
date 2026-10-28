@@ -2,13 +2,15 @@
 <p class="muted">{{ other_writes_disabled_reason }}</p>
 <fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
 {% endif %}
-{% set drive_dg_id = view_model.position.dg_span_row_text.split(" : ")[0] %}
+{% set drive_dg_id = approved_disk_group | string if approved_disk_group is not none else view_model.position.dg_span_row_text.split(" : ")[0] %}
 {% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
 {% set safe_actions = view_model.advanced_actions | rejectattr("is_destructive") | list %}
 {% set destructive_actions = view_model.advanced_actions | selectattr("is_destructive") | list %}
 {% macro action_form(action) -%}
   {% set no_dg = action.label == "Hot Spare" and drive_dg_id == "-" %}
-  <form
+  {% set contract_reason = approved_action_reason(action.url) %}
+{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
+<form
     method="post"
     action="{{ action.url }}"
     class="inline-form"
@@ -31,6 +33,7 @@
       {% if not action.is_enabled or no_dg %}disabled{% endif %}
     >{{ action.label }}</button>
   </form>
+{% if contract_reason %}</fieldset>{% endif %}
 {%- endmacro %}
 <section class="section" data-drive-detail-section="advanced-actions" aria-labelledby="drive-advanced-actions-heading">
   <div class="section-title">
@@ -124,8 +127,12 @@
           response.text().then((body) => {
             if (!error) return;
             let message = body;
-            try { const parsed = JSON.parse(body); message = parsed.error || parsed.detail || body; } catch { /* keep text */ }
-            error.textContent = message || "Drive action failed.";
+            try {
+              const parsed = JSON.parse(body);
+              message = parsed.message || parsed.detail?.message || parsed.error ||
+                (typeof parsed.detail === "string" ? parsed.detail : body);
+            } catch { /* keep text */ }
+            error.textContent = (message || "Drive action failed.") + " Inspect drive status and audit before retrying.";
             error.hidden = false;
           });
         }).catch(() => {

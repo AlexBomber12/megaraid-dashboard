@@ -46,6 +46,9 @@ class FakeStorcli:
             mode="Manual",
             operation_state="Stopped",
             foreign=foreign["Controllers"][0]["Response Data"],
+            controller=json.loads((fixture / "c0_show_all.json").read_text())["Controllers"][0][
+                "Response Data"
+            ],
         )
         return fake
 
@@ -127,6 +130,10 @@ def prepare(action: Action, handle: Any, fake: FakeStorcli) -> dict[str, Any]:
                     summary="replace step missing drive 252:0 serial OLD succeeded",
                 )
             )
+    if action.name == "buzzer-enable":
+        config = json.loads((fake.path.parent / "state.json").read_text())
+        config["controller"]["HwCfg"]["Alarm"] = "Off"
+        fake.configure(controller=config["controller"])
     if action.family == "replace":
         return {"serial_number": "WCA275678000", "dry_run": False}
     if action.family == "foreign":

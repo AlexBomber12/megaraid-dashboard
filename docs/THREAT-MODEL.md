@@ -280,3 +280,24 @@ Quarterly pass-1 review runs `scripts/security-scan.sh`, which executes Ruff sec
    events should also be sent to an append-only log target.
 6. Python dependencies are version-ranged rather than locked with hashes. Reproducible build
    work is tracked separately in the roadmap.
+
+## Final supported-actions capability
+
+Read-only remains the default. `full-supported-actions` additionally requires a
+root-controlled JSON command policy and every ancestor protected against replacement,
+the pinned 1.23.02 executable/hash, and explicit approved VD/DG/replacement topology.
+Each command includes its read-only help evidence reference. Root approval is a trust
+boundary: the program validates syntax/scope, but cannot establish authenticity of an
+operator's evidence reference. Do not approve commands from generic manual examples.
+No unavailable action receives a grant. The UI and POST dependency reject missing
+approval, and the wrapper independently checks exact argv before any mutation.
+Every full mutation rechecks live controller serial; wrong/missing controller result
+identity is uncertain. Successful HTTP responses still require controller Success
+and durable actor-attributed audit. Database schema is unchanged.
+
+Stop Locate remains the sole maintenance-expiry recovery exception in both write
+capabilities. Authentication, CSRF, exact approval and audit remain required. Real
+hardware Telegram incidents remain eligible during maintenance; normal relevance,
+warning confirmation, deduplication and retry still apply. Operator audit categories
+are excluded. Old maintenance skips are reconsidered through the same current-data
+checks, so deployment may deliver an old incident that is still active.
