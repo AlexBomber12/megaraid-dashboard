@@ -109,6 +109,7 @@
   "src/megaraid_dashboard/templates/partials/events_data.html": [
     "<button id=\"events-load-more\" class=\"button\" type=\"button\" hx-get=\"{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}before_occurred_at={{ cursor.before_occurred_at_iso | urlencode }}&before_id={{ cursor.before_id }}\" hx-target=\"#events-list\" hx-swap=\"beforeend\" >",
     "<a class=\"filter-chip{% if chip.active %} filter-chip--active{% endif %}\" href=\"{{ chip.href }}\" aria-pressed=\"{{ 'true' if chip.active else 'false' }}\" >",
+    "<a class=\"filter-chip{% if chip.active %} filter-chip--active{% endif %}\" href=\"{{ chip.href }}\" aria-pressed=\"{{ 'true' if chip.active else 'false' }}\" >",
     "<a class=\"filter-chip{% if chip.active %} filter-chip--active{% endif %}\" href=\"{{ chip.href }}\" aria-pressed=\"{{ 'true' if chip.active else 'false' }}\" >"
   ],
   "src/megaraid_dashboard/templates/partials/maintenance_banner.html": [

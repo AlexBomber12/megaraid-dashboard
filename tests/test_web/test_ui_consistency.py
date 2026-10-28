@@ -155,7 +155,9 @@ def test_destructive_advanced_actions_require_typed_serial_phrase(
         assert form["data-confirm-title"].endswith("on drive 252:4?")
 
 
-def test_events_partial_keeps_audit_log_title(sample_snapshot: StorcliSnapshot) -> None:
+def test_events_partial_keeps_events_title_for_operator_actions(
+    sample_snapshot: StorcliSnapshot,
+) -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
@@ -165,9 +167,9 @@ def test_events_partial_keeps_audit_log_title(sample_snapshot: StorcliSnapshot) 
         partial = client.get(audit_path.replace("/events", "/partials/events", 1))
         events_partial = client.get("/partials/events")
 
-    assert "<title>Audit Log - MegaRAID Dashboard</title>" in page.text
-    assert "<h1>Audit Log</h1>" in page.text
-    assert "<h1>Audit Log</h1>" in partial.text
+    assert "<title>Events - MegaRAID Dashboard</title>" in page.text
+    assert "<h1>Events</h1>" in page.text
+    assert "<h1>Events</h1>" in partial.text
     assert "<h1>Events</h1>" in events_partial.text
 
 
