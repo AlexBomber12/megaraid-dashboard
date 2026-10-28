@@ -1,5 +1,6 @@
 """Browser-only maintenance flow over HTTPS; production JS supplies CSRF."""
 
+import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import login_and_navigate
@@ -74,3 +75,6 @@ def test_ui_maintenance_window_authorizes_controller_action(
         page.locator('[data-buzzer-action="silence"] button').click()
     assert response.value.status == 303, "Starting UI maintenance must authorize controller writes"
     assert fake_storcli.mutations == [["/c0", "set", "alarm=silence", "J"]]
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

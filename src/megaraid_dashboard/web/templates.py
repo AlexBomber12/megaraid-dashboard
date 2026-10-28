@@ -14,7 +14,8 @@ from markupsafe import Markup, escape
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.requests import Request
 
-from megaraid_dashboard.db.dao import get_maintenance_state
+from megaraid_dashboard.db.dao import get_maintenance_state, maintenance_writes_enabled
+from megaraid_dashboard.services.action_capabilities import action_disabled_reason
 
 _SLOT_TOKEN_RE = re.compile(
     r"(?P<event_slot_ref>e(?P<enclosure>\d+):s(?P<slot>\d+))"
@@ -50,10 +51,23 @@ def create_templates(
 def _maintenance_context_processor(request: Request) -> dict[str, Any]:
     session_factory = cast(sessionmaker[Session], request.app.state.session_factory)
     with session_factory() as session:
-        return {
+        context = {
+            **{
+                f"{family.replace(' ', '_')}_disabled_reason": action_disabled_reason(
+                    request.app.state.settings, family
+                )
+                for family in ("locate", "maintenance", "other writes")
+            },
             "maintenance_state": get_maintenance_state(session, now=datetime.now(UTC)),
             "controller_read_only": request.app.state.settings.controller_read_only,
         }
+        if context["locate_disabled_reason"] is None and not maintenance_writes_enabled(
+            session,
+            configured=request.app.state.settings.maintenance_mode,
+            now=datetime.now(UTC),
+        ):
+            context["locate_disabled_reason"] = "Locate requires an active maintenance window."
+        return context
 
 
 def iso_utc(value: datetime | None) -> str:

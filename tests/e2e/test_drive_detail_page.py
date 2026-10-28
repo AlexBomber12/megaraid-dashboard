@@ -192,6 +192,7 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     snapshot_with_drives: str,
     status: int,
     body: str,
+    maintenance_mode: None,
 ) -> None:
     """Exercise HTMX responses with browser-only mocks; no hardware commands run."""
     page = authenticated_page
@@ -259,6 +260,7 @@ def test_locate_csrf_refusal_instructs_https_reload_and_keeps_stop_available(
     snapshot_with_drives: str,
     token: str | None,
     action: str,
+    maintenance_mode: None,
 ) -> None:
     """Use the real CSRF middleware; rejected requests never reach StorCLI."""
     page = authenticated_page
@@ -386,3 +388,6 @@ def test_undocumented_legacy_drive_action_is_unavailable(
     expect(
         authenticated_page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
     ).to_be_visible()
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

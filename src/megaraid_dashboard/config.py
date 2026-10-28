@@ -4,6 +4,7 @@ import ipaddress
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,7 +48,8 @@ class Settings(BaseSettings):
     admin_password_hash: str = Field(...)
     storcli_path: str = Field(...)
     storcli_use_sudo: bool = False
-    controller_read_only: bool = False
+    controller_read_only: bool = True
+    controller_action_capability: Literal["none", "locate"] = "none"
     maintenance_mode: bool = False
     destructive_mode: bool = False
     metrics_interval_seconds: int = Field(...)

@@ -111,3 +111,6 @@ def test_absent_foreign_configuration_hides_mutating_forms(
     authenticated_page.get_by_role("link", name="← Back to Controller").click()
     expect(authenticated_page.locator(".controller-detail-page")).to_be_visible()
     assert fake_storcli.mutations == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

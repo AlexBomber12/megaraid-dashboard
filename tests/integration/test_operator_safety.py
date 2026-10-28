@@ -21,7 +21,7 @@ from tests.e2e.conftest import E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME, _LiveServ
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("legacy_controller_handlers")]
 
 
 @pytest.fixture

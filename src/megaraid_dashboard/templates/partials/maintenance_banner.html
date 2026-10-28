@@ -1,6 +1,6 @@
-{% if controller_read_only %}
-<p class="muted">Controller actions disabled: read-only rollout.</p>
-<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% if maintenance_disabled_reason %}
+<p class="muted">{{ maintenance_disabled_reason }}</p>
+<fieldset disabled class="read-only-controls" title="{{ maintenance_disabled_reason }}">
 {% endif %}
 {% if maintenance_state.active %}
   <div class="maintenance-banner" role="status">
@@ -33,4 +33,4 @@
   </div>
 {% endif %}
 
-{% if controller_read_only %}</fieldset>{% endif %}
+{% if maintenance_disabled_reason %}</fieldset>{% endif %}

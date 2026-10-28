@@ -387,3 +387,7 @@ monitoring uncertainty as healthy hardware.
 For the installed StorCLI 1.23.02 read-only selection and reversible operator
 procedure, follow [the rollout runbook](STORCLI_READ_ONLY_ROLLOUT.md). Production runs as `megaraid`; installer
 `raid-monitor` defaults must not replace its service configuration.
+
+A separate [locate-only rollout](STORCLI_LOCATE_ONLY_ROLLOUT.md) inventories action
+POSTs and documents the additive 16-command policy, capability gates, activation
+and rollback. Preparation does not authorize a production window or verify LEDs.

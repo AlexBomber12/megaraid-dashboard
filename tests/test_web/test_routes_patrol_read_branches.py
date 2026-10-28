@@ -442,3 +442,6 @@ def test_patrol_read_start_rejection_returns_500_when_audit_fails(
         "rejection_reason": "already running",
     }
     assert events == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

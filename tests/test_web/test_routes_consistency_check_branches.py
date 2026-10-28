@@ -1014,3 +1014,6 @@ def test_consistency_check_get_propagates_inconsistency_event_failure(
         response = client.get("/controller/consistency-check")
 
     assert response.status_code == 500
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

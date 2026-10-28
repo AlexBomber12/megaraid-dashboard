@@ -412,3 +412,18 @@ async def test_foreign_config_templates_reject_unknown_variants(
 
     with pytest.raises(StorcliCommandFailed, match="not allowed"):
         await run_storcli(argv, use_sudo=False, binary_path="storcli64")
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize("extra", ["force", "J", "/c0/e252/s1", "all", "--help"])
+async def test_locate_rejects_extra_arguments_before_spawn(monkeypatch, action, extra):
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Invalid locate command spawned a process")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", forbidden)
+    with pytest.raises(StorcliCommandFailed, match="not allowed"):
+        await run_storcli(
+            ["/c0/e252/s0", action, "locate", "J", extra],
+            use_sudo=False,
+            binary_path="storcli64",
+        )

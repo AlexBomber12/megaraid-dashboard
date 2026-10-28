@@ -409,3 +409,6 @@ def test_locate_executable_nonzero_json_failure(
             assert "StorcliResponseFailed" in event.summary
             assert "PRIVATE-SERIAL" not in event.summary
             assert "succeeded" not in event.summary
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

@@ -1,6 +1,6 @@
-{% if controller_read_only %}
-<p class="muted">Controller actions disabled: read-only rollout.</p>
-<fieldset disabled class="read-only-controls" title="Controller actions disabled: read-only rollout.">
+{% if other_writes_disabled_reason %}
+<p class="muted">{{ other_writes_disabled_reason }}</p>
+<fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
 {% endif %}
 <section
   class="replace-wizard"
@@ -117,4 +117,4 @@
   </div>
 </section>
 
-{% if controller_read_only %}</fieldset>{% endif %}
+{% if other_writes_disabled_reason %}</fieldset>{% endif %}

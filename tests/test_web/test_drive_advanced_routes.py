@@ -803,3 +803,6 @@ def test_advanced_precheck_audit_failure_is_observable(
         )
         assert response.status_code == 500
         assert response.json()["error"] == "audit persistence failed"
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

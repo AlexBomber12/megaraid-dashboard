@@ -151,7 +151,11 @@ production procedure is separate: `PRODUCTION_READ_ONLY_SMOKE.md`.
 
 `CONTROLLER_READ_ONLY=true` refuses every controller-action POST and maintenance
 POST before handler probes, even for dry runs and active persisted/configured
-maintenance. The default false preserves the existing gate matrix. Disabled
+maintenance. The default is true. `CONTROLLER_ACTION_CAPABILITY=none` also fails closed;
+selecting `locate` permits only Locate Start/Stop and maintenance controls after
+read-only is explicitly disabled. Legacy handler regression modules explicitly
+bypass only the capability gate to keep testing their inner checks. The separate
+locate rollout acceptance suites exercise the actual gate without that bypass. Disabled
 fieldsets keep mutation controls disabled after client initialization and refresh;
 GET navigation and history stay available. The reason is “Controller actions
 disabled: read-only rollout.” Tests cover every action in `ACTIONS` with zero
@@ -165,3 +169,6 @@ inventory. Its tests fake the wrapper boundary and never invoke real StorCLI.
 Follow [the rollout procedure](STORCLI_READ_ONLY_ROLLOUT.md) for complete-policy
 validation, service restrictions, private recovery media and rollback. These
 offline checks do not establish physical write acceptance or rebuild initiation.
+
+See the [locate-only operator procedure](STORCLI_LOCATE_ONLY_ROLLOUT.md) for
+policy generation, alert suppression constraints, activation and rollback.

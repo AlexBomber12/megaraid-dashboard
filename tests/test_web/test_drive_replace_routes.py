@@ -1301,3 +1301,6 @@ def test_replace_precheck_failure_with_failed_audit_returns_500(
         )
         assert response.status_code == 500
         assert response.json()["error"] == "audit persistence failed"
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

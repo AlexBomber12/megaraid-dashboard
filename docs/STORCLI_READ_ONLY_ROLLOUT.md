@@ -332,7 +332,7 @@ review means remove only the two exclusive files, apply the recorded-directory
 cleanup from step 6, and daemon-reload; do not restart. These paths and commands
 are a proposed operator deployment, not a change applied by this PR.
 
-CONTROLLER_READ_ONLY defaults to false for compatibility. Explicit true blocks
+CONTROLLER_READ_ONLY defaults to true. It blocks
 all action POSTs before handler probes/subprocess execution, including locate,
 patrol, CC, buzzer, advanced drive actions, hot spare, replacement and foreign
 import/clear, including dry runs. Maintenance start/stop POSTs are also refused;

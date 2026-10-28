@@ -37,6 +37,7 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
 )
 from megaraid_dashboard.services import scheduler as scheduler_state
+from megaraid_dashboard.services.action_capabilities import action_disabled_reason
 from megaraid_dashboard.services.audit import (
     AUDIT_CATEGORY_DRIVE_MAKE_HOT_SPARE,
     AUDIT_CATEGORY_DRIVE_MARK_UBAD,
@@ -200,9 +201,26 @@ async def require_controller_capability(request: Request) -> None:
                 "error": "controller_read_only",
                 "message": "Controller actions are disabled for this read-only rollout. "
                 "An operator must review write permissions and explicitly set "
-                "CONTROLLER_READ_ONLY=false before using maintenance controls.",
+                "CONTROLLER_READ_ONLY=false and CONTROLLER_ACTION_CAPABILITY=locate. "
+                "Locate also requires an active maintenance window.",
             },
         )
+
+    if request.method == "POST":
+        route_name = request.scope["route"].name
+        family = (
+            "locate"
+            if route_name in {"drive_locate_start", "drive_locate_stop"}
+            else "maintenance"
+            if route_name in {"maintenance_start", "maintenance_stop"}
+            else "other writes"
+        )
+        reason = action_disabled_reason(request.app.state.settings, family)
+        if reason is not None:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "controller_action_unavailable", "message": reason},
+            )
 
 
 router = APIRouter(dependencies=[Depends(require_controller_capability)])

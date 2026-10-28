@@ -183,3 +183,6 @@ def test_hot_spare_without_disk_group_explains_refusal(
     expect(authenticated_page.get_by_role("button", name="Hot Spare")).to_be_disabled()
     expect(authenticated_page.locator(".disabled-reasons")).to_contain_text("No disk group")
     assert fake_storcli.calls == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

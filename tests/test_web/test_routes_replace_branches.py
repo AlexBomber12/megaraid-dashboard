@@ -567,3 +567,6 @@ def _assert_no_audit_event(test_app: FastAPI) -> None:
     with session_factory() as session:
         assert isinstance(session, Session)
         assert session.scalars(select(Event)).all() == []
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

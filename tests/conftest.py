@@ -141,3 +141,38 @@ def scripted_storcli(tmp_path: Path) -> Callable[[dict[str, tuple[str, int, str]
         return binary
 
     return create
+
+
+@pytest.fixture
+def legacy_controller_handlers(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> Iterator[None]:
+    """Exercise existing inner checks behind the newly closed rollout gate.
+
+    Only legacy handler/UI regression modules opt in. Rollout acceptance tests
+    never use this fixture. Read-only protection remains real in both suites.
+    """
+    from megaraid_dashboard.config import get_settings
+
+    def inner_gate(settings: Any, family: str) -> str | None:
+        return (
+            "Controller actions disabled: read-only rollout."
+            if settings.controller_read_only
+            else None
+        )
+
+    monkeypatch.setenv("CONTROLLER_READ_ONLY", "false")
+    monkeypatch.setattr("megaraid_dashboard.web.routes.action_disabled_reason", inner_gate)
+    monkeypatch.setattr("megaraid_dashboard.web.templates.action_disabled_reason", inner_gate)
+    get_settings.cache_clear()
+    if "_live_server_handle" in request.fixturenames:
+        handle = request.getfixturevalue("_live_server_handle")
+        original = handle.app.state.settings
+        handle.app.state.settings = original.model_copy(update={"controller_read_only": False})
+        try:
+            yield
+        finally:
+            handle.app.state.settings = original
+    else:
+        yield
+    get_settings.cache_clear()

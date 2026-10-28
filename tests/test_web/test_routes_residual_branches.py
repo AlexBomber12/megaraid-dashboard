@@ -183,3 +183,6 @@ def test_patrol_read_mode_returns_500_when_storcli_raises_before_result(
     assert body["action"] == "mode"
     assert "result" not in body
     assert "storcli64 missing" in body["storcli_error"]
+
+
+pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")
