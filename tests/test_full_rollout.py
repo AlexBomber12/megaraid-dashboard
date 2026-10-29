@@ -130,13 +130,14 @@ def test_insert_uses_explicit_row_instead_of_slot_order(full_app):
 
 
 @pytest.mark.parametrize("step", ["offline", "missing", "insert"])
-def test_replacement_requires_every_step_before_offline(full_app, step):
+@pytest.mark.parametrize("entry", ["replace-offline", "replace-missing", "replace-insert"])
+def test_replacement_requires_every_step_before_mutation(full_app, step, entry):
     client, app, fake, contract = full_app
     data = policy_data()
     verb = f"set {step}" if step != "insert" else "insert dg="
     data["commands"] = [item for item in data["commands"] if verb not in item["command"]]
     contract.write_text(json.dumps(data))
-    action = next(item for item in ACTIONS if item.name == "replace-offline")
+    action = next(item for item in ACTIONS if item.name == entry)
     body = prepare(action, SimpleNamespace(app=app), fake)
     html = client.get("/drives/252:0").text
     assert f"{step.title()} command or topology is not approved" in html
@@ -215,3 +216,211 @@ def test_invalid_selected_request_is_refused_without_probes(full_app, path, body
     assert response.status_code == 400
     assert "Invalid action request" in response.text
     assert fake.calls == []
+
+
+@pytest.mark.parametrize("fault", ["none", "controller", "unknown-rebuild", "active-rebuild"])
+def test_foreign_import_recovery_without_local_vd(full_app, fault):
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == "foreign-import")
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    from sqlalchemy import delete
+
+    from megaraid_dashboard.db.models import VirtualDriveSnapshot
+
+    with app.state.session_factory() as session, session.begin():
+        session.execute(delete(VirtualDriveSnapshot))
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    controller = config["controller"]
+    controller.update({"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []})
+    for drive in controller["PD LIST"]:
+        drive.update(State="UGood", DG="-")
+    if fault == "controller":
+        controller["Basics"]["Serial Number"] = "DIFFERENT-CONTROLLER"
+    fake.configure(
+        controller=controller,
+        rebuild_state={"unknown-rebuild": "Unknown", "active-rebuild": "In progress"}.get(
+            fault, "Not in progress"
+        ),
+    )
+    response = client.post(action.path, json=body)
+    if fault == "none":
+        assert response.status_code == 200, response.text
+        assert fake.mutations == [list(action.command)]
+    else:
+        assert response.status_code == 502, response.text
+        assert fake.mutations == []
+        assert (
+            "controller" in response.text.lower()
+            if fault == "controller"
+            else "rebuild" in response.text.lower()
+        )
+        assert "Refresh" in response.text or "verify inventory" in response.text
+
+
+@pytest.mark.parametrize(
+    "name,allowed",
+    [
+        ("locate-start", True),
+        ("locate-stop", True),
+        ("buzzer-silence", True),
+        ("buzzer-disable", True),
+        ("buzzer-enable", True),
+        ("patrol-read-start", True),
+        ("patrol-read-stop", True),
+        ("patrol-read-mode", True),
+        ("mark-ugood", True),
+        ("spindown", True),
+        ("foreign-import", True),
+        ("foreign-clear", True),
+        ("consistency-check-start", False),
+        ("consistency-check-stop", False),
+        ("consistency-check-mode", False),
+        ("hotspare", False),
+        ("replace-offline", False),
+        ("replace-missing", False),
+        ("replace-insert", False),
+    ],
+)
+def test_action_specific_local_topology_requirements(full_app, name, allowed):
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == name)
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    config["controller"].update(
+        {"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []}
+    )
+    fake.configure(controller=config["controller"])
+    response = client.post(action.path, json=body, follow_redirects=False)
+    assert response.status_code == (
+        (303 if action.family in {"buzzer", "advanced"} else 200) if allowed else 502
+    ), response.text
+    assert fake.mutations == ([list(action.command)] if allowed else [])
+    if not allowed:
+        assert "topology" in response.text
+        assert "Refresh" in response.text
+
+
+def test_hotspare_requires_group_but_not_a_local_vd(full_app):
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == "hotspare")
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    config["controller"].update({"Virtual Drives": 0, "VD LIST": []})
+    fake.configure(controller=config["controller"])
+    response = client.post(action.path, json=body, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    assert fake.mutations == [list(action.command)]
+
+
+@pytest.mark.parametrize("all_vds", [False, True])
+def test_cc_checks_the_scope_of_the_selected_target(full_app, all_vds):
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == "consistency-check-start")
+    prepare(action, SimpleNamespace(app=app), fake)
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    config["controller"]["Virtual Drives"] = 2
+    config["controller"]["VD LIST"].append({"DG/VD": "0/1"})
+    fake.configure(controller=config["controller"])
+    response = client.post(action.path, json={} if all_vds else {"vd_id": 0})
+    assert response.status_code == (502 if all_vds else 200), response.text
+    assert fake.mutations == ([] if all_vds else [["/c0/v0", "start", "cc", "J"]])
+
+
+def test_stop_recovery_survives_incomplete_replacement_and_no_vd(full_app):
+    client, app, fake, contract = full_app
+    data = policy_data()
+    data["commands"] = [item for item in data["commands"] if "set missing" not in item["command"]]
+    contract.write_text(json.dumps(data))
+    app.state.settings = app.state.settings.model_copy(update={"maintenance_mode": False})
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    config["controller"].update(
+        {"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []}
+    )
+    fake.configure(controller=config["controller"])
+    response = client.post("/drives/252:0/locate/stop")
+    assert response.status_code == 200, response.text
+    assert fake.mutations == [["/c0/e252/s0", "stop", "locate", "J"]]
+
+
+@pytest.mark.parametrize("change", ["controller", "drives", "foreign"])
+def test_foreign_rechecks_safety_evidence_after_rebuild_reads(full_app, change):
+    import copy
+
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == "foreign-import")
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    controller = copy.deepcopy(config["controller"])
+    if change == "controller":
+        controller["Basics"]["Serial Number"] = "CHANGED-DURING-READS"
+        updates = {"controller": controller}
+    elif change == "drives":
+        controller["PD LIST"][0]["DID"] = 999
+        updates = {"controller": controller}
+    else:
+        updates = {"foreign": {"Total foreign DG Count": 1, "Total foreign drive Count": 1}}
+    fake.configure(after_rebuild=updates)
+    response = client.post(action.path, json=body)
+    assert response.status_code == 502
+    assert "changed" in response.text
+    assert "Refresh" in response.text
+    assert fake.mutations == []
+
+
+def test_foreign_metadata_change_with_the_same_confirmation_summary_is_refused(full_app):
+    import copy
+
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == "foreign-import")
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    foreign = copy.deepcopy(config["foreign"])
+    foreign["FOREIGN PD LIST"][0]["DID"] = 999
+    fake.configure(after_rebuild={"foreign": foreign})
+    response = client.post(action.path, json=body)
+    assert response.status_code == 502
+    assert "foreign configuration changed" in response.text
+    assert fake.mutations == []
+
+
+@pytest.mark.parametrize("name", ["foreign-import", "foreign-clear"])
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize("unknown_rebuild", [False, True])
+def test_foreign_live_safety_without_any_stored_snapshot(full_app, name, dry_run, unknown_rebuild):
+    from sqlalchemy import delete
+
+    from megaraid_dashboard.db.models import (
+        CacheVaultSnapshot,
+        ControllerSnapshot,
+        PhysicalDriveSnapshot,
+        VirtualDriveSnapshot,
+    )
+
+    client, app, fake, _contract = full_app
+    action = next(item for item in ACTIONS if item.name == name)
+    body = prepare(action, SimpleNamespace(app=app), fake)
+    body["dry_run"] = dry_run
+    with app.state.session_factory() as session, session.begin():
+        for model in (
+            CacheVaultSnapshot,
+            PhysicalDriveSnapshot,
+            VirtualDriveSnapshot,
+            ControllerSnapshot,
+        ):
+            session.execute(delete(model))
+    config = json.loads((fake.path.parent / "state.json").read_text())
+    config["controller"].update(
+        {"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []}
+    )
+    fake.configure(
+        controller=config["controller"],
+        rebuild_state="Unknown" if unknown_rebuild else "Not in progress",
+    )
+    response = client.post(action.path, json=body)
+    assert response.status_code == (502 if unknown_rebuild else 200), response.text
+    assert fake.mutations == ([] if unknown_rebuild or dry_run else [list(action.command)])
+    if unknown_rebuild:
+        assert "rebuild" in response.text
+        assert "Refresh" in response.text
+    elif dry_run:
+        assert response.json()["dry_run"] is True

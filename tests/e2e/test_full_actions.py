@@ -198,3 +198,62 @@ def test_selected_ui_option_has_independent_approval(
     else:
         expect(button).to_be_disabled()
         assert fake_storcli.calls == []
+
+
+@pytest.mark.parametrize("absent", ["offline", "missing", "insert"])
+def test_direct_missing_cannot_bypass_the_disabled_replacement_wizard(
+    authenticated_page,
+    live_server,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    full_controller_handlers,
+    absent,
+):
+    # The API matrix covers direct POSTs; this proves each refusal is visible before a click.
+    from tests.safety.harness import prepare
+
+    action = next(item for item in ACTIONS if item.name == "replace-missing")
+    prepare(action, _live_server_handle, fake_storcli)
+    data = json.loads(full_controller_handlers.read_text())
+    token = f"set {absent}" if absent != "insert" else "insert dg="
+    data["commands"] = [item for item in data["commands"] if token not in item["command"]]
+    full_controller_handlers.write_text(json.dumps(data))
+    page = authenticated_page
+    login_and_navigate(page, f"{live_server}/drives/252:0")
+    expect(page.get_by_role("button", name="Begin Replacement", exact=True)).to_be_disabled()
+    expect(page.locator("body")).to_contain_text(
+        f"{absent.title()} command or topology is not approved"
+    )
+    assert fake_storcli.calls == []
+
+
+def test_foreign_recovery_browser_without_any_local_virtual_drive(
+    authenticated_page,
+    live_server,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+):
+    from sqlalchemy import delete
+
+    from megaraid_dashboard.db import VirtualDriveSnapshot
+    from tests.e2e import test_foreign_configuration as foreign
+
+    with _live_server_handle.app.state.session_factory() as session, session.begin():
+        session.execute(delete(VirtualDriveSnapshot))
+    config = json.loads((fake_storcli.path.parent / "state.json").read_text())
+    config["controller"].update(
+        {"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []}
+    )
+    fake_storcli.configure(controller=config["controller"])
+    action = next(item for item in ACTIONS if item.name == "foreign-import")
+    foreign.test_foreign_action_browser(
+        authenticated_page,
+        live_server,
+        snapshot_with_drives,
+        _live_server_handle,
+        fake_storcli,
+        action,
+        "success",
+    )

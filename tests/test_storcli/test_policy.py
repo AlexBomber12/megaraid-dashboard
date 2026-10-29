@@ -209,9 +209,12 @@ async def test_wrapper_refuses_unapproved_live_state(approved, scripted_storcli,
     else:
         data["HwCfg"]["Alarm"] = "Unknown"
     binary = scripted_storcli({"/c0 show all J": (json.dumps(payload), 0, "")})
+    command = (
+        ["/c0", "set", "cc=conc"] if change.startswith("vd-") else ["/c0", "set", "alarm=silence"]
+    )
     with pytest.raises(StorcliCommandFailed, match=r"identity|topology|Buzzer"):
         await run_storcli(
-            ["/c0", "set", "alarm=silence"],
+            command,
             use_sudo=False,
             binary_path=str(binary),
             authorization_path=approved,
@@ -286,4 +289,34 @@ async def test_ambiguous_write_result_is_never_success(approved, scripted_storcl
             use_sudo=False,
             binary_path=str(binary),
             authorization_path=approved,
+        )
+
+
+@pytest.mark.parametrize("absent", ["offline", "missing", "insert"])
+@pytest.mark.parametrize("entry", ["offline", "missing", "insert"])
+async def test_wrapper_rechecks_the_complete_replacement_contract(
+    approved, absent, entry, monkeypatch
+):
+    import asyncio
+
+    file = Path(approved)
+    data = json.loads(file.read_text())
+    token = f"set {absent}" if absent != "insert" else "insert dg="
+    data["commands"] = [item for item in data["commands"] if token not in item["command"]]
+    file.write_text(json.dumps(data))
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Incomplete replacement must never reach a subprocess")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", forbidden)
+    command = (
+        ["/c0/e252/s0", "insert", "dg=0", "array=0", "row=0"]
+        if entry == "insert"
+        else ["/c0/e252/s0", "set", entry]
+    )
+    with pytest.raises(
+        StorcliNotAvailable, match=f"{absent.title()} command or topology is not approved"
+    ):
+        await run_storcli(
+            command, use_sudo=False, binary_path="never-executed", authorization_path=approved
         )

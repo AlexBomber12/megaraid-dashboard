@@ -301,3 +301,19 @@ hardware Telegram incidents remain eligible during maintenance; normal relevance
 warning confirmation, deduplication and retry still apply. Operator audit categories
 are excluded. Old maintenance skips are reconsidered through the same current-data
 checks, so deployment may deliver an old incident that is still active.
+
+
+### Action-specific prewrite scope
+
+Controller serial/model verification applies to every write. Local VD/DG checks
+apply to configured replacement and CC scope; dedicated hot-spare assignment uses
+explicit live DG evidence. Locate, alarm, patrol and unconfigured-drive actions do
+not inherit a blanket VD requirement. Foreign Import/Clear can recover/clear metadata
+without a local VD, but require fresh complete PD membership, explicit idle/completed
+per-drive rebuild evidence, stable controller/inventory and the unchanged current
+foreign digest. Unknown or unsupported reads refuse the write with refresh/reconfirm
+guidance. Existing confirmation, maintenance/destructive, authentication, CSRF,
+command approval, explicit result and actor-attributed audit gates remain in force.
+Every replacement POST, including direct Missing/Insert, and the wrapper itself
+require the complete approved Offline/Missing/Insert contract before mutation.
+Stop Locate retains its sole maintenance-expiry recovery exception.

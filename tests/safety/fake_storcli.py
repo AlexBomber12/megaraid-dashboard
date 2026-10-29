@@ -45,7 +45,7 @@ def main() -> None:
         controller.pop("Command Status")
     elif fault == "unknown":
         controller["Command Status"] = {"Status": "Mystery"}
-    data: dict[str, Any] = {}
+    data: Any = {}
     if read:
         if args == ["/c0", "show", "all", "J"]:
             data = config["controller"]
@@ -56,7 +56,18 @@ def main() -> None:
         elif args[1:3] == ["show", "cc"]:
             data = {"CC Mode": config["mode"], "CC Current State": config["operation_state"]}
         elif args[1:3] == ["show", "rebuild"]:
-            data = {"Rebuild Status": "In progress", "Progress%": 10}
+            data = [
+                {
+                    "Drive-ID": args[0],
+                    "Status": config.get("rebuild_state", "Not in progress"),
+                    "Progress%": config.get("rebuild_progress", "-"),
+                    "Estimated Time Left": "-",
+                }
+            ]
+            changes = config.pop("after_rebuild", {})
+            if changes:
+                config.update(changes)
+                (root / "state.json").write_text(json.dumps(config))
         elif args[0].startswith("/c0/e") and args[1:3] == ["show", "all"]:
             slot = args[0].split("/s")[-1]
             enc = args[0].split("/e")[-1].split("/")[0]

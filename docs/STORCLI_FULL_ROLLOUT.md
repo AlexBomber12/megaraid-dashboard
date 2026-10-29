@@ -58,8 +58,10 @@ Alternative commands are approved independently: the POST validates its selected
 VD/mode, and each rendered control checks the exact option it submits. An approved
 CC All start does not require a grant for a separate per-VD start; Patrol Auto and
 Manual do not require an unrequested Disable grant. Before enabling Begin Replacement
-or accepting Offline, all three Offline → Missing → Insert commands/topology must
-be approved. An incomplete policy is refused before the first mutation.
+or accepting any Offline, Missing or Insert POST, all three Offline → Missing → Insert
+commands/topology must be approved. This includes a direct Missing request, not only
+browser progression. The wrapper rechecks the complete current contract as well;
+an incomplete policy is refused before any mutation.
 
 Non-mutating controls are inventoried in `docs/operator-controls.json`: navigation,
 Events severity/category/operator filters and pagination, chart ranges, disclosure
@@ -70,6 +72,40 @@ Replacement topology and rebuild monitoring are GETs. Rebuild reads use
 `/c0/e252/sS show rebuild J`; completion requires explicit completed state **and**
 100% progress. Idle, missing progress, failure, stale data and timeout do not mean
 completion. Close stops browser polling; snapshots remain collector-owned.
+
+## Action-specific live prewrite evidence
+
+Every full-capability write still verifies the pinned binary, exact command approval,
+and the live controller serial/model. A missing local VD is not a general prohibition:
+
+| Action family | Required live topology/safety | Does an absent local VD block it? |
+| --- | --- | --- |
+| Locate Start/Stop | Controller identity and exact approved slot command; existing Start maintenance gate and Stop recovery exception | No. Stop remains available after maintenance expiry even with an incomplete replacement policy. |
+| Buzzer | Controller identity and the live alarm setting appropriate to Enable/Disable/Silence | No. |
+| Patrol read | Controller identity and existing known patrol operation state/mode gates | No. Controller scheduling does not require a local VD as an authorization prerequisite. |
+| Mark UGood / Spin Down | Controller identity plus submitted/snapshot/live drive identity and eligible unconfigured state | No. Never treat an online member as an unconfigured drive. |
+| Dedicated hot spare | Controller identity, live explicit approved DG header and consistent DG count in `TOPOLOGY`, plus existing target-DG and UGood/serial checks | No; the approved DG itself must exist. VD presence is not used as a substitute for DG evidence. |
+| Per-VD CC Start | Controller identity and complete, unique live VD identities containing the approved DG/VD target, plus known operation state | Yes, if the approved target is missing. An unrelated VD does not by itself block this exact-target command. |
+| All-VD CC Start/Stop and controller CC mode | Controller identity and exactly the single approved local DG/VD, plus existing operation gates | Yes. These commands can affect all VDs, so an extra/unapproved VD also refuses the action. |
+| Replacement Offline / Missing / Insert | Complete approved three-step contract at every POST and wrapper boundary, approved local DG/VD, explicit approved insert array/row, and existing state/history/typed-serial/destructive gates | Yes. These configured-array operations require the approved local topology; foreign recovery is a separate operation. |
+| Foreign Import / Clear | Controller identity, exact command approval, current foreign configuration/confirmation, fresh complete positive PD count and unique approved slots/device IDs; an explicit idle or completed rebuild read for every present drive; unchanged controller/inventory, current foreign digest and foreign response data across the prewrite reads | No. Import can restore an absent local VD. Neither local VD nor local DG existence is inferred or required for this controller-level recovery command. |
+
+Foreign safety checks use existing exact read grants only: `/c0 show all J`,
+`/c0/e252/sS show rebuild J`, and `/c0/fall show all J`. No write is a permission
+or safety probe. Missing/inconsistent drive membership, unknown/malformed/unsupported
+rebuild reads, active rebuilds, or controller/inventory/foreign changes refuse the
+write with instructions to refresh live reads, wait for rebuilds and reconfirm the
+current foreign configuration. `Not available` and `Not supported` do not prove an
+idle rebuild. Full-capability execution and dry-run previews establish safety from
+these live reads even when no stored controller/VD snapshot exists. Legacy handlers
+retain their snapshot rebuild gates. Previews execute no write; actual execution
+performs the fresh prewrite checks again. No snapshot is updated to claim that import
+restored a VD. Real 1.23.02 foreign/unconfigured-drive rebuild response shapes still need read-only evidence before
+relying on recovery on the real controller; unsupported reads remain refusals.
+
+Live DG headers prove only DG presence for hot-spare assignment. They never derive
+replacement array/row from slot order or turn historical fixture topology into
+current production approval.
 
 ## Evidence still required before activation
 

@@ -538,3 +538,65 @@ def test_rollout_capability_refuses_even_authorized_maintenance(
     assert response.json()["detail"]["error"] == "controller_read_only"
     assert fake_storcli.calls == []
     assert database_observation(snapshot_with_drives) == before
+
+
+@pytest.mark.parametrize("entry", ["replace-offline", "replace-missing", "replace-insert"])
+@pytest.mark.parametrize("absent", ["offline", "missing", "insert"])
+def test_every_replacement_post_refuses_incomplete_contract(
+    client,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    full_controller_handlers,
+    entry,
+    absent,
+):
+    import json
+
+    action = next(item for item in ACTIONS if item.name == entry)
+    body = prepare(action, _live_server_handle, fake_storcli)
+    contract = json.loads(full_controller_handlers.read_text())
+    token = f"set {absent}" if absent != "insert" else "insert dg="
+    contract["commands"] = [item for item in contract["commands"] if token not in item["command"]]
+    full_controller_handlers.write_text(json.dumps(contract))
+    before = database_observation(snapshot_with_drives)
+    response = client.post(action.path, json=body)
+    assert response.status_code == 403
+    assert f"{absent.title()} command or topology is not approved" in response.text
+    assert fake_storcli.calls == []
+    assert database_observation(snapshot_with_drives) == before
+
+
+@pytest.mark.parametrize("fault", ["none", "controller", "unknown-rebuild"])
+def test_foreign_import_with_no_local_vd_uses_live_safety_evidence(
+    client,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    fault,
+):
+    import json
+
+    from sqlalchemy import delete
+
+    from megaraid_dashboard.db import VirtualDriveSnapshot
+
+    action = next(item for item in ACTIONS if item.name == "foreign-import")
+    body = prepare(action, _live_server_handle, fake_storcli)
+    with _live_server_handle.app.state.session_factory() as session, session.begin():
+        session.execute(delete(VirtualDriveSnapshot))
+    config = json.loads((fake_storcli.path.parent / "state.json").read_text())
+    config["controller"].update(
+        {"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []}
+    )
+    if fault == "controller":
+        config["controller"]["Basics"]["Serial Number"] = "WRONG-CONTROLLER"
+    fake_storcli.configure(
+        controller=config["controller"],
+        rebuild_state=("Unknown" if fault == "unknown-rebuild" else "Not in progress"),
+    )
+    response = client.post(action.path, json=body)
+    assert response.status_code == (200 if fault == "none" else 502), response.text
+    assert fake_storcli.mutations == ([list(action.command)] if fault == "none" else [])
+    if fault != "none":
+        assert "Refresh" in response.text or "verify inventory" in response.text

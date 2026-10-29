@@ -142,6 +142,7 @@ from megaraid_dashboard.storcli import (
     run_storcli,
 )
 from megaraid_dashboard.storcli.policy import action_refusal, load_policy, replacement_refusal
+from megaraid_dashboard.storcli.runner import check_storcli_prewrite
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -227,7 +228,8 @@ async def require_controller_capability(request: Request) -> None:
             selected = await _requested_approval_command(request)
             reason = (
                 replacement_refusal(policy, request.url.path)
-                if route_name == "drive_replace_offline"
+                if route_name
+                in {"drive_replace_offline", "drive_replace_missing", "drive_replace_insert"}
                 else action_refusal(policy, request.url.path, selected)
             )
         if reason is not None:
@@ -261,11 +263,17 @@ async def _requested_approval_command(request: Request) -> list[str] | None:
 
 class _AuthorizationKwargs(TypedDict, total=False):
     authorization_path: str
+    expected_foreign_digest: str
 
 
-def _authorization_kwargs(settings: Settings) -> _AuthorizationKwargs:
+def _authorization_kwargs(
+    settings: Settings, *, foreign_digest: str | None = None
+) -> _AuthorizationKwargs:
     if settings.controller_action_capability == "full-supported-actions":
-        return {"authorization_path": settings.controller_command_policy}
+        result: _AuthorizationKwargs = {"authorization_path": settings.controller_command_policy}
+        if foreign_digest is not None:
+            result["expected_foreign_digest"] = foreign_digest
+        return result
     return {}
 
 
@@ -3362,9 +3370,12 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    rebuild_state = await run_in_threadpool(
-        _any_drive_rebuilding,
-        request=request,
+    # Full-capability execution/preview proves rebuild safety with fresh reads below.
+    # Keep the snapshot fallback only for legacy handlers.
+    rebuild_state = (
+        False
+        if settings.controller_action_capability == "full-supported-actions"
+        else await run_in_threadpool(_any_drive_rebuilding, request=request)
     )
     if rebuild_state is None:
         return await _reject_foreign_config_destructive(
@@ -3394,6 +3405,16 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
 
     argv = build_foreign_config_import_command()
 
+    if dry_run and settings.controller_action_capability == "full-supported-actions":
+        failure = await _check_foreign_preview_safety(
+            request=request,
+            settings=settings,
+            argv=argv,
+            action="import",
+            digest=live_foreign_config.digest,
+        )
+        if failure is not None:
+            return failure
     if dry_run:
         return JSONResponse(
             {
@@ -3486,9 +3507,12 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    rebuild_state = await run_in_threadpool(
-        _any_drive_rebuilding,
-        request=request,
+    # Full-capability execution/preview proves rebuild safety with fresh reads below.
+    # Keep the snapshot fallback only for legacy handlers.
+    rebuild_state = (
+        False
+        if settings.controller_action_capability == "full-supported-actions"
+        else await run_in_threadpool(_any_drive_rebuilding, request=request)
     )
     if rebuild_state is None:
         return await _reject_foreign_config_destructive(
@@ -3518,6 +3542,16 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
 
     argv = build_foreign_config_clear_command()
 
+    if dry_run and settings.controller_action_capability == "full-supported-actions":
+        failure = await _check_foreign_preview_safety(
+            request=request,
+            settings=settings,
+            argv=argv,
+            action="clear",
+            digest=live_foreign_config.digest,
+        )
+        if failure is not None:
+            return failure
     if dry_run:
         return JSONResponse(
             {
@@ -3585,6 +3619,34 @@ async def _reject_foreign_config_destructive(
     return JSONResponse(rejection_body, status_code=status_code)
 
 
+async def _check_foreign_preview_safety(
+    *,
+    request: Request,
+    settings: Settings,
+    argv: list[str],
+    action: Literal["import", "clear"],
+    digest: str,
+) -> JSONResponse | None:
+    try:
+        await check_storcli_prewrite(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+            authorization_path=settings.controller_command_policy,
+            expected_foreign_digest=digest,
+        )
+    except StorcliError as exc:
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action=action,
+            digest=digest,
+            reason=f"live safety precheck failed: {_truncate_audit_detail(str(exc))}",
+            rejection_body={"error": "live safety precheck failed", "detail": str(exc)},
+            status_code=502,
+        )
+    return None
+
+
 async def _run_foreign_config_destructive(
     *,
     request: Request,
@@ -3600,7 +3662,7 @@ async def _run_foreign_config_destructive(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
-            **_authorization_kwargs(settings),
+            **_authorization_kwargs(settings, foreign_digest=digest),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"

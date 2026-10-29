@@ -191,3 +191,11 @@ def replacement_refusal(policy: CommandPolicy, path: str) -> str | None:
                 "before taking a drive offline."
             )
     return None
+
+
+def replacement_command_refusal(policy: CommandPolicy, args: list[str]) -> str | None:
+    """Recheck the complete contract at the wrapper boundary, even after policy edits."""
+    if args[1:3] in (["set", "offline"], ["set", "missing"]) or args[1] == "insert":
+        slot = args[0].removeprefix("/c0/e").replace("/s", ":")
+        return replacement_refusal(policy, f"/drives/{slot}/replace/step")
+    return None
