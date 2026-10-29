@@ -76,7 +76,7 @@ The operator's supplied 1.23.02 CC help explicitly advertises off/seq/conc.
 | `/c0/eE/sS set bad` | Not documented for classic CLI in these references; UI unavailable with explanation and wrapper rejects before subprocess. No replacement command guessed. |
 | `/c0/eE/sS spindown` | Classic documented for unconfigured drives; physical effects unverified. Controller can reject an ineligible drive. |
 | `/c0/eE/sS add hotsparedrive dgs=N` | Classic documented; physical effects unverified. |
-| `/c0/eE/sS insert dg=N array=N row=N` | Classic documented in 2017 guide; exact 1.23.02 availability and physical effects unverified. Confirm selected-binary help before any later write verification. |
+| `/c0/eE/sS insert dg=N array=N row=N` | Operator-confirmed global 1.23.02 help advertises `storcli /cx[/ex]/sx insert dg=A array=B row=C`. This establishes syntax only. Current production DG/array/row approval and physical effects remain unverified; the historical fixture must not authorize topology. |
 | `/c0/fall import/delete` | Classic documented; physical effects unverified. |
 
 CC concurrent/sequential controls describe execution order, not automatic/manual
@@ -92,3 +92,16 @@ The executable operator procedure is now [STORCLI_READ_ONLY_ROLLOUT.md](STORCLI_
 It supersedes the earlier illustrative slot-0-only sudoers plan. PR #128 added
 parser compatibility; it did not change the production selection. A successful
 read does not establish write capability, and CLI version never enables writes.
+
+## Final combined rollout evidence update
+
+The operator confirmed the prior global 1.23.02 help capture for insert syntax in
+this review. `/etc/megaraid-dashboard-rollout/inventory.json` approves controller
+and drive identities only. It does **not** approve DG/array/row. The historical
+`tests/fixtures/storcli/redacted/c0_show_all.json` can have row different from slot;
+it is a parser/test example, never current production authorization.
+
+Follow [STORCLI_FULL_ROLLOUT.md](STORCLI_FULL_ROLLOUT.md) for the single final release.
+Insert remains unavailable until current read-only topology is independently checked
+and each exact slot/DG/array/row command is approved. No guessed topology grant is
+created. All physical effects remain unverified.

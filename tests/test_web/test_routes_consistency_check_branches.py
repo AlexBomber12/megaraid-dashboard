@@ -812,6 +812,8 @@ def test_consistency_check_mode_returns_500_when_storcli_unavailable_and_audit_f
     body = response.json()
     assert body == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "mode",
         "argv": ["/c0", "set", "cc=seq", "J"],
         "storcli_error": "storcli unavailable",
@@ -856,6 +858,8 @@ def test_consistency_check_mode_returns_500_when_storcli_succeeds_but_audit_fail
     body = response.json()
     assert body == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "mode",
         "argv": ["/c0", "set", "cc=conc", "J"],
         "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
@@ -972,6 +976,8 @@ def test_consistency_check_start_rejection_returns_500_when_audit_fails(
     assert response.status_code == 500
     assert response.json() == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "start",
         "rejection_reason": "already running",
     }

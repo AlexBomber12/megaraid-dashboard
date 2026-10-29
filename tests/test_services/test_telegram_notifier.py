@@ -458,7 +458,7 @@ def test_media_error_dedup_resets_for_replacement_disk(
 # ---------------------------------------------------------------------------
 
 
-def test_maintenance_mode_skips_events_permanently(session: Session) -> None:
+def test_maintenance_does_not_silence_real_incident(session: Session) -> None:
     set_maintenance_state(
         session,
         active=True,
@@ -472,15 +472,15 @@ def test_maintenance_mode_skips_events_permanently(session: Session) -> None:
     during = _cycle(session, sender)
     after = _cycle(session, sender, now=NOW + timedelta(hours=1))
 
-    assert during == TelegramCycleResult(sent=0, failed=0, skipped=1, deferred=0)
+    assert during == TelegramCycleResult(sent=1, failed=0, skipped=0, deferred=0)
     assert after.sent == 0
-    assert sender.sent == []
+    assert len(sender.sent) == 1
     delivery = _delivery(session, event)
     assert delivery is not None
-    assert (delivery.status, delivery.detail) == ("skipped", "maintenance")
+    assert (delivery.status, delivery.detail) == ("sent", None)
 
 
-def test_pending_retry_is_skipped_when_maintenance_starts(session: Session) -> None:
+def test_pending_retry_continues_when_maintenance_starts(session: Session) -> None:
     event = _add_event(session)
     sender = FakeSender(failures=[TelegramSendError("timeout")])
     _cycle(session, sender)
@@ -494,14 +494,14 @@ def test_pending_retry_is_skipped_when_maintenance_starts(session: Session) -> N
 
     result = _cycle(session, sender, now=NOW + timedelta(minutes=2))
 
-    assert result == TelegramCycleResult(sent=0, failed=0, skipped=1, deferred=0)
+    assert result == TelegramCycleResult(sent=1, failed=0, skipped=0, deferred=0)
     delivery = _delivery(session, event)
     assert delivery is not None
-    assert (delivery.status, delivery.attempts, delivery.detail) == ("skipped", 1, "maintenance")
+    assert (delivery.status, delivery.attempts, delivery.detail) == ("sent", 2, None)
     assert delivery.next_attempt_at is None
 
 
-def test_event_recorded_during_maintenance_stays_skipped_after_it_ends(session: Session) -> None:
+def test_event_recorded_during_maintenance_remains_deliverable(session: Session) -> None:
     set_maintenance_state(
         session,
         active=True,
@@ -534,11 +534,11 @@ def test_event_recorded_during_maintenance_stays_skipped_after_it_ends(session: 
         transport_factory=lambda _settings: sender,
     )
 
-    assert result == TelegramCycleResult(sent=0, failed=0, skipped=0, deferred=0)
-    assert sender.sent == []
+    assert result == TelegramCycleResult(sent=1, failed=0, skipped=0, deferred=0)
+    assert len(sender.sent) == 1
     delivery = _delivery(session, event)
     assert delivery is not None
-    assert (delivery.status, delivery.detail) == ("skipped", "maintenance")
+    assert (delivery.status, delivery.detail) == ("sent", None)
     assert _delivery(session, info) is None
 
 
@@ -850,3 +850,62 @@ def test_body_changes_cannot_change_dedup_or_channel_state(
         assert (delivery.status, delivery.attempts) == (status, attempts)
         assert event.notified_at is None
     assert _delivery(session, repeat).detail == "duplicate"
+
+
+def test_old_maintenance_skip_is_reconsidered_and_retried(session: Session) -> None:
+    event = _add_event(session)
+    session.add(
+        EventDelivery(
+            event_id=event.id,
+            channel="telegram",
+            status="skipped",
+            attempts=0,
+            detail="maintenance",
+        )
+    )
+    set_maintenance_state(
+        session, active=True, expires_at=NOW + timedelta(hours=1), started_by="operator"
+    )
+    session.commit()
+    sender = FakeSender(failures=[TelegramSendError("isolated timeout")])
+    assert _cycle(session, sender).failed == 1
+    assert _delivery(session, event).status == "retry"
+    assert _cycle(session, sender, now=NOW + timedelta(minutes=2)).sent == 1
+    assert _cycle(session, sender, now=NOW + timedelta(minutes=3)).sent == 0
+    assert len(sender.sent) == 1
+
+
+def test_operator_action_noise_stays_ineligible_during_maintenance(session: Session) -> None:
+    set_maintenance_state(
+        session, active=True, expires_at=NOW + timedelta(hours=1), started_by="operator"
+    )
+    _add_event(session, category="operator_action", severity="critical")
+    session.commit()
+    sender = FakeSender()
+    assert _cycle(session, sender).sent == 0
+    assert sender.sent == []
+
+
+def test_maintenance_retains_incident_dedup_and_warning_confirmation(session: Session) -> None:
+    set_maintenance_state(
+        session, active=True, expires_at=NOW + timedelta(hours=1), started_by="operator"
+    )
+    session.commit()
+    _add_event(session)
+    duplicate = _add_event(session)
+    warning = _add_event(
+        session,
+        severity="warning",
+        category="controller_temperature",
+        subject="Controller",
+        summary="RoC temperature warning",
+        occurred_at=NOW,
+        after={"temperature_celsius": 97},
+    )
+    sender = FakeSender()
+    first = _cycle(session, sender)
+    assert (first.sent, first.skipped, first.deferred) == (1, 1, 1)
+    assert _delivery(session, duplicate).detail == "duplicate"
+    assert _delivery(session, warning).detail == "awaiting_confirmation"
+    assert _cycle(session, sender, now=NOW + timedelta(minutes=16)).sent == 1
+    assert len(sender.sent) == 2

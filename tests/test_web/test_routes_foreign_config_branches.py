@@ -393,6 +393,8 @@ def test_import_returns_500_when_rejection_audit_persistence_fails(
     body = response.json()
     assert body == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "import",
         "rejection_reason": "confirmation mismatch",
     }
@@ -435,6 +437,8 @@ def test_clear_returns_500_when_rejection_audit_persistence_fails(
     body = response.json()
     assert body == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "clear",
         "rejection_reason": "confirmation phrase mismatch",
     }

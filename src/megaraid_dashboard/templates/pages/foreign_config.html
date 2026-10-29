@@ -93,7 +93,9 @@
               Type the digest shown above exactly to confirm.
             </p>
             {% if other_writes_disabled_reason %}<fieldset disabled class="read-only-controls">{% endif %}
-            <form
+            {% set contract_reason = approved_action_reason(request.url_for('controller_foreign_config_import').path) %}
+{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
+<form
               class="form-grid foreign-config__form"
               data-foreign-config-form="import"
               method="post"
@@ -113,6 +115,7 @@
               </label>
               <button type="submit" class="button button--warning">Import Foreign Configuration</button>
             </form>
+{% if contract_reason %}</fieldset>{% endif %}
             {% if other_writes_disabled_reason %}</fieldset>{% endif %}
             <pre id="foreign-config-import-result" class="foreign-config__result" aria-live="polite"></pre>
           </div>
@@ -126,7 +129,9 @@
               operation in the application: the metadata may be the only path back to the data on those drives.
             </p>
             {% if other_writes_disabled_reason %}<fieldset disabled class="read-only-controls">{% endif %}
-            <form
+            {% set contract_reason = approved_action_reason(request.url_for('controller_foreign_config_clear').path) %}
+{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
+<form
               class="form-grid foreign-config__form"
               data-foreign-config-form="clear"
               method="post"
@@ -146,6 +151,7 @@
               </label>
               <button type="submit" class="button button--danger">Clear Foreign Configuration</button>
             </form>
+{% if contract_reason %}</fieldset>{% endif %}
             {% if other_writes_disabled_reason %}</fieldset>{% endif %}
             <pre id="foreign-config-clear-result" class="foreign-config__result" aria-live="polite"></pre>
           </div>

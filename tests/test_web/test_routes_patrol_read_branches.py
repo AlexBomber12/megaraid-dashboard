@@ -438,6 +438,8 @@ def test_patrol_read_start_rejection_returns_500_when_audit_fails(
     assert response.status_code == 500
     assert response.json() == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "start",
         "rejection_reason": "already running",
     }

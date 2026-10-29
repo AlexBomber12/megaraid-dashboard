@@ -31,20 +31,32 @@
                 <span class="muted">{{ operation.progress_percent }}%{% if operation.progress_eta_text %} · {{ operation.progress_eta_text }}{% endif %}</span>
               {% endif %}
             </div>
+            {% if not operation.can_start %}<p class="muted">Start needs a known idle state. Refresh operation status.</p>{% endif %}
+            {% if not operation.can_stop %}<p class="muted">Stop needs a known active state. Refresh operation status.</p>{% endif %}
+            {% if not operation.can_change_mode %}<p class="muted">Mode changes need a known state. Restore read probes and refresh.</p>{% endif %}
             <div class="button-row">
-              <form method="post" action="{{ operation.start_url or '#' }}" class="inline-form" data-csrf-form>
+              {% set contract_reason = approved_action_reason(operation.start_url or '#') %}
+{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
+<form method="post" action="{{ operation.start_url or '#' }}" class="inline-form" data-csrf-form>
                 <input type="hidden" name="csrf_token" value="">
                 <button class="button" type="submit" {% if not operation.can_start %}disabled{% endif %}>Start</button>
               </form>
-              <form method="post" action="{{ operation.stop_url or '#' }}" class="inline-form" data-csrf-form>
+{% if contract_reason %}</fieldset>{% endif %}
+              {% set contract_reason = approved_action_reason(operation.stop_url or '#') %}
+{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
+<form method="post" action="{{ operation.stop_url or '#' }}" class="inline-form" data-csrf-form>
                 <input type="hidden" name="csrf_token" value="">
                 <button class="button" type="submit" {% if not operation.can_stop %}disabled{% endif %}>Stop</button>
               </form>
-              <form method="post" action="{{ operation.mode_url or '#' }}" class="inline-form" data-csrf-form data-operation-mode-form>
+{% if contract_reason %}</fieldset>{% endif %}
+              {% set contract_reason = approved_action_reason(operation.mode_url or '#', next_operation_mode) %}
+{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
+<form method="post" action="{{ operation.mode_url or '#' }}" class="inline-form" data-csrf-form data-operation-mode-form>
                 <input type="hidden" name="csrf_token" value="">
                 <input type="hidden" name="mode" value="{{ next_operation_mode }}">
                 <button class="button" type="submit" {% if not operation.can_change_mode %}disabled{% endif %}>Switch to {{ next_operation_mode | title }}</button>
               </form>
+{% if contract_reason %}</fieldset>{% endif %}
             </div>
             <div class="form-error" data-controller-action-error hidden role="alert"></div>
           </article>

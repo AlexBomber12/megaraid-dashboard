@@ -24,27 +24,50 @@ def main() -> None:
     fault = config.get("read_fault" if read else "fault", "success")
     if fault == "timeout":
         time.sleep(60)
+    if fault == "denied":
+        sys.stderr.write("sudo: command not allowed; administrator must review exact sudoers")
+        sys.exit(1)
+    if fault == "malformed":
+        sys.stdout.write("{truncated")
+        return
     if fault == "nonzero":
         sys.exit(7)
     if not read:
         time.sleep(config.get("delay_seconds", 0))
     controller: dict[str, Any] = {"Command Status": {"Controller": 0, "Status": "Success"}}
     if fault == "failure":
-        controller["Command Status"] = {"Status": "Failure", "Description": "TEST refusal"}
+        controller["Command Status"] = {
+            "Controller": 0,
+            "Status": "Failure",
+            "Description": "TEST refusal",
+        }
     elif fault == "missing":
         controller.pop("Command Status")
     elif fault == "unknown":
         controller["Command Status"] = {"Status": "Mystery"}
-    data: dict[str, Any] = {}
+    data: Any = {}
     if read:
-        if args[0] == "/c0/fall":
+        if args == ["/c0", "show", "all", "J"]:
+            data = config["controller"]
+        elif args[0] == "/c0/fall":
             data = config["foreign"]
         elif args[1:3] == ["show", "patrolread"]:
             data = {"PR Mode": config["mode"], "PR Current State": config["operation_state"]}
         elif args[1:3] == ["show", "cc"]:
             data = {"CC Mode": config["mode"], "CC Current State": config["operation_state"]}
         elif args[1:3] == ["show", "rebuild"]:
-            data = {"Rebuild Status": "In progress", "Progress%": 10}
+            data = [
+                {
+                    "Drive-ID": args[0],
+                    "Status": config.get("rebuild_state", "Not in progress"),
+                    "Progress%": config.get("rebuild_progress", "-"),
+                    "Estimated Time Left": "-",
+                }
+            ]
+            changes = config.pop("after_rebuild", {})
+            if changes:
+                config.update(changes)
+                (root / "state.json").write_text(json.dumps(config))
         elif args[0].startswith("/c0/e") and args[1:3] == ["show", "all"]:
             slot = args[0].split("/s")[-1]
             enc = args[0].split("/e")[-1].split("/")[0]
@@ -64,6 +87,8 @@ def main() -> None:
         if args[1] in {"start", "stop"} and args[2] in {"patrolread", "cc"}:
             config["operation_state"] = "Active" if args[1] == "start" else "Stopped"
         (root / "state.json").write_text(json.dumps(config))
+    if fault == "wrong-controller":
+        controller["Command Status"]["Controller"] = 1
     controller["Response Data"] = data
     sys.stdout.write(json.dumps({"Controllers": [controller]}))
 

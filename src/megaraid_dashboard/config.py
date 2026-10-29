@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     storcli_path: str = Field(...)
     storcli_use_sudo: bool = False
     controller_read_only: bool = True
-    controller_action_capability: Literal["none", "locate"] = "none"
+    controller_action_capability: Literal["none", "locate", "full-supported-actions"] = "none"
+    controller_command_policy: str = ""
     maintenance_mode: bool = False
     destructive_mode: bool = False
     metrics_interval_seconds: int = Field(...)

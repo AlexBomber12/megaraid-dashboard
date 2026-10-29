@@ -10,6 +10,7 @@ import json
 import os
 import pwd
 import re
+import shlex
 import stat
 import sys
 from pathlib import Path
@@ -35,6 +36,7 @@ from megaraid_dashboard.storcli import (
     run_storcli,
 )
 from megaraid_dashboard.storcli.parser import validate_complete_inventory
+from megaraid_dashboard.storcli.policy import load_policy
 
 SOURCE = Path("/usr/local/MegaRAID Storage Manager/StorCLI/storcli64")
 ORIGINAL = Path("/usr/local/sbin/storcli64")
@@ -135,6 +137,39 @@ def policy(binary: Path) -> str:
         f"Cmnd_Alias MEGARAID_RO_READS = {commands}\n"
         "megaraid ALL=(root) NOPASSWD: MEGARAID_RO_READS\n"
     )
+
+
+def full_policy(inventory_path: Path) -> str:
+    """Generate only the commands independently approved in the protected contract."""
+    return load_policy(str(inventory_path)).sudoers(READS)
+
+
+def authorization_checks(inventory_path: Path) -> str:
+    """Emit authorization-only tests. sudo -l lists permission; it never runs the command."""
+    approved = load_policy(str(inventory_path))
+    lines = ["#!/bin/sh", "set -eu", f"# Run as {approved.service_user}; never as root."]
+    for command in (*READS, *(item.command for item in approved.commands)):
+        lines.append(f"sudo -n -l -- {shlex.quote(str(STAGED))} {command} >/dev/null")
+    denied = (
+        f"{ORIGINAL} /c0 set alarm=on J",
+        f"{STAGED} /c1 set alarm=on J",
+        f"{STAGED} /c0/e252/s8 start locate J",
+        f"{STAGED} /c0/e252/s0 set bad J",
+        f"{STAGED} /c0/e252/s0 set offline force J",
+        f"{STAGED} /c0/v{(approved.virtual_drive + 1) % 64} start cc J",
+        f"{STAGED} /c0/e252/s0 add hotsparedrive dgs={(approved.disk_group + 1) % 64} J",
+        f"{STAGED} /c0/e252/s0 insert dg={approved.disk_group} array=64 row=0 J",
+    )
+    denied += tuple(
+        f"{STAGED} /c0/e252/s{topology.slot} insert dg={topology.dg} "
+        f"array={topology.array} row={(topology.row + 1) % 256} J"
+        for topology in approved.replacements
+    )
+    for command in denied:
+        lines.append(f"if sudo -n -l -- {command} >/dev/null 2>&1; then")
+        lines.append(f"  echo 'Unexpected permission: {command}' >&2; exit 1")
+        lines.append("fi")
+    return "\n".join(lines) + "\n"
 
 
 def locate_policy() -> str:
@@ -272,14 +307,33 @@ async def probe(binary: Path, inventory_path: Path) -> dict[str, Any]:
 def main() -> None:
     structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["stage", "policy", "locate-policy", "probe"])
+    parser.add_argument(
+        "action",
+        choices=[
+            "stage",
+            "policy",
+            "locate-policy",
+            "full-policy",
+            "authorization-checks",
+            "probe",
+        ],
+    )
     parser.add_argument("--binary", type=Path, choices=[STAGED, ORIGINAL], default=STAGED)
-    parser.add_argument("--inventory", type=Path, help="Approved private baseline JSON")
+    parser.add_argument(
+        "--inventory",
+        type=Path,
+        help="Identity baseline for probe; reviewed command contract for full policy/checks",
+    )
     args = parser.parse_args()
     if args.action == "stage":
         stage()
     elif args.action == "policy":
         print(policy(args.binary), end="")
+    elif args.action in {"full-policy", "authorization-checks"}:
+        if args.inventory is None or args.binary != STAGED:
+            parser.error("Full policy/checks require --inventory and the pinned binary")
+        render = full_policy if args.action == "full-policy" else authorization_checks
+        print(render(args.inventory), end="")
     elif args.action == "locate-policy":
         if args.binary != STAGED or args.inventory is not None:
             parser.error("locate-policy accepts only the pinned binary and no inventory")

@@ -48,11 +48,18 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
   for the narrowly authorized Locate Stop recovery action below.
 - Locate Start requires active maintenance. Locate Stop may run with inactive or expired
   maintenance only when `CONTROLLER_READ_ONLY=false` and
-  `CONTROLLER_ACTION_CAPABILITY=locate`. This exception lets an operator stop a possibly
+  `CONTROLLER_ACTION_CAPABILITY=locate` or `full-supported-actions` with an approved exact
+  Stop Locate command. This exception lets an operator stop a possibly
   blinking LED after an uncertain Start without opening another alert-suppressing window.
   Both Locate actions still require authentication, CSRF protection, exact sudoers command
   authorization, explicit controller Success, and persisted audit results. Read-only mode
   or capability `none` denies both. No other controller write receives this exception.
+- `full-supported-actions` requires a root-controlled evidence-reviewed exact command policy,
+  the pinned 1.23.02 binary hash, and explicit replacement topology. Missing approval disables
+  the corresponding UI/API action. Never infer array/row from slot order in this capability.
+- Real hardware warning/critical Telegram incidents retain confirmation, freshness, identity,
+  deduplication and retry checks during maintenance. Maintenance never permanently skips them.
+  Operator action audit noise remains ineligible for Telegram.
 - Destructive operations such as set offline, set missing, and force rebuild require an additional `destructive_mode` flag plus typed confirmation of the affected drive serial number.
 - Every write and destructive operation is recorded in an audit table with timestamp, actor, command, and result.
 

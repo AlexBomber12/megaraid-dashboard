@@ -176,3 +176,44 @@ def legacy_controller_handlers(
     else:
         yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def full_controller_handlers(monkeypatch, tmp_path, _live_server_handle, fake_storcli):
+    """Real full-capability gates; substitute only protected hardware/policy filesystem boundary."""
+    import json
+
+    from megaraid_dashboard.storcli import policy
+    from tests.test_storcli.test_policy import policy_data
+
+    data = policy_data()
+    # All eight slots use distinct, explicit synthetic rows. This is never production evidence.
+    original = [item for item in data["commands"] if "/e252/s0" in item["command"]]
+    for slot in range(1, 8):
+        data["commands"].extend(
+            {
+                "command": item["command"]
+                .replace("/s0", f"/s{slot}")
+                .replace("row=0", f"row={slot}"),
+                "evidence": "SYNTHETIC TEST ONLY",
+            }
+            for item in original
+        )
+        data["replacements"].append({"slot": slot, "dg": 0, "array": 0, "row": slot})
+    file = tmp_path / "reviewed-policy.json"
+    file.write_text(json.dumps(data))
+    monkeypatch.setattr(policy, "protected_path", lambda path: None)
+    monkeypatch.setattr(policy, "verify_pinned_binary", lambda path: None)
+    app = _live_server_handle.app
+    original_settings = app.state.settings
+    app.state.settings = original_settings.model_copy(
+        update={
+            "controller_read_only": False,
+            "controller_action_capability": "full-supported-actions",
+            "controller_command_policy": str(file),
+        }
+    )
+    try:
+        yield file
+    finally:
+        app.state.settings = original_settings

@@ -184,9 +184,11 @@ async def test_next_pending_alert_rechecks_current_data_and_maintenance_after_ht
     assert delivery.attempts == 0
     assert (
         delivery.detail
-        == {"recovered": "obsolete", "maintenance": "maintenance", "stale": "awaiting_fresh_data"}[
-            change
-        ]
+        == {
+            "recovered": "obsolete",
+            "maintenance": "awaiting_fresh_data",
+            "stale": "awaiting_fresh_data",
+        }[change]
     )
     assert len(sender.sent) == 1
 

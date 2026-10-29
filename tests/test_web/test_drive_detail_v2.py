@@ -201,7 +201,8 @@ def test_drive_detail_v2_replace_card_and_disabled_ubad(
     assert "disabled" in mark_ubad
     assert (
         "<li><strong>Mark as UBad</strong> — "
-        "Unavailable: StorCLI 1.23.02 does not document set bad.</li>" in html
+        "Unavailable: StorCLI 1.23.02 does not document set bad. "
+        "Review read-only help; no command is guessed.</li>" in html
     )
 
 

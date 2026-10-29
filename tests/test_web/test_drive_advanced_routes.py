@@ -78,7 +78,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         ),
         (
             "/drives/2:0/actions/spindown",
-            "Onln",
+            "UGood",
             None,
             ["/c0/e2/s0", "spindown"],
             AUDIT_CATEGORY_DRIVE_SPIN_DOWN,
@@ -181,7 +181,7 @@ def test_advanced_drive_wrong_state_returns_409(
     [
         ("/drives/2:0/actions/mark-ubad", "UGood", None),
         ("/drives/2:0/actions/mark-ugood", "UBad", None),
-        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/spindown", "UGood", None),
         ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
@@ -209,7 +209,7 @@ def test_advanced_drive_without_csrf_returns_403(
     [
         ("/drives/2:0/actions/mark-ubad", "UGood", None),
         ("/drives/2:0/actions/mark-ugood", "UBad", None),
-        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/spindown", "UGood", None),
         ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
@@ -241,7 +241,7 @@ def test_advanced_drive_without_auth_returns_401(
     [
         ("/drives/2:0/actions/mark-ubad", "UGood", None),
         ("/drives/2:0/actions/mark-ugood", "UBad", None),
-        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/spindown", "UGood", None),
         ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
@@ -325,7 +325,7 @@ def test_advanced_drive_live_precheck_failure_returns_502(
     [
         ("/drives/2:0/actions/mark-ubad", "UGood", None),
         ("/drives/2:0/actions/mark-ugood", "UBad", None),
-        ("/drives/2:0/actions/spindown", "Onln", None),
+        ("/drives/2:0/actions/spindown", "UGood", None),
         ("/drives/2:0/actions/hotspare", "UGood", {"dg_id": 0}),
     ],
 )
@@ -398,13 +398,13 @@ def test_advanced_drive_action_is_visible_in_audit_view(
 ) -> None:
     async def fake_run_storcli(args: list[str], **_kwargs: object) -> dict[str, Any]:
         if args == ["/c0/e2/s0", "show", "all", "J"]:
-            return _drive_show_payload(state="Onln", serial_number="WD-ADV-0001")
+            return _drive_show_payload(state="UGood", serial_number="WD-ADV-0001")
         return _SUCCESS
 
     monkeypatch.setattr("megaraid_dashboard.web.routes.run_storcli", fake_run_storcli)
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
-        _seed_drive(test_app, state="Onln")
+        _seed_drive(test_app, state="UGood")
         headers = _csrf_request_headers(client, csrf_headers)
         action_response = _post_action(
             client,
@@ -417,7 +417,7 @@ def test_advanced_drive_action_is_visible_in_audit_view(
     assert action_response.status_code == 303
     assert audit_response.status_code == 200
     assert "spin down drive" in audit_response.text
-    assert 'href="/drives/2:0">2:0</a> from state Onln' in audit_response.text
+    assert 'href="/drives/2:0">2:0</a> from state UGood' in audit_response.text
     assert "by admin" in audit_response.text
     assert 'class="event-actor"' in audit_response.text
 

@@ -36,7 +36,7 @@ from megaraid_dashboard.alerts.telegram import (
     load_telegram_config,
 )
 from megaraid_dashboard.config import Settings
-from megaraid_dashboard.db.dao import TELEGRAM_CHANNEL, get_maintenance_state, get_state, set_state
+from megaraid_dashboard.db.dao import TELEGRAM_CHANNEL, get_state, set_state
 from megaraid_dashboard.db.models import Event, EventDelivery
 from megaraid_dashboard.services.notifier import _record_telegram_health, _to_aware_utc
 from megaraid_dashboard.services.telegram_messages import (
@@ -183,10 +183,6 @@ async def run_telegram_cycle_async(
                 )
                 session.commit()
                 _LOG.warning("telegram_delivery_requeued", event_id=event.id)
-            if get_maintenance_state(session, now=now_utc).active:
-                _skip(session, event, delivery, detail="maintenance")
-                skipped += 1
-                continue
             if event.severity == "warning":
                 if _to_aware_utc(event.occurred_at) > now_utc - confirm_delay:
                     _defer(
@@ -341,6 +337,7 @@ def _load_candidates(
             or_(
                 EventDelivery.id.is_(None),
                 EventDelivery.status.in_((STATUS_SENDING, STATUS_RETRY, STATUS_FAILED)),
+                and_(EventDelivery.status == STATUS_SKIPPED, EventDelivery.detail == "maintenance"),
             ),
             or_(
                 EventDelivery.next_attempt_at.is_(None),

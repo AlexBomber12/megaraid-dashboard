@@ -233,6 +233,8 @@ def test_silence_without_maintenance_mode_audit_failure_returns_500(
     assert response.status_code == 500
     assert response.json() == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "silence",
         "rejection_reason": "maintenance_mode required",
     }
@@ -271,6 +273,8 @@ def test_silence_audit_failure_returns_500(
     assert response.status_code == 500
     assert response.json() == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "silence",
         "argv": ["/c0", "set", "alarm=silence"],
         "result": {"Controllers": [{"Command Status": {"Status": "Success"}}]},
@@ -310,6 +314,8 @@ def test_silence_audit_failure_after_storcli_failure_returns_500(
     assert response.status_code == 500
     assert response.json() == {
         "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
         "action": "silence",
         "argv": ["/c0", "set", "alarm=silence"],
         "storcli_error": "storcli exited with code 1: alarm command failed",

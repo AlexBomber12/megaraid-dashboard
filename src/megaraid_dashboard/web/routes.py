@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from math import ceil
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Literal, Protocol, cast, runtime_checkable
+from typing import Any, Literal, Protocol, TypedDict, cast, runtime_checkable
 from urllib.parse import urlencode
 
 import structlog
@@ -132,6 +132,7 @@ from megaraid_dashboard.services.overview import (
 from megaraid_dashboard.storcli import (
     DriveShow,
     ForeignConfig,
+    StorcliCommandFailed,
     StorcliError,
     StorcliNotAvailable,
     StorcliParseError,
@@ -140,6 +141,8 @@ from megaraid_dashboard.storcli import (
     parse_foreign_config,
     run_storcli,
 )
+from megaraid_dashboard.storcli.policy import action_refusal, load_policy, replacement_refusal
+from megaraid_dashboard.storcli.runner import check_storcli_prewrite
 from megaraid_dashboard.web.templates import create_templates
 
 LOGGER = structlog.get_logger(__name__)
@@ -216,11 +219,62 @@ async def require_controller_capability(request: Request) -> None:
             else "other writes"
         )
         reason = action_disabled_reason(request.app.state.settings, family)
+        if (
+            reason is None
+            and request.app.state.settings.controller_action_capability == "full-supported-actions"
+            and family != "maintenance"
+        ):
+            policy = load_policy(request.app.state.settings.controller_command_policy)
+            selected = await _requested_approval_command(request)
+            reason = (
+                replacement_refusal(policy, request.url.path)
+                if route_name
+                in {"drive_replace_offline", "drive_replace_missing", "drive_replace_insert"}
+                else action_refusal(policy, request.url.path, selected)
+            )
         if reason is not None:
             raise HTTPException(
                 status_code=403,
                 detail={"error": "controller_action_unavailable", "message": reason},
             )
+
+
+async def _requested_approval_command(request: Request) -> list[str] | None:
+    """Use the handler's validated request and builder for parameterized commands."""
+    name = request.scope["route"].name
+    if name == "controller_patrol_read_mode":
+        patrol = await _parse_patrol_read_mode_request_body(request)
+        if not isinstance(patrol, JSONResponse):
+            return build_patrol_read_mode_command(patrol.mode)
+    elif name == "controller_consistency_check_mode":
+        cc = await _parse_consistency_check_mode_request_body(request)
+        if not isinstance(cc, JSONResponse):
+            return build_consistency_check_mode_command(cc.mode)
+    elif name == "controller_consistency_check_start":
+        start = await _parse_consistency_check_start_request_body(request)
+        if not isinstance(start, JSONResponse):
+            return build_consistency_check_start_command(start.vd_id)
+    else:
+        return None
+    raise HTTPException(
+        status_code=400, detail="Invalid action request. Review the selected option."
+    )
+
+
+class _AuthorizationKwargs(TypedDict, total=False):
+    authorization_path: str
+    expected_foreign_digest: str
+
+
+def _authorization_kwargs(
+    settings: Settings, *, foreign_digest: str | None = None
+) -> _AuthorizationKwargs:
+    if settings.controller_action_capability == "full-supported-actions":
+        result: _AuthorizationKwargs = {"authorization_path": settings.controller_command_policy}
+        if foreign_digest is not None:
+            result["expected_foreign_digest"] = foreign_digest
+        return result
+    return {}
 
 
 router = APIRouter(dependencies=[Depends(require_controller_capability)])
@@ -238,7 +292,12 @@ def _audit_persistence_failure_response(**extras: Any) -> JSONResponse:
     enclosure/slot, storcli result, etc.) so the missing audit row is at
     least partially reconstructable from the response.
     """
-    body: dict[str, Any] = {"error": "audit persistence failed", **extras}
+    body: dict[str, Any] = {
+        "error": "audit persistence failed",
+        "message": "Physical outcome is unverified. Inspect hardware and repair audit storage "
+        "before retrying; the controller may already have accepted the command.",
+        **extras,
+    }
     return JSONResponse(body, status_code=500)
 
 
@@ -575,6 +634,7 @@ async def _run_locate(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -871,6 +931,7 @@ async def _run_advanced_drive_action(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -948,7 +1009,10 @@ def _advanced_drive_action_rejection(
     if action == "mark_ugood":
         return f"Cannot mark UGood: drive is {current_state} (must be UBad first)"
     if action == "spin_down":
-        return f"Cannot spin down: drive is {current_state} (must be Onln, UGood, or UBad)"
+        return (
+            f"Cannot spin down: drive is {current_state} "
+            "(must be unconfigured UGood or UBad; refresh drive state)"
+        )
     if action == "make_hot_spare":
         return (
             f"Cannot make hot spare for DG {dg_id}: drive is {current_state} "
@@ -1182,6 +1246,7 @@ async def _run_replace_step(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -1286,6 +1351,7 @@ async def _query_live_drive_show(
         argv,
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
+        **_authorization_kwargs(settings),
     )
     ensure_command_succeeded(payload)
     return parse_drive_show(payload)
@@ -1438,6 +1504,7 @@ async def drive_rebuild_status(enclosure: str, slot: str, request: Request) -> R
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         status = parse_rebuild_status(payload, requested_drive=f"/c0/e{enclosure_id}/s{slot_id}")
     except StorcliParseError as exc:
@@ -1695,6 +1762,7 @@ async def drive_replace_insert(enclosure: str, slot: str, request: Request) -> J
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -2019,6 +2087,12 @@ def _compute_slot_topology(
     deployment uses single-span RAID, and hand-verification on real hardware
     against ``storcli /c0/eX/sY show all J`` is the final check.
     """
+    if request.app.state.settings.controller_action_capability == "full-supported-actions":
+        policy = load_policy(request.app.state.settings.controller_command_policy)
+        topology = next((item for item in policy.replacements if item.slot == slot_id), None)
+        if enclosure_id != 252 or topology is None:
+            return None
+        return _SlotTopology(dg=topology.dg, array=topology.array, row=topology.row)
     with _session(request) as session:
         latest_snapshot_id = session.scalar(
             select(ControllerSnapshot.id).order_by(ControllerSnapshot.captured_at.desc()).limit(1)
@@ -2306,6 +2380,7 @@ async def _query_live_patrol_read(*, settings: Settings) -> PatrolReadStatus:
         build_patrol_read_show_command(),
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
+        **_authorization_kwargs(settings),
     )
     ensure_command_succeeded(payload)
     return parse_patrol_read_status(payload)
@@ -2381,10 +2456,17 @@ async def _run_patrol_read_mutation(
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     try:
+        if action == "mode" and settings.controller_action_capability == "full-supported-actions":
+            live_status = await _query_live_patrol_read(settings=settings)
+            if live_status.state.lower() == "unknown":
+                raise StorcliCommandFailed(
+                    "Operation state is unknown. Refresh status before changing mode."
+                )
         result = await run_storcli(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -2733,11 +2815,13 @@ async def _query_live_consistency_check(*, settings: Settings) -> ConsistencyChe
         build_consistency_check_show_command(),
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
+        **_authorization_kwargs(settings),
     )
     progress_payload = await run_storcli(
         build_consistency_check_show_progress_command(),
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
+        **_authorization_kwargs(settings),
     )
     ensure_command_succeeded(show_payload)
     ensure_command_succeeded(progress_payload)
@@ -2815,10 +2899,17 @@ async def _run_consistency_check_mutation(
     result: dict[str, Any] | None = None
     storcli_error: StorcliError | None = None
     try:
+        if action == "mode" and settings.controller_action_capability == "full-supported-actions":
+            live_status = await _query_live_consistency_check(settings=settings)
+            if live_status.state.lower() == "unknown":
+                raise StorcliCommandFailed(
+                    "Operation state is unknown. Refresh status before changing mode."
+                )
         result = await run_storcli(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -3007,6 +3098,7 @@ async def _run_controller_buzzer_action(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -3278,9 +3370,12 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    rebuild_state = await run_in_threadpool(
-        _any_drive_rebuilding,
-        request=request,
+    # Full-capability execution/preview proves rebuild safety with fresh reads below.
+    # Keep the snapshot fallback only for legacy handlers.
+    rebuild_state = (
+        False
+        if settings.controller_action_capability == "full-supported-actions"
+        else await run_in_threadpool(_any_drive_rebuilding, request=request)
     )
     if rebuild_state is None:
         return await _reject_foreign_config_destructive(
@@ -3310,6 +3405,16 @@ async def controller_foreign_config_import(request: Request) -> JSONResponse:
 
     argv = build_foreign_config_import_command()
 
+    if dry_run and settings.controller_action_capability == "full-supported-actions":
+        failure = await _check_foreign_preview_safety(
+            request=request,
+            settings=settings,
+            argv=argv,
+            action="import",
+            digest=live_foreign_config.digest,
+        )
+        if failure is not None:
+            return failure
     if dry_run:
         return JSONResponse(
             {
@@ -3402,9 +3507,12 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
             status_code=409,
         )
 
-    rebuild_state = await run_in_threadpool(
-        _any_drive_rebuilding,
-        request=request,
+    # Full-capability execution/preview proves rebuild safety with fresh reads below.
+    # Keep the snapshot fallback only for legacy handlers.
+    rebuild_state = (
+        False
+        if settings.controller_action_capability == "full-supported-actions"
+        else await run_in_threadpool(_any_drive_rebuilding, request=request)
     )
     if rebuild_state is None:
         return await _reject_foreign_config_destructive(
@@ -3434,6 +3542,16 @@ async def controller_foreign_config_clear(request: Request) -> JSONResponse:
 
     argv = build_foreign_config_clear_command()
 
+    if dry_run and settings.controller_action_capability == "full-supported-actions":
+        failure = await _check_foreign_preview_safety(
+            request=request,
+            settings=settings,
+            argv=argv,
+            action="clear",
+            digest=live_foreign_config.digest,
+        )
+        if failure is not None:
+            return failure
     if dry_run:
         return JSONResponse(
             {
@@ -3501,6 +3619,34 @@ async def _reject_foreign_config_destructive(
     return JSONResponse(rejection_body, status_code=status_code)
 
 
+async def _check_foreign_preview_safety(
+    *,
+    request: Request,
+    settings: Settings,
+    argv: list[str],
+    action: Literal["import", "clear"],
+    digest: str,
+) -> JSONResponse | None:
+    try:
+        await check_storcli_prewrite(
+            argv,
+            use_sudo=settings.storcli_use_sudo,
+            binary_path=settings.storcli_path,
+            authorization_path=settings.controller_command_policy,
+            expected_foreign_digest=digest,
+        )
+    except StorcliError as exc:
+        return await _reject_foreign_config_destructive(
+            request=request,
+            action=action,
+            digest=digest,
+            reason=f"live safety precheck failed: {_truncate_audit_detail(str(exc))}",
+            rejection_body={"error": "live safety precheck failed", "detail": str(exc)},
+            status_code=502,
+        )
+    return None
+
+
 async def _run_foreign_config_destructive(
     *,
     request: Request,
@@ -3516,6 +3662,7 @@ async def _run_foreign_config_destructive(
             argv,
             use_sudo=settings.storcli_use_sudo,
             binary_path=settings.storcli_path,
+            **_authorization_kwargs(settings, foreign_digest=digest),
         )
         ensure_command_succeeded(result)
         outcome = "succeeded"
@@ -3583,6 +3730,7 @@ async def _query_live_foreign_config(*, settings: Settings) -> ForeignConfig:
         argv,
         use_sudo=settings.storcli_use_sudo,
         binary_path=settings.storcli_path,
+        **_authorization_kwargs(settings),
     )
     return parse_foreign_config(payload)
 

@@ -16,6 +16,14 @@ from starlette.requests import Request
 
 from megaraid_dashboard.db.dao import get_maintenance_state, maintenance_writes_enabled
 from megaraid_dashboard.services.action_capabilities import action_disabled_reason
+from megaraid_dashboard.services.drive_actions import (
+    ConsistencyCheckMode,
+    PatrolReadMode,
+    build_consistency_check_mode_command,
+    build_consistency_check_start_command,
+    build_patrol_read_mode_command,
+)
+from megaraid_dashboard.storcli.policy import action_refusal, load_policy, replacement_refusal
 
 _SLOT_TOKEN_RE = re.compile(
     r"(?P<event_slot_ref>e(?P<enclosure>\d+):s(?P<slot>\d+))"
@@ -60,7 +68,20 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
             },
             "maintenance_state": get_maintenance_state(session, now=datetime.now(UTC)),
             "controller_read_only": request.app.state.settings.controller_read_only,
+            "controller_writes_enabled": maintenance_writes_enabled(
+                session,
+                configured=request.app.state.settings.maintenance_mode,
+                now=datetime.now(UTC),
+            ),
         }
+        context["approved_disk_group"] = None
+        if (
+            request.app.state.settings.controller_action_capability == "full-supported-actions"
+            and context["other_writes_disabled_reason"] is None
+        ):
+            context["approved_disk_group"] = load_policy(
+                request.app.state.settings.controller_command_policy
+            ).disk_group
         context["locate_start_disabled_reason"] = context["locate_disabled_reason"]
         if context["locate_start_disabled_reason"] is None and not maintenance_writes_enabled(
             session,
@@ -70,6 +91,34 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
             context["locate_start_disabled_reason"] = (
                 "Locate Start requires an active maintenance window."
             )
+
+        def approved_action_reason(
+            path: str, mode: str | None = None, *, workflow: bool = False
+        ) -> str | None:
+            settings = request.app.state.settings
+            if settings.controller_action_capability != "full-supported-actions":
+                return None
+            if context["other_writes_disabled_reason"] is not None:
+                return str(context["other_writes_disabled_reason"])
+            if not path.endswith("/locate/stop") and not context["controller_writes_enabled"]:
+                return "Start a maintenance window before this action."
+            if (
+                "/replace/" in path or "/foreign-config/" in path
+            ) and not settings.destructive_mode:
+                return "Ask the administrator to enable destructive mode before this action."
+            policy = load_policy(settings.controller_command_policy)
+            if workflow:
+                return replacement_refusal(policy, path)
+            selected = None
+            if path.endswith("/controller/consistency-check/start"):
+                selected = build_consistency_check_start_command(None)
+            elif path.endswith("/controller/consistency-check/mode"):
+                selected = build_consistency_check_mode_command(cast(ConsistencyCheckMode, mode))
+            elif path.endswith("/controller/patrol-read/mode"):
+                selected = build_patrol_read_mode_command(cast(PatrolReadMode, mode))
+            return action_refusal(policy, path, selected)
+
+        context["approved_action_reason"] = approved_action_reason
         return context
 
 

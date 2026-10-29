@@ -264,10 +264,18 @@ Routes:
 
 Controller writes, including Locate Start and buzzer changes, require maintenance mode.
 Locate Stop is the sole recovery exception: with `CONTROLLER_READ_ONLY=false` and
-`CONTROLLER_ACTION_CAPABILITY=locate`, it remains available after maintenance ends or
+`CONTROLLER_ACTION_CAPABILITY=locate` or an approved `full-supported-actions` Stop
+command, it remains available after maintenance ends or
 expires. Authentication, CSRF, exact sudoers authorization, controller Success and audit
 persistence still apply. Read-only mode or capability `none` denies both Locate actions;
-all other controller writes remain unavailable in the locate-only rollout.
+all other controller writes remain unavailable in the locate-only selection.
+The final combined [production rollout](docs/STORCLI_FULL_ROLLOUT.md) uses
+`full-supported-actions` plus a root-controlled `CONTROLLER_COMMAND_POLICY`, pinned
+1.23.02 hash and explicitly approved topology. Missing approvals disable the action
+in the UI and API. Read-only remains the default. Mark UBad remains unavailable;
+Spin Down is restricted to unconfigured UGood/UBad drives. Real hardware Telegram
+incidents retain normal relevance, confirmation, deduplication and retry during
+maintenance; operator-action noise remains excluded.
 The UI window authorizes maintenance-gated writes; ending it or expiry revokes that
 maintenance authorization across restarts.
 Before the first UI window, an explicit configured maintenance flag remains supported.

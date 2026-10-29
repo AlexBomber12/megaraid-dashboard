@@ -46,6 +46,28 @@ _ALLOWED_COMMAND_PATTERNS = (
 )
 
 
+class _WriteDetail(BaseModel):
+    model_config = ConfigDict(strict=True)
+    controller: int | None = Field(default=None, alias="Controller", ge=0, le=0)
+    ctrl: int | None = Field(default=None, alias="Ctrl", ge=0, le=0)
+    status: Literal["Success"] = Field(alias="Status")
+
+
+class _WriteStatus(BaseModel):
+    model_config = ConfigDict(strict=True)
+    controller: int = Field(alias="Controller", ge=0, le=0)
+    status: Literal["Success", "Failure"] = Field(alias="Status")
+    details: list[_WriteDetail] | None = Field(default=None, alias="Detailed Status")
+
+
+class _WriteController(BaseModel):
+    status: _WriteStatus = Field(alias="Command Status")
+
+
+class _WriteResponse(BaseModel):
+    controllers: list[_WriteController] = Field(alias="Controllers", min_length=1, max_length=1)
+
+
 class _FailedDetail(BaseModel):
     model_config = ConfigDict(strict=True)
     status: Literal["Failure", "Failed"] | None = Field(default=None, alias="Status")
@@ -86,15 +108,100 @@ def _failed_response(stdout: bytes) -> dict[str, Any] | None:
     return dict(payload)
 
 
+async def check_storcli_prewrite(
+    args: list[str],
+    *,
+    use_sudo: bool,
+    binary_path: str,
+    authorization_path: str,
+    expected_foreign_digest: str | None = None,
+    timeout_seconds: float = 30.0,
+) -> None:
+    """Validate live evidence for an approved write without executing that write."""
+    command_args = _with_json_flag(args)
+    _validate_command(command_args)
+    from megaraid_dashboard.storcli.policy import (
+        load_policy,
+        replacement_command_refusal,
+        verify_pinned_binary,
+    )
+
+    try:
+        verify_pinned_binary(binary_path)
+        policy = load_policy(authorization_path)
+        refusal = replacement_command_refusal(policy, command_args)
+        if refusal is not None:
+            raise ValueError(refusal)
+        if not policy.permits(command_args):
+            raise ValueError("Command lacks reviewed syntax/topology approval")
+    except (OSError, ValueError) as exc:
+        raise StorcliNotAvailable(
+            f"Action refused before execution: {exc}. Ask the administrator to review policy."
+        ) from exc
+    identity = await run_storcli(
+        ["/c0", "show", "all", "J"],
+        use_sudo=use_sudo,
+        binary_path=binary_path,
+        timeout_seconds=timeout_seconds,
+    )
+    from megaraid_dashboard.storcli.parser import parse_controller_show_all
+
+    controller = parse_controller_show_all(identity)
+    if (
+        controller.serial_number != policy.controller_serial
+        or controller.model_name != "LSI MegaRAID SAS 9270CV-8i"
+    ):
+        raise StorcliCommandFailed(
+            "Controller identity changed. Stop and have the administrator verify inventory."
+        )
+    alarm_states = {
+        "alarm=on": {"off"},
+        "alarm=off": {"on", "silenced"},
+        "alarm=silence": {"on"},
+    }
+    if (
+        command_args[2] in alarm_states
+        and controller.alarm_state.lower() not in alarm_states[command_args[2]]
+    ):
+        raise StorcliCommandFailed(
+            "Buzzer state is unknown or conflicts. Refresh controller status."
+        )
+    from megaraid_dashboard.storcli.prewrite import check_action_topology, check_foreign_safety
+
+    check_action_topology(command_args, identity, policy)
+    if command_args[0] == "/c0/fall":
+
+        async def read(args: list[str]) -> dict[str, Any]:
+            return await run_storcli(
+                args,
+                use_sudo=use_sudo,
+                binary_path=binary_path,
+                timeout_seconds=timeout_seconds,
+            )
+
+        await check_foreign_safety(identity, policy, read, expected_foreign_digest)
+
+
 async def run_storcli(
     args: list[str],
     *,
     use_sudo: bool,
     binary_path: str,
     timeout_seconds: float = 30.0,
+    authorization_path: str | None = None,
+    expected_foreign_digest: str | None = None,
 ) -> dict[str, Any]:
     command_args = _with_json_flag(args)
     _validate_command(command_args)
+    if authorization_path is not None and "show" not in command_args:
+        await check_storcli_prewrite(
+            command_args,
+            use_sudo=use_sudo,
+            binary_path=binary_path,
+            authorization_path=authorization_path,
+            expected_foreign_digest=expected_foreign_digest,
+            timeout_seconds=timeout_seconds,
+        )
     argv = [binary_path, *command_args]
     if use_sudo:
         argv = ["sudo", "-n", *argv]
@@ -147,6 +254,13 @@ async def run_storcli(
 
     if not isinstance(parsed, dict):
         raise StorcliParseError("storcli JSON root is not an object")
+    if authorization_path is not None and "show" not in command_args:
+        try:
+            _WriteResponse.model_validate(parsed)
+        except ValidationError as exc:
+            raise StorcliParseError(
+                "Controller result is uncertain. Inspect hardware and audit before retrying."
+            ) from exc
     return parsed
 
 

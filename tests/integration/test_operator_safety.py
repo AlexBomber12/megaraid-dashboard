@@ -21,7 +21,7 @@ from tests.e2e.conftest import E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME, _LiveServ
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
 
-pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("legacy_controller_handlers")]
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("full_controller_handlers")]
 
 
 @pytest.fixture
@@ -40,7 +40,19 @@ def client(live_server: str) -> Iterator[httpx.Client]:
 @pytest.mark.parametrize("action", ACTIONS, ids=lambda a: a.name)
 @pytest.mark.parametrize(
     "fault",
-    ["success", "failure", "missing", "unknown", "nonzero", "timeout", "unavailable", "audit"],
+    [
+        "success",
+        "failure",
+        "missing",
+        "unknown",
+        "nonzero",
+        "timeout",
+        "unavailable",
+        "audit",
+        "denied",
+        "malformed",
+        "wrong-controller",
+    ],
 )
 def test_mutation_result_matrix(
     action: Action,
@@ -50,6 +62,12 @@ def test_mutation_result_matrix(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     before = database_observation(snapshot_with_drives)
     fake_storcli.configure(fault=fault if fault not in {"audit", "unavailable"} else "success")
@@ -122,6 +140,12 @@ def test_rejected_request_cannot_mutate(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     if gate == "maintenance":
         app = _live_server_handle.app
@@ -134,7 +158,7 @@ def test_rejected_request_cannot_mutate(
     response = client.post(action.path, json=body)
     if gate == "maintenance" and action.name == "locate-stop":
         assert response.status_code == 200, response.text
-        assert fake_storcli.calls == [list(action.command)]
+        assert fake_storcli.mutations == [list(action.command)]
         after = database_observation(snapshot_with_drives)
         assert after[1] == before[1]
         assert len(after[0]) == len(before[0]) + 1
@@ -166,6 +190,12 @@ def test_destructive_gates_and_dry_run_trace(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     if gate == "dry-run":
         body["dry_run"] = True
@@ -178,8 +208,8 @@ def test_destructive_gates_and_dry_run_trace(
         if action.family == "replace":
             fake_storcli.configure(drive_state="Rbld")
         else:
-            with _live_server_handle.app.state.session_factory() as session, session.begin():
-                session.execute(update(PhysicalDriveSnapshot).values(state="Rbld"))
+            # Full capability establishes safety from current reads, not stored snapshots.
+            fake_storcli.configure(rebuild_state="In progress", rebuild_progress=10)
     before = database_observation(snapshot_with_drives)
     response = client.post(action.path, json=body)
     assert fake_storcli.mutations == [], fake_storcli.calls
@@ -193,7 +223,14 @@ def test_destructive_gates_and_dry_run_trace(
         if action.family == "replace":
             assert fake_storcli.calls == []
     else:
-        assert response.status_code == (403 if gate == "destructive" else 409), response.text
+        expected_status = (
+            403
+            if gate == "destructive"
+            else 502
+            if gate == "state" and action.family == "foreign"
+            else 409
+        )
+        assert response.status_code == expected_status, response.text
         assert response.json().get("error")
 
 
@@ -207,6 +244,12 @@ def test_live_serial_change_refuses_drive_mutation(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     fake_storcli.configure(serial="REPLACED-SINCE-SNAPSHOT")
     response = client.post(action.path, json=body)
@@ -235,6 +278,12 @@ def test_advanced_action_state_gates(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     if gate == "snapshot-state":
         with _live_server_handle.app.state.session_factory() as session, session.begin():
@@ -270,6 +319,12 @@ def test_controller_operation_state_conflict(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     fake_storcli.configure(operation_state="Stopped" if action.name.endswith("stop") else "Active")
     response = client.post(action.path, json=body)
@@ -358,6 +413,12 @@ def test_precheck_failure_cannot_reach_mutation(
     fake_storcli: FakeStorcli,
 ) -> None:
     action = next(action for action in ACTIONS if action.name == name)
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     fake_storcli.configure(read_fault=fault)
     before = database_observation(snapshot_with_drives)
@@ -424,6 +485,12 @@ def test_insert_can_retry_after_audited_read_only_precheck_outage(
     fake_storcli: FakeStorcli,
 ) -> None:
     action = next(action for action in ACTIONS if action.name == "replace-insert")
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     fake_storcli.configure(read_fault=fault)
     first = client.post(action.path, json=body)
@@ -437,7 +504,11 @@ def test_insert_can_retry_after_audited_read_only_precheck_outage(
     fake_storcli.clear()
     retry = client.post(action.path, json=body)
     assert retry.status_code == 200
-    assert fake_storcli.calls == [["/c0/e252/s0", "show", "all", "J"], list(action.command)]
+    assert fake_storcli.calls == [
+        ["/c0/e252/s0", "show", "all", "J"],
+        ["/c0", "show", "all", "J"],
+        list(action.command),
+    ]
     assert "succeeded" in database_observation(snapshot_with_drives)[0][-1][1]
 
 
@@ -451,6 +522,12 @@ def test_rollout_capability_refuses_even_authorized_maintenance(
     _live_server_handle: _LiveServerHandle,
     fake_storcli: FakeStorcli,
 ) -> None:
+    if action.name == "mark-ubad":
+        response = client.post(action.path, json={})
+        assert response.status_code == 403
+        assert "syntax or topology" in response.text
+        assert fake_storcli.calls == []
+        return
     body = prepare(action, _live_server_handle, fake_storcli)
     body["dry_run"] = dry_run
     app = _live_server_handle.app
@@ -468,3 +545,65 @@ def test_rollout_capability_refuses_even_authorized_maintenance(
     assert response.json()["detail"]["error"] == "controller_read_only"
     assert fake_storcli.calls == []
     assert database_observation(snapshot_with_drives) == before
+
+
+@pytest.mark.parametrize("entry", ["replace-offline", "replace-missing", "replace-insert"])
+@pytest.mark.parametrize("absent", ["offline", "missing", "insert"])
+def test_every_replacement_post_refuses_incomplete_contract(
+    client,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    full_controller_handlers,
+    entry,
+    absent,
+):
+    import json
+
+    action = next(item for item in ACTIONS if item.name == entry)
+    body = prepare(action, _live_server_handle, fake_storcli)
+    contract = json.loads(full_controller_handlers.read_text())
+    token = f"set {absent}" if absent != "insert" else "insert dg="
+    contract["commands"] = [item for item in contract["commands"] if token not in item["command"]]
+    full_controller_handlers.write_text(json.dumps(contract))
+    before = database_observation(snapshot_with_drives)
+    response = client.post(action.path, json=body)
+    assert response.status_code == 403
+    assert f"{absent.title()} command or topology is not approved" in response.text
+    assert fake_storcli.calls == []
+    assert database_observation(snapshot_with_drives) == before
+
+
+@pytest.mark.parametrize("fault", ["none", "controller", "unknown-rebuild"])
+def test_foreign_import_with_no_local_vd_uses_live_safety_evidence(
+    client,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    fault,
+):
+    import json
+
+    from sqlalchemy import delete
+
+    from megaraid_dashboard.db import VirtualDriveSnapshot
+
+    action = next(item for item in ACTIONS if item.name == "foreign-import")
+    body = prepare(action, _live_server_handle, fake_storcli)
+    with _live_server_handle.app.state.session_factory() as session, session.begin():
+        session.execute(delete(VirtualDriveSnapshot))
+    config = json.loads((fake_storcli.path.parent / "state.json").read_text())
+    config["controller"].update(
+        {"Virtual Drives": 0, "VD LIST": [], "Drive Groups": 0, "TOPOLOGY": []}
+    )
+    if fault == "controller":
+        config["controller"]["Basics"]["Serial Number"] = "WRONG-CONTROLLER"
+    fake_storcli.configure(
+        controller=config["controller"],
+        rebuild_state=("Unknown" if fault == "unknown-rebuild" else "Not in progress"),
+    )
+    response = client.post(action.path, json=body)
+    assert response.status_code == (200 if fault == "none" else 502), response.text
+    assert fake_storcli.mutations == ([list(action.command)] if fault == "none" else [])
+    if fault != "none":
+        assert "Refresh" in response.text or "verify inventory" in response.text

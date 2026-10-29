@@ -19,7 +19,7 @@
           hx-on::before-request="window.driveActions.begin(this)"
           hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
           data-locate-action="start"
-          {% if locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %}
+          {% if approved_action_reason(view_model.health.locate_start_url) or locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %}
           {% if locate_start_disabled_reason %}title="{{ locate_start_disabled_reason }}"{% endif %}
         >
           <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
@@ -35,7 +35,7 @@
           hx-on::before-request="window.driveActions.begin(this)"
           hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
           data-locate-action="stop"
-          {% if not view_model.health.can_locate_stop %}disabled{% endif %}
+          {% if approved_action_reason(view_model.health.locate_stop_url) or not view_model.health.can_locate_stop %}disabled{% endif %}
         >
           <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
           <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
@@ -84,3 +84,5 @@
 </section>
 
 {% if locate_disabled_reason %}</fieldset>{% endif %}
+
+{% for url in (view_model.health.locate_start_url, view_model.health.locate_stop_url) %}{% if approved_action_reason(url) %}<p class="muted">{{ approved_action_reason(url) }}</p>{% endif %}{% endfor %}
