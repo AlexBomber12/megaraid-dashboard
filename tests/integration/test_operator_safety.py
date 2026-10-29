@@ -208,8 +208,8 @@ def test_destructive_gates_and_dry_run_trace(
         if action.family == "replace":
             fake_storcli.configure(drive_state="Rbld")
         else:
-            with _live_server_handle.app.state.session_factory() as session, session.begin():
-                session.execute(update(PhysicalDriveSnapshot).values(state="Rbld"))
+            # Full capability establishes safety from current reads, not stored snapshots.
+            fake_storcli.configure(rebuild_state="In progress", rebuild_progress=10)
     before = database_observation(snapshot_with_drives)
     response = client.post(action.path, json=body)
     assert fake_storcli.mutations == [], fake_storcli.calls
@@ -223,7 +223,14 @@ def test_destructive_gates_and_dry_run_trace(
         if action.family == "replace":
             assert fake_storcli.calls == []
     else:
-        assert response.status_code == (403 if gate == "destructive" else 409), response.text
+        expected_status = (
+            403
+            if gate == "destructive"
+            else 502
+            if gate == "state" and action.family == "foreign"
+            else 409
+        )
+        assert response.status_code == expected_status, response.text
         assert response.json().get("error")
 
 
