@@ -42,7 +42,7 @@
     section.setAttribute("data-locate-state", accepted ? action : "unknown");
     start.disabled = started || section.getAttribute("data-locate-start-disabled") === "true";
     // An accepted command does not verify the physical LED, including after stop.
-    stop.disabled = false;
+    stop.disabled = section.getAttribute("data-locate-stop-disabled") === "true";
     label.textContent = started ? "Blink command accepted" : "Blink Locate LED";
     status.textContent = "LED state unverified." +
       (accepted ? " Last accepted command: " + action + "." : "");

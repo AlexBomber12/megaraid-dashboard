@@ -41,6 +41,11 @@ def test_replace_offline_missing_browser(
         app.state.settings = app.state.settings.model_copy(update={"maintenance_mode": False})
     login_and_navigate(page, f"{live_server}/drives/252:0")
     before = database_observation(snapshot_with_drives)
+    if outcome == "maintenance":
+        expect(page.locator('[data-replace-action="open"]')).to_be_disabled()
+        assert fake_storcli.calls == []
+        assert database_observation(snapshot_with_drives) == before
+        return
     open_wizard(page)
     page.locator('[data-stage="serial"] [data-replace-action="cancel"]').click()
     expect(page.locator('[data-replace-action="open"]')).to_be_visible()
@@ -55,20 +60,18 @@ def test_replace_offline_missing_browser(
         response.value.status
         == {"success": 200, "failure": 502, "maintenance": 403, "dry-run": 200}[outcome]
     )
-    if outcome in {"success", "dry-run"}:
+    if outcome == "success":
         expect(page.locator('[data-stage="physical-swap"]')).to_be_visible()
-        expected = (
-            []
-            if outcome == "dry-run"
-            else [
-                ["/c0/e252/s0", "set", "offline", "J"],
-                ["/c0/e252/s0", "set", "missing", "J"],
-            ]
-        )
+        expected = [
+            ["/c0/e252/s0", "set", "offline", "J"],
+            ["/c0/e252/s0", "set", "missing", "J"],
+        ]
         assert fake_storcli.mutations == expected
-        if outcome == "dry-run":
-            assert fake_storcli.calls == []
-            assert database_observation(snapshot_with_drives) == before
+    elif outcome == "dry-run":
+        expect(page.locator('[data-stage="physical-swap"]')).to_be_hidden()
+        expect(page.locator("[data-replace-output]")).to_contain_text("Do not remove or swap")
+        assert fake_storcli.calls == []
+        assert database_observation(snapshot_with_drives) == before
     else:
         expect(page.locator("[data-replace-output]")).to_contain_text(
             "storcli command failed" if outcome == "failure" else "maintenance_mode"
@@ -167,16 +170,19 @@ def test_wizard_cancel_keeps_controller_and_database_unchanged(
         page.locator('[data-replace-action="open"]').click()
     else:
         open_wizard(page)
+        page.locator('[data-replace-input="dry-run"]').uncheck()
         page.locator('[data-replace-action="run-step1"]').click()
         expect(page.locator('[data-stage="physical-swap"]')).to_be_visible()
         if stage == "insert":
             page.locator('[data-replace-action="continue-to-insert"]').click()
             expect(page.locator('[data-stage="insert"]')).to_be_visible()
+        before = database_observation(snapshot_with_drives)
+    calls_before = fake_storcli.calls
     page.locator(f'[data-stage="{stage}"] [data-replace-action="cancel"]').click()
     expect(page.locator('[data-replace-action="open"]')).to_be_focused()
     expect(page.locator("[data-replace-stepper]")).to_be_hidden()
-    assert fake_storcli.calls == []
+    assert fake_storcli.calls == calls_before
     assert database_observation(snapshot_with_drives) == before
 
 
-pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")
+pytestmark = pytest.mark.usefixtures("full_controller_handlers")

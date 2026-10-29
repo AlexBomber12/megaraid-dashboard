@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -139,14 +138,13 @@ def _physical_inventory(identity: dict[str, Any]) -> _PhysicalInventory:
     return inventory
 
 
-def _foreign_evidence(payload: dict[str, Any], expected_digest: str) -> str:
+def _foreign_evidence(payload: dict[str, Any], expected_digest: str) -> None:
     _ReadResponse.model_validate(payload)
     config = parse_foreign_config(payload)
     if not config.present or config.digest != expected_digest:
         raise _UnprovenSafetyError(
             "foreign configuration changed; reload and confirm its current digest"
         )
-    return json.dumps(payload["Controllers"][0]["Response Data"], sort_keys=True, allow_nan=False)
 
 
 async def check_foreign_safety(
@@ -166,9 +164,7 @@ async def check_foreign_safety(
         )
     try:
         inventory = _physical_inventory(identity)
-        foreign_before = _foreign_evidence(
-            await read(["/c0/fall", "show", "all", "J"]), expected_digest
-        )
+        _foreign_evidence(await read(["/c0/fall", "show", "all", "J"]), expected_digest)
         for drive in inventory.drives:
             if drive.state == "Rbld":
                 raise _UnprovenSafetyError(f"rebuild active at {drive.location}")
@@ -194,8 +190,9 @@ async def check_foreign_safety(
         if before != after:
             raise _UnprovenSafetyError("physical inventory changed during safety reads")
         foreign = await read(["/c0/fall", "show", "all", "J"])
-        if _foreign_evidence(foreign, expected_digest) != foreign_before:
-            raise _UnprovenSafetyError("foreign configuration changed during safety reads")
+        # Both reads must match the reviewed complete-metadata fingerprint, so
+        # equal geometry cannot hide a membership change during the rebuild reads.
+        _foreign_evidence(foreign, expected_digest)
     except _UnprovenSafetyError as exc:
         raise StorcliCommandFailed(
             f"Foreign action refused: {exc}. Refresh current controller and per-drive rebuild "

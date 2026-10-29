@@ -19,6 +19,7 @@
     "<button type=\"submit\" class=\"button button--warning\">",
     "<summary>",
     "<form class=\"form-grid foreign-config__form\" data-foreign-config-form=\"clear\" method=\"post\" action=\"{{ request.url_for('controller_foreign_config_clear').path }}\" hx-post=\"{{ request.url_for('controller_foreign_config_clear').path }}\" hx-ext=\"json-enc\" hx-target=\"#foreign-config-clear-result\" hx-swap=\"innerHTML\" >",
+    "<input type=\"hidden\" name=\"digest\" value=\"{{ foreign_config.digest }}\">",
     "<input class=\"input mono\" type=\"text\" name=\"confirmation\" required autocomplete=\"off\" spellcheck=\"false\" pattern=\"{{ clear_confirmation_phrase }}\">",
     "<input type=\"checkbox\" name=\"dry_run\" value=\"true\" checked>",
     "<button type=\"submit\" class=\"button button--danger\">",
@@ -79,8 +80,8 @@
     "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/health_snapshot.html": [
-    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if approved_action_reason(view_model.health.locate_start_url) or locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %} {% if locate_start_disabled_reason %}title=\"{{ locate_start_disabled_reason }}\"{% endif %} >",
-    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if approved_action_reason(view_model.health.locate_stop_url) or not view_model.health.can_locate_stop %}disabled{% endif %} >"
+    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if start_contract_reason or locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %} {% if locate_start_disabled_reason %}title=\"{{ locate_start_disabled_reason }}\"{% endif %} >",
+    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if stop_contract_reason or not view_model.health.can_locate_stop %}disabled{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/replace_destructive.html": [
     "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"open\" {% if replacement_state_blocked %}disabled{% endif %}>",

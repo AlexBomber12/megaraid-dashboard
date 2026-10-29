@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from time import monotonic
 from typing import Any, Literal, cast
 
@@ -190,10 +191,17 @@ async def run_storcli(
     timeout_seconds: float = 30.0,
     authorization_path: str | None = None,
     expected_foreign_digest: str | None = None,
+    before_write: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     command_args = _with_json_flag(args)
     _validate_command(command_args)
     if authorization_path is not None and "show" not in command_args:
+        from megaraid_dashboard.storcli.policy import load_policy, verify_pinned_binary
+
+        try:
+            approved = load_policy(authorization_path)
+        except (OSError, ValueError) as exc:
+            raise StorcliNotAvailable("Authorization cannot be verified; no write sent") from exc
         await check_storcli_prewrite(
             command_args,
             use_sudo=use_sudo,
@@ -202,6 +210,16 @@ async def run_storcli(
             expected_foreign_digest=expected_foreign_digest,
             timeout_seconds=timeout_seconds,
         )
+        try:
+            if load_policy(authorization_path) != approved:
+                raise ValueError("Command policy changed during preflight; reload and review again")
+            verify_pinned_binary(binary_path)
+        except (OSError, ValueError) as exc:
+            raise StorcliNotAvailable(
+                "Authorization changed before execution; no write sent"
+            ) from exc
+    if before_write is not None and "show" not in command_args:
+        before_write()
     argv = [binary_path, *command_args]
     if use_sudo:
         argv = ["sudo", "-n", *argv]

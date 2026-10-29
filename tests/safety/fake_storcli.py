@@ -69,12 +69,13 @@ def main() -> None:
                 config.update(changes)
                 (root / "state.json").write_text(json.dumps(config))
         elif args[0].startswith("/c0/e") and args[1:3] == ["show", "all"]:
-            slot = args[0].split("/s")[-1]
-            enc = args[0].split("/e")[-1].split("/")[0]
+            drive = config.get("drive_response_path", args[0])
+            slot = drive.split("/s")[-1]
+            enc = drive.split("/e")[-1].split("/")[0]
             data = {
-                f"Drive {args[0]}": [{"EID:Slt": f"{enc}:{slot}", "State": config["drive_state"]}],
-                f"Drive {args[0]} - Detailed Information": {
-                    f"Drive {args[0]} Device attributes": {"SN": config["serial"]}
+                f"Drive {drive}": [{"EID:Slt": f"{enc}:{slot}", "State": config["drive_state"]}],
+                f"Drive {drive} - Detailed Information": {
+                    f"Drive {drive} Device attributes": {"SN": config["serial"]}
                 },
             }
         else:

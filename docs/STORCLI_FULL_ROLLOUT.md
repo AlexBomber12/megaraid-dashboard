@@ -1,6 +1,10 @@
 # One-shot production rollout: all approved supported actions
 
-This is the final combined release procedure. Do not deploy intermediate read-only
+Independent button-chain audit and deployment hold:
+[OPERATOR_ACTION_READINESS.md](OPERATOR_ACTION_READINESS.md). The audit fixes have
+not been deployed; the previously staged activation helper was withdrawn.
+
+This is the combined release procedure. Do not deploy intermediate read-only
 or locate-only releases. No procedure in this PR has been executed on production;
 no controller write is a permission test. Keep this PR open and unmerged until review.
 
@@ -32,7 +36,9 @@ replacement topology, never inferred from a single-span assumption. Every enable
 write requires Basic authentication, HTTPS CSRF, exact policy approval, active
 maintenance (except Stop Locate), explicit controller Success and durable
 actor-attributed audit. A positive result means **controller accepted**, not
-physical verification. API state/identity checks remain authoritative after render.
+physical verification. Offline/Missing additionally require a same-serial,
+exact-slot live state read after Success before authorizing physical swap. A dry
+run never authorizes removal. API state/identity checks remain authoritative after render.
 
 | UI / POST suffix | Candidate argv before `J` | State and confirmation | Expected / refusal and next action |
 | --- | --- | --- | --- |
@@ -52,7 +58,7 @@ physical verification. API state/identity checks remain authoritative after rend
 | Replacement Missing `/drives/252:S/replace/missing` | `/c0/e252/sS set missing` | Offln only; maintenance + destructive; typed serial; own audit | Accepted removal request, not physical removal. Wrong state/identity refused. |
 | Insert & Start Rebuild `/drives/252:S/replace/insert` | `/c0/e252/sS insert dg=D array=A row=R` | **Syntax established; current topology approval still required**; latest successful Missing audit; live UGood replacement; typed new serial; maintenance + destructive | Unapproved syntax/topology disables wizard/API. Accepted insert does not prove rebuild started. No slot-sort derivation in full capability. |
 | Foreign Import `/controller/foreign-config/import` | `/c0/fall import` | Fresh configuration; maintenance + destructive; typed digest; dry-run defaults on; rebuild/state safety checks | Configuration request accepted. Changed/absent/unsupported foreign inventory: refresh and inspect; do not retry stale digest. |
-| Foreign Clear `/controller/foreign-config/clear` | `/c0/fall delete` | Fresh configuration; maintenance + destructive; type `CLEAR FOREIGN CONFIG`; dry-run defaults on | Metadata request accepted. Rebuild/conflicting states refused; inspect controller. |
+| Foreign Clear `/controller/foreign-config/clear` | `/c0/fall delete` | Fresh configuration matching the reviewed metadata fingerprint; maintenance + destructive; type `CLEAR FOREIGN CONFIG`; dry-run defaults on | Metadata request accepted. Changed metadata or rebuild/conflicting states refused; inspect controller. |
 
 Alternative commands are approved independently: the POST validates its selected
 VD/mode, and each rendered control checks the exact option it submits. An approved
@@ -76,7 +82,10 @@ completion. Close stops browser polling; snapshots remain collector-owned.
 ## Action-specific live prewrite evidence
 
 Every full-capability write still verifies the pinned binary, exact command approval,
-and the live controller serial/model. A missing local VD is not a general prohibition:
+and the live controller serial/model. After preflight it rechecks the protected
+policy, pinned binary and current persisted maintenance/mode authorization before
+launching the write. Foreign confirmation fingerprints the complete metadata,
+including equal-sized member changes. A missing local VD is not a general prohibition:
 
 | Action family | Required live topology/safety | Does an absent local VD block it? |
 | --- | --- | --- |

@@ -141,6 +141,7 @@
               hx-target="#foreign-config-clear-result"
               hx-swap="innerHTML"
             >
+              <input type="hidden" name="digest" value="{{ foreign_config.digest }}">
               <label class="field field--grow foreign-config__field">
                 <span class="field__label">Type <code>{{ clear_confirmation_phrase }}</code> to confirm</span>
                 <input class="input mono" type="text" name="confirmation" required autocomplete="off" spellcheck="false" pattern="{{ clear_confirmation_phrase }}">

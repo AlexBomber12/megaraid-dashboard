@@ -150,6 +150,7 @@ def prepare(action: Action, handle: Any, fake: FakeStorcli) -> dict[str, Any]:
         ).digest
         return {
             "confirmation": digest if action.name == "foreign-import" else "CLEAR FOREIGN CONFIG",
+            "digest": digest,
             "dry_run": False,
         }
     if action.name.endswith("-mode"):

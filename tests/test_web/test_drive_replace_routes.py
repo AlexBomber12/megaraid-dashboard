@@ -258,6 +258,7 @@ def test_drive_replace_offline_success_invokes_runner_and_audits(
         assert response.status_code == 200
         assert response.json() == {
             "step": "offline",
+            "drive_state_verified": False,
             "enclosure": 2,
             "slot": 0,
             "serial_number": _DEFAULT_SERIAL,
