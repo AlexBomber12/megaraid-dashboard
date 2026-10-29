@@ -229,7 +229,8 @@ def can_make_hot_spare(current_state: str, has_existing_dgs: bool) -> bool:
 def can_transition_step3(latest_audit_message: str | None) -> bool:
     """Insert is allowed only if the latest operator-action audit for this slot
     records that ``replace step missing`` succeeded. Failed missing attempts and
-    intervening operator actions (e.g. locate) reset the gate.
+    intervening operator actions reset the gate. The full-capability route excludes
+    Locate LED actions because they do not change the replacement cycle.
 
     The match is anchored on the full audit-message format produced by the
     route layer so free-form storcli error text appended after ``failed:``

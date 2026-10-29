@@ -1,3 +1,4 @@
+{% set replacement_resume = replacement_resume | default({}) %}
 {% set replacement_reason = approved_action_reason(request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path, workflow=true) %}
 {% if replacement_reason %}<p class="muted">{{ replacement_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
 {% if other_writes_disabled_reason %}
@@ -11,6 +12,8 @@
   data-enclosure="{{ view_model.position.enclosure }}"
   data-slot="{{ view_model.position.slot }}"
   data-serial="{{ view_model.identity.serial_number }}"
+  data-outgoing-serial="{{ replacement_resume.outgoing_serial | default('') }}"
+  data-resume-stage="{{ replacement_resume.stage | default('') }}"
   data-replace-offline-url="{{ request.url_for('drive_replace_offline', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
   data-replace-missing-url="{{ request.url_for('drive_replace_missing', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
   data-replace-topology-url="{{ request.url_for('drive_replace_topology', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
@@ -24,9 +27,9 @@
         <h2 class="replace-wizard__title" id="replace-drive-heading">Replace Drive</h2>
         <p class="muted">{{ view_model.replace.warning_text }}</p>
       </div>
-      {% set replacement_state_blocked = view_model.health.state not in ("ONLN", "OFFLN", "FAILED", "UBAD", "UGOOD") %}
+      {% set replacement_state_blocked = not replacement_resume and view_model.health.state not in ("ONLN", "OFFLN", "FAILED", "UBAD", "UGOOD") %}
       {% if replacement_state_blocked %}<p class="muted">Replacement cannot start in {{ view_model.health.state }} state. Refresh inventory and inspect the drive; monitor an existing rebuild instead.</p>{% endif %}
-      <button type="button" class="button button--danger" data-replace-action="open" {% if replacement_state_blocked %}disabled{% endif %}>Begin Replacement</button>
+      <button type="button" class="button button--danger" data-replace-action="open" {% if replacement_state_blocked %}disabled{% endif %}>{{ 'Resume Replacement' if replacement_resume else 'Begin Replacement' }}</button>
     </div>
 
     <ol class="stepper" data-replace-stepper hidden aria-label="Replacement progress">
@@ -75,6 +78,7 @@
         <li>Insert the replacement drive into the same slot.</li>
         <li>Wait for the controller to detect the new drive.</li>
       </ol>
+      <p class="muted">If the replacement is already installed, leave it in place and continue to confirm its new serial number.</p>
       <div class="replace-wizard__actions">
         <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
         <button type="button" class="button button--warning" data-replace-action="continue-to-insert">New Drive Inserted</button>
@@ -83,7 +87,7 @@
 
     <div class="replace-wizard__stage" data-stage="insert" data-live-pause hidden>
       <h3>Step 3 of 4 · Insert Into Array</h3>
-      <p class="muted">The controller will insert the new drive into the missing slot and start a rebuild.</p>
+      <p class="muted">Request insertion into the approved array position, then monitor live rebuild status. Controller acceptance does not prove that rebuilding started.</p>
       <dl class="replace-wizard__metadata">
         <dt>DG</dt><dd class="mono" data-replace-meta="dg">...</dd>
         <dt>Array</dt><dd class="mono" data-replace-meta="array">...</dd>

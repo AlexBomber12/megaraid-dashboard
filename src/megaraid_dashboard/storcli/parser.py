@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -63,11 +65,24 @@ def parse_virtual_drives(payload: dict[str, Any]) -> list[VirtualDrive]:
         raise StorcliParseError("virtual drive payload does not match expected schema") from exc
 
 
-def parse_drive_show(payload: dict[str, Any]) -> DriveShow:
+def parse_drive_show(payload: dict[str, Any], *, requested_drive: str | None = None) -> DriveShow:
     """Extract live state and serial number from a `/c0/eX/sY show all J` payload."""
     controller = _ensure_success(payload)
     try:
         response = _response_data(controller)
+        if requested_drive is not None:
+            status = _mapping(controller["Command Status"])
+            rows = _drive_rows(response)
+            if (
+                len(payload["Controllers"]) != 1
+                or type(status.get("Controller")) is not int
+                or status["Controller"] != 0
+                or len(rows) != 1
+                or rows[0][0] != f"Drive {requested_drive}"
+                or _mapping(rows[0][1][0]).get("EID:Slt")
+                != requested_drive.removeprefix("/c0/e").replace("/s", ":")
+            ):
+                raise StorcliParseError("live drive response does not identify the requested slot")
         return _extract_drive_show(response)
     except (KeyError, TypeError, ValidationError) as exc:
         raise StorcliParseError("drive show payload does not match expected schema") from exc
@@ -182,7 +197,7 @@ def parse_foreign_config(payload: dict[str, Any]) -> ForeignConfig:
                 drive_count=summary_drive,
                 total_size_bytes=total_size_bytes,
                 disk_groups=disk_groups,
-                digest=digest,
+                digest=_foreign_metadata_digest(response, digest),
             )
         return ForeignConfig(present=False, digest="")
 
@@ -198,8 +213,19 @@ def parse_foreign_config(payload: dict[str, Any]) -> ForeignConfig:
         drive_count=drive_count,
         total_size_bytes=total_size_bytes,
         disk_groups=disk_groups,
-        digest=digest,
+        digest=_foreign_metadata_digest(response, digest),
     )
+
+
+def _foreign_metadata_digest(response: Mapping[str, Any], summary: str) -> str:
+    """Bind confirmation to the reviewed metadata, including equal-sized drive swaps."""
+    try:
+        encoded = json.dumps(
+            dict(response), sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    except (TypeError, ValueError) as exc:
+        raise StorcliParseError("foreign metadata cannot be fingerprinted") from exc
+    return f"{summary}-{hashlib.sha256(encoded).hexdigest()}"
 
 
 _NO_FOREIGN_CONFIG_MARKERS = (

@@ -5,10 +5,12 @@
 {% set icons = request.url_for('static', path='icons.svg').path %}
 {% set enc = view_model.position.enclosure %}
 {% set slot = view_model.position.slot %}
+{% set start_contract_reason = approved_action_reason(view_model.health.locate_start_url) %}
+{% set stop_contract_reason = approved_action_reason(view_model.health.locate_stop_url) %}
 <section class="section" data-drive-detail-section="health-snapshot" aria-labelledby="drive-health-heading">
   <div class="section-title">
     <h2 id="drive-health-heading">Health Snapshot</h2>
-    <div class="drive-actions" data-locate-state="{{ view_model.health.locate_last_action or 'unknown' }}" data-locate-start-disabled="{{ 'true' if locate_start_disabled_reason else 'false' }}">
+    <div class="drive-actions" data-locate-state="{{ view_model.health.locate_last_action or 'unknown' }}" data-locate-start-disabled="{{ 'true' if locate_start_disabled_reason or start_contract_reason else 'false' }}" data-locate-stop-disabled="{{ 'true' if locate_disabled_reason or stop_contract_reason else 'false' }}">
       <div class="drive-actions__controls">
         <button
           type="button"
@@ -19,7 +21,7 @@
           hx-on::before-request="window.driveActions.begin(this)"
           hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
           data-locate-action="start"
-          {% if approved_action_reason(view_model.health.locate_start_url) or locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %}
+          {% if start_contract_reason or locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %}
           {% if locate_start_disabled_reason %}title="{{ locate_start_disabled_reason }}"{% endif %}
         >
           <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
@@ -35,13 +37,15 @@
           hx-on::before-request="window.driveActions.begin(this)"
           hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
           data-locate-action="stop"
-          {% if approved_action_reason(view_model.health.locate_stop_url) or not view_model.health.can_locate_stop %}disabled{% endif %}
+          {% if stop_contract_reason or not view_model.health.can_locate_stop %}disabled{% endif %}
         >
           <svg class="button__icon button__icon--idle" aria-hidden="true"><use href="{{ icons }}#icon-lightbulb"/></svg>
           <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
           Stop Locate
         </button>
         {% if locate_start_disabled_reason and not locate_disabled_reason %}<p class="muted" data-locate-start-reason>{{ locate_start_disabled_reason }} Stop Locate remains available for recovery.</p>{% endif %}
+        {% if start_contract_reason %}<p class="muted">Locate Start: {{ start_contract_reason }}</p>{% endif %}
+        {% if stop_contract_reason %}<p class="muted">Stop Locate: {{ stop_contract_reason }}</p>{% endif %}
         <span data-locate-status>LED state unverified.{% if view_model.health.locate_last_action %} Last accepted command: {{ view_model.health.locate_last_action }}.{% endif %}</span>
         <span class="drive-actions__feedback" data-action-feedback aria-live="polite"></span>
       </div>

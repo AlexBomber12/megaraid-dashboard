@@ -115,7 +115,9 @@ def test_disk_change_preserves_physical_swap_and_accepts_replacement_serial(
     def replace_response(route: Route) -> None:
         if route.request.method == "POST":
             posted.append((route.request.url.rsplit("/", 1)[-1], route.request.post_data_json))
-            route.fulfill(json={"ok": True})
+            # This race-only test simulates a verified real execution. Dry-run
+            # acceptance deliberately cannot authorize physical-swap instructions.
+            route.fulfill(json={"ok": True, "drive_state_verified": True})
         else:
             route.fulfill(json={"dg": 0, "array": 0, "row": 0})
 
@@ -135,6 +137,7 @@ def test_disk_change_preserves_physical_swap_and_accepts_replacement_serial(
     page.get_by_role("button", name="Begin Replacement").click()
     page.get_by_role("button", name="Continue", exact=True).click()
     page.locator("[data-replace-input='serial']").fill(OLD_SERIAL)
+    page.locator("[data-replace-input='dry-run']").uncheck()
     page.locator("[data-replace-action='run-step1']").click()
     expect(page.locator("[data-stage='physical-swap']")).to_be_visible()
 
@@ -163,8 +166,8 @@ def test_disk_change_preserves_physical_swap_and_accepts_replacement_serial(
     expect(page.locator("[data-rebuild-progress]")).to_have_text("Rebuild 42%")
     assert locate_requests == []
     assert posted == [
-        ("offline", {"serial_number": OLD_SERIAL, "dry_run": True}),
-        ("missing", {"serial_number": OLD_SERIAL, "dry_run": True}),
+        ("offline", {"serial_number": OLD_SERIAL, "dry_run": False}),
+        ("missing", {"serial_number": OLD_SERIAL, "dry_run": False}),
         ("insert", {"serial_number": NEW_SERIAL, "dry_run": False}),
     ]
 

@@ -115,7 +115,8 @@ def test_parse_foreign_config_uses_summary_counts_when_lists_missing() -> None:
     assert foreign_config.drive_count == 5
     assert foreign_config.disk_groups == []
     assert foreign_config.total_size_bytes is None
-    assert foreign_config.digest == "FC-DG2-PD5-UNKNOWN"
+    assert foreign_config.digest.startswith("FC-DG2-PD5-UNKNOWN-")
+    assert len(foreign_config.digest.rsplit("-", 1)[1]) == 64
 
 
 def test_parse_foreign_config_summary_counts_accept_string_values() -> None:

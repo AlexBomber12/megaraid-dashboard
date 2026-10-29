@@ -16,7 +16,9 @@
       body: JSON.stringify(body),
     });
     const text = await response.text();
-    return { ok: response.ok, status: response.status, body: text };
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (_) { /* An unproven result never advances. */ }
+    return { ok: response.ok, status: response.status, body: text, json: parsed };
   }
 
   async function getJson(url) {
@@ -39,7 +41,8 @@
   }
 
   function init(root) {
-    const expectedSerial = root.dataset.serial || "";
+    const expectedSerial = root.dataset.outgoingSerial || root.dataset.serial || "";
+    let resumeStage = root.dataset.resumeStage || "";
     const offlineUrl = root.dataset.replaceOfflineUrl;
     const missingUrl = root.dataset.replaceMissingUrl;
     const topologyUrl = root.dataset.replaceTopologyUrl;
@@ -69,7 +72,7 @@
     let inFlight = false;
     let topology = null;
     let identityChanged = false;
-    let currentSerial = expectedSerial;
+    let currentSerial = root.dataset.serial || "";
 
     function show(name) {
       Object.keys(stages).forEach(function (key) {
@@ -229,7 +232,13 @@
       if (action === "open") {
         if (identityChanged) return;
         openButton.hidden = true;
-        show("confirm");
+        if (resumeStage) {
+          show(resumeStage);
+          if (resumeStage === "insert") await loadTopology();
+          if (resumeStage === "rebuild") startRebuildPolling();
+        } else {
+          show("confirm");
+        }
       }
       if (action === "cancel" || action === "close") {
         close();
@@ -251,6 +260,16 @@
           const offline = await postJson(offlineUrl, body);
           appendResult("set offline response", offline);
           if (!offline.ok) return;
+          if (body.dry_run) {
+            output.textContent += "Dry run complete. No drive state was changed. " +
+              "Do not remove or swap the drive. Close this preview before a real replacement.\n";
+            return;
+          }
+          if (!offline.json || offline.json.drive_state_verified !== true) {
+            output.textContent += "Offline state is unverified. Do not remove the drive. " +
+              "Inspect live state and Events before continuing.\n";
+            return;
+          }
           if (identityChanged) {
             output.textContent += "Drive changed; set missing was not sent. " +
               "Close the wizard to reload.\n";
@@ -261,7 +280,14 @@
           const missing = await postJson(missingUrl, body);
           appendResult("set missing response", missing);
           if (!missing.ok) return;
+          if (!missing.json || missing.json.drive_state_verified !== true) {
+            output.textContent += "Missing state is unverified. Do not remove the drive. " +
+              "Inspect live state and Events before continuing.\n";
+            return;
+          }
 
+          resumeStage = "physical-swap";
+          openButton.textContent = "Resume Replacement";
           show("physical-swap");
         } catch (error) {
           appendRequestError("replace request failed", error);
@@ -270,6 +296,7 @@
         }
       }
       if (action === "continue-to-insert") {
+        resumeStage = "insert";
         show("insert");
         await loadTopology();
       }
@@ -287,6 +314,8 @@
           const insertResponse = await postJson(insertUrl, body);
           appendResult("insert response", insertResponse);
           if (insertResponse.ok && !body.dry_run) {
+            resumeStage = "rebuild";
+            openButton.textContent = "View Rebuild";
             show("rebuild");
             startRebuildPolling();
           }

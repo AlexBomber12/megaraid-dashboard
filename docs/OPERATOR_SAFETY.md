@@ -1,6 +1,8 @@
 > Final production procedure: [STORCLI_FULL_ROLLOUT.md](STORCLI_FULL_ROLLOUT.md).
 > Full capability uses root-approved topology and exact commands; the older inferred
 > row/single-span examples below describe legacy handler tests, not production approval.
+> Independent follow-up findings and current readiness:
+> [OPERATOR_ACTION_READINESS.md](OPERATOR_ACTION_READINESS.md).
 
 # Operator control coverage and safety contract
 

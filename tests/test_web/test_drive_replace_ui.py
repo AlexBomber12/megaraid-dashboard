@@ -74,6 +74,8 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
             "data-enclosure": "252",
             "data-slot": "4",
             "data-serial": "WD-WM00000005",
+            "data-outgoing-serial": "",
+            "data-resume-stage": "",
             "data-replace-offline-url": "/drives/252:4/replace/offline",
             "data-replace-missing-url": "/drives/252:4/replace/missing",
             "data-replace-topology-url": "/drives/252:4/replace/topology",
