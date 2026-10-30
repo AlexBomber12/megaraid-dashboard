@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import fields
+from dataclasses import asdict, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -151,6 +151,40 @@ def test_raid_config_has_one_sorted_row_per_virtual_drive(
 
     assert [row.vd_id for row in rows] == [1, 2]
     assert [row.name for row in rows] == ["first", "second"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "interval", "enabled"),
+    [
+        ("auto", None, True),
+        (" AUTO ", "24 hours", True),
+        ("manual", "168 hours", False),
+        ("disabled", None, False),
+        ("unknown", "168 hours", None),
+        (None, None, None),
+    ],
+)
+def test_patrol_schedule_status_requires_observed_mode(
+    session: Session,
+    sample_snapshot: StorcliSnapshot,
+    tmp_path: Path,
+    mode: str | None,
+    interval: str | None,
+    enabled: bool | None,
+) -> None:
+    raw_json = _raw_controller_payload()
+    raw_json["Controllers"][0]["Response Data"]["Scheduled Tasks"]["Patrol Read Reoccurrence"] = (
+        interval
+    )
+    raw_json["patrol_read"] = None if mode is None else asdict(PatrolReadStatus(mode, "stopped"))
+    _insert(session, _optimal_snapshot(sample_snapshot), raw_json=raw_json)
+    view = _load(session, tmp_path)
+    assert view.scheduled_tasks[0].is_enabled is enabled
+    if enabled is False:
+        assert view.scheduled_tasks[0].schedule_text == "Automatic scheduling disabled."
+    if mode is not None:
+        card = next(card for card in view.live_operations if card.name == "Patrol Read")
+        assert ("Interval" in card.mode_text) is (interval is not None)
 
 
 def test_scheduled_tasks_include_patrol_read_next_run(
@@ -459,7 +493,7 @@ def test_operation_and_schedule_helper_fallbacks() -> None:
     patrol_card = controller_detail_module._patrol_read_card(idle_patrol, now=now)
     cc_card = controller_detail_module._consistency_check_card(idle_cc, now=now)
 
-    assert patrol_card.mode_text == "Unknown mode. Interval 168h."
+    assert patrol_card.mode_text == "Unknown mode."
     assert patrol_card.status_text == "Stopped. Last completion unknown."
     assert patrol_card.progress_percent is None
     assert patrol_card.progress_eta_text is None
@@ -580,6 +614,7 @@ def _raw_controller_payload() -> dict[str, Any]:
     response_data["HwCfg"]["Current Size of FW Cache (MB)"] = 875
     response_data["Scheduled Tasks"]["Patrol Read Reoccurrence"] = "168 hours"
     response_data["Scheduled Tasks"]["Next Patrol Read launch"] = "05/24/2026, 18:00:00"
+    payload["patrol_read"] = asdict(PatrolReadStatus("auto", "stopped", None, None, None))
     return payload
 
 

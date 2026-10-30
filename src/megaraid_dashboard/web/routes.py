@@ -4283,6 +4283,7 @@ def _load_drive_detail_v2(
                 settings=settings,
                 app_version=__version__,
                 range_days=range_days,
+                scheduler=scheduler_state,
             )
             return _prefix_drive_detail_v2_urls(request, view_model)
     except LookupError as exc:

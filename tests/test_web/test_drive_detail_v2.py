@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,26 @@ def test_drive_detail_v2_renders_page_shell(sample_snapshot: StorcliSnapshot) ->
     assert "WD-WM00000001" in response.text
     assert "61°C" in response.text
     assert "61 C" not in response.text
+
+
+def test_drive_footer_uses_shared_collector_state(
+    sample_snapshot: StorcliSnapshot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from megaraid_dashboard.web import routes
+
+    last_run = datetime.now(UTC) - timedelta(minutes=2, seconds=5)
+    monkeypatch.setattr(
+        routes.scheduler_state,
+        "get_last_collector_run_at",
+        lambda: last_run,
+    )
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        for url in ("/", "/controller", "/drives/252:0"):
+            response = client.get(url)
+            assert response.status_code == 200
+            assert "Collector <strong>2 min ago</strong>" in response.text
 
 
 def test_drive_detail_v2_prev_next_nav_states(sample_snapshot: StorcliSnapshot) -> None:

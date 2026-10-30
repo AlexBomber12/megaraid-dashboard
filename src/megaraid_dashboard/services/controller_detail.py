@@ -102,7 +102,7 @@ class RaidConfigRow:
 class ScheduledTaskRow:
     name: str
     schedule_text: str
-    is_enabled: bool
+    is_enabled: bool | None
     configure_url: str | None
 
 
@@ -222,7 +222,7 @@ def load_controller_detail_view_model(
         else _build_cachevault_detail(snapshot.cachevault, raw_json, now=now),
         roc_history_chart_url=roc_history_chart_url,
         raid_config=[] if snapshot is None else _build_raid_config(snapshot, raw_json),
-        scheduled_tasks=_build_scheduled_tasks(raw_json, now=now),
+        scheduled_tasks=_build_scheduled_tasks(snapshot, raw_json, now=now),
         hardware=_build_hardware_identity(snapshot, raw_json),
         buzzer=_build_buzzer_control_state(None if snapshot is None else snapshot.alarm_state),
         foreign_config=_build_foreign_config_state(raw_json),
@@ -305,7 +305,10 @@ def _build_live_operations(
         cards.append((1, _consistency_check_card(consistency_check, now=now)))
     patrol_read = _load_patrol_read_state(snapshot)
     if patrol_read is not None:
-        cards.append((2, _patrol_read_card(patrol_read, now=now)))
+        interval = _parse_interval_hours(
+            _first_raw_text(snapshot.raw_json or {}, "Patrol Read Reoccurrence")
+        )
+        cards.append((2, _patrol_read_card(patrol_read, now=now, interval_hours=interval)))
     return [card for _, card in sorted(cards, key=lambda item: item[0])]
 
 
@@ -352,15 +355,25 @@ def _build_raid_config(
     ]
 
 
-def _build_scheduled_tasks(raw_json: Mapping[str, Any], *, now: datetime) -> list[ScheduledTaskRow]:
+def _build_scheduled_tasks(
+    snapshot: ControllerSnapshot | None, raw_json: Mapping[str, Any], *, now: datetime
+) -> list[ScheduledTaskRow]:
     patrol_interval = _parse_interval_hours(_first_raw_text(raw_json, "Patrol Read Reoccurrence"))
     patrol_last_run = _parse_timestamp(_first_raw_text(raw_json, "Patrol Read Last Run"))
     patrol_next = _parse_timestamp(_first_raw_text(raw_json, "Next Patrol Read launch"))
+    status = None if snapshot is None else _load_patrol_read_state(snapshot)
+    mode = "unknown" if status is None else status.mode.strip().lower()
+    # A recurrence alone can remain configured while automatic patrol is disabled.
+    enabled = {"auto": True, "manual": False, "disabled": False}.get(mode)
     return [
         ScheduledTaskRow(
             name="Patrol Read",
-            schedule_text=_schedule_text(patrol_interval, patrol_last_run, patrol_next, now=now),
-            is_enabled=patrol_interval is not None,
+            schedule_text=(
+                "Automatic scheduling disabled."
+                if enabled is False
+                else _schedule_text(patrol_interval, patrol_last_run, patrol_next, now=now)
+            ),
+            is_enabled=enabled,
             configure_url="/controller/patrol-read/mode",
         )
     ]
@@ -511,10 +524,12 @@ def _build_rebuild_operation_card(snapshot: ControllerSnapshot) -> LiveOperation
     )
 
 
-def _patrol_read_card(status: PatrolReadStatus, *, now: datetime) -> LiveOperationCard:
+def _patrol_read_card(
+    status: PatrolReadStatus, *, now: datetime, interval_hours: int | None = None
+) -> LiveOperationCard:
     return LiveOperationCard(
         name="Patrol Read",
-        mode_text=_mode_text(status.mode, interval_hours=168),
+        mode_text=_mode_text(status.mode, interval_hours=interval_hours),
         status_text=_operation_status_text(status, now=now),
         progress_percent=status.progress_percent if status.is_running else None,
         progress_eta_text=None if not status.is_running else "ETA unknown",

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.db.dao import insert_snapshot
 from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     Event,
@@ -21,6 +26,7 @@ from megaraid_dashboard.services.drive_detail import (
     _speed_value,
     load_drive_detail_view_model,
 )
+from megaraid_dashboard.storcli import StorcliSnapshot
 
 
 @pytest.fixture(autouse=True)
@@ -63,7 +69,7 @@ def test_drive_detail_view_model_smoke_healthy_drive(session: Session) -> None:
     assert view_model.identity.serial_number == "SN0004"
     assert view_model.identity.raw_size_text == "1.0 TB"
     assert view_model.connection.sas_address == "5000c5000004"
-    assert view_model.position.dg_span_row_text == "0 : 0 : 4"
+    assert view_model.position.dg_span_row_text == "N/A"
     assert view_model.position.backplane_layout[4].is_this is True
     assert view_model.system_health.app_version == "1.2.3"
     assert view_model.auto_refresh_seconds == 30
@@ -500,6 +506,98 @@ def test_small_helper_edge_cases() -> None:
     assert _speed_value("1.2.3Gb/s") == 0.0
     with pytest.raises(ValueError, match="timezone"):
         _require_aware_utc(datetime(2026, 4, 25, 12, 0))
+
+
+@pytest.mark.parametrize(("slot", "row"), [(0, 4), (4, 3), (7, 0)])
+def test_position_uses_observed_row_not_slot(
+    session: Session, sample_snapshot: StorcliSnapshot, slot: int, row: int
+) -> None:
+    _insert_observed_snapshot(session, sample_snapshot, _physical_payload())
+    assert _load_slot(session, slot).position.dg_span_row_text == f"0 : 0 : {row}"
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("Controllers",), []),
+        (("Controllers",), [{}, {}]),
+        (("Controllers",), None),
+        (("Controllers", 0, "Response Data", "Drive /c0/e252/s0"), []),
+        (("Controllers", 0, "Response Data", "Drive /c0/e252/s0"), [{}, {}]),
+        (("Controllers", 0, "Response Data", "Drive /c0/e252/s0"), [{"EID:Slt": "252:1"}]),
+        (
+            ("Controllers", 0, "Response Data", "Drive /c0/e252/s0"),
+            [{"EID:Slt": "252:0", "DID": 999}],
+        ),
+        (("Device attributes", "SN"), "replacement-serial"),
+        (("Device attributes", "SN"), None),
+        (("Policies/Settings", "Drive position"), "Unknown"),
+        (("Policies/Settings", "Drive position"), "DriveGroup:1, Span:0, Row:4"),
+        (("Policies/Settings", "Drive position"), None),
+    ],
+)
+def test_position_unknown_for_incomplete_ambiguous_or_mismatched_evidence(
+    session: Session, sample_snapshot: StorcliSnapshot, path: tuple, value: Any
+) -> None:
+    payload = _physical_payload()
+    if path[0] != "Controllers":
+        key = "Drive /c0/e252/s0"
+        path = (
+            "Controllers",
+            0,
+            "Response Data",
+            f"{key} - Detailed Information",
+            f"{key} {path[0]}",
+            path[1],
+        )
+    target = payload
+    for part in path[:-1]:
+        target = target[part]
+    target[path[-1]] = value
+    _insert_observed_snapshot(session, sample_snapshot, payload)
+    assert _load_slot(session, 0).position.dg_span_row_text == "N/A"
+
+
+def test_collector_age_uses_shared_run_state_and_wall_clock(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from megaraid_dashboard.services import drive_detail
+
+    _seed_snapshot(session)  # An old snapshot must not become the footer's clock.
+    now = datetime(2026, 10, 30, 22, 0, tzinfo=UTC)
+    last_run = now - timedelta(minutes=2)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(drive_detail, "datetime", Clock)
+    settings = get_settings().model_copy(update={"collector_enabled": True})
+    view = load_drive_detail_view_model(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        settings=settings,
+        app_version="test",
+        scheduler=SimpleNamespace(get_last_collector_run_at=lambda: last_run),
+    )
+    assert view.system_health.collector_last_run_at == last_run
+    assert view.system_health.collector_last_run_text == "2 min ago"
+    assert view.updated_at == datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+
+
+def _physical_payload() -> dict[str, Any]:
+    return json.loads(
+        (
+            Path(__file__).parents[1] / "fixtures/storcli/redacted/eall_sall_show_all.json"
+        ).read_text()
+    )
+
+
+def _insert_observed_snapshot(session: Session, snapshot: StorcliSnapshot, payload: dict) -> None:
+    insert_snapshot(session, snapshot, store_raw=True, raw_payload={"physical_drives": payload})
+    session.commit()
 
 
 def _load_slot(session: Session, slot_id: int):
