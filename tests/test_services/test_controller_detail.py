@@ -180,6 +180,7 @@ def test_scheduled_tasks_include_patrol_read_next_run(
         ("On", BuzzerControlState("On", True, True, False, "", "", "", "")),
         ("Silenced", BuzzerControlState("Silenced", False, True, False, "", "", "", "")),
         ("Off", BuzzerControlState("Off", False, False, True, "", "", "", "")),
+        ("Unknown", BuzzerControlState("Unknown", False, False, False, "", "", "", "")),
     ],
 )
 def test_buzzer_state_transitions_map_to_capabilities(
@@ -423,7 +424,7 @@ def test_private_mapping_helpers_cover_fallbacks() -> None:
     assert controller_detail_module._snapshot_text(None, "model_name") == "N/A"
     assert controller_detail_module._normalize_alarm_state("enabled") == "On"
     assert controller_detail_module._normalize_alarm_state("muted") == "Silenced"
-    assert controller_detail_module._normalize_alarm_state(None) == "Off"
+    assert controller_detail_module._normalize_alarm_state(None) == "Unknown"
     assert controller_detail_module._truthy(True)
     assert controller_detail_module._truthy(1)
     assert controller_detail_module._truthy("present")

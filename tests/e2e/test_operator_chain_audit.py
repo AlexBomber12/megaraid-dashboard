@@ -52,7 +52,7 @@ def test_reload_resumes_insertion_without_repeating_offline_missing(
     fake_storcli.configure(serial="NEW-DRIVE", drive_state="UGood")
     page.reload()
     fake_storcli.clear()
-    page.get_by_role("button", name="Resume Replacement", exact=True).click()
+    page.get_by_role("button", name="Resume…", exact=True).click()
     expect(page.locator('[data-stage="insert"]')).to_be_visible()
     page.locator('[data-replace-input="new-serial"]').fill("NEW-DRIVE")
     page.locator('[data-replace-input="dry-run-step3"]').uncheck()
@@ -73,7 +73,7 @@ def test_reviewed_page_cannot_mutate_different_same_size_foreign_metadata(
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/controller/foreign-config")
     panel = page.locator(f"#foreign-{name.split('-')[-1]}")
-    panel.locator("summary").click()
+    page.locator(f'[data-row-toggle][aria-controls="foreign-{name.split("-")[-1]}"]').click()
     panel.locator('[name="confirmation"]').fill(body["confirmation"])
     panel.locator('[name="dry_run"]').uncheck()
     state = json.loads((fake_storcli.path.parent / "state.json").read_text())

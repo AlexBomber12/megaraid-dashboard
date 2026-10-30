@@ -88,9 +88,7 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
             configured=request.app.state.settings.maintenance_mode,
             now=datetime.now(UTC),
         ):
-            context["locate_start_disabled_reason"] = (
-                "Locate Start requires an active maintenance window."
-            )
+            context["locate_start_disabled_reason"] = LOCATE_MAINTENANCE_REASON
 
         def approved_action_reason(
             path: str, mode: str | None = None, *, workflow: bool = False
@@ -101,11 +99,11 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
             if context["other_writes_disabled_reason"] is not None:
                 return str(context["other_writes_disabled_reason"])
             if not path.endswith("/locate/stop") and not context["controller_writes_enabled"]:
-                return "Start a maintenance window before this action."
+                return MAINTENANCE_REQUIRED_REASON
             if (
                 "/replace/" in path or "/foreign-config/" in path
             ) and not settings.destructive_mode:
-                return "Ask the administrator to enable destructive mode before this action."
+                return DESTRUCTIVE_MODE_REASON
             policy = load_policy(settings.controller_command_policy)
             if workflow:
                 return replacement_refusal(policy, path)
@@ -119,7 +117,34 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
             return action_refusal(policy, path, selected)
 
         context["approved_action_reason"] = approved_action_reason
+        # Rollout/policy refusals shared by every action on the page: rendered once by
+        # the Actions gate (partials/_actions.html) and never repeated in action rows.
+        page_action_reasons: list[str] = []
+        for key in (
+            "maintenance_disabled_reason",
+            "locate_disabled_reason",
+            "other_writes_disabled_reason",
+        ):
+            value = context[key]
+            if value and str(value) not in page_action_reasons:
+                page_action_reasons.append(str(value))
+        context["page_action_reasons"] = page_action_reasons
+        # Page-level reasons explained by the gate or the destructive group.
+        context["gate_reasons"] = [
+            *page_action_reasons,
+            MAINTENANCE_REQUIRED_REASON,
+            LOCATE_MAINTENANCE_REASON,
+            DESTRUCTIVE_MODE_REASON,
+        ]
+        context["destructive_mode_reason"] = (
+            None if request.app.state.settings.destructive_mode else DESTRUCTIVE_MODE_REASON
+        )
         return context
+
+
+MAINTENANCE_REQUIRED_REASON = "Start a maintenance window before this action."
+LOCATE_MAINTENANCE_REASON = "Locate Start requires an active maintenance window."
+DESTRUCTIVE_MODE_REASON = "Ask the administrator to enable destructive mode before this action."
 
 
 def iso_utc(value: datetime | None) -> str:

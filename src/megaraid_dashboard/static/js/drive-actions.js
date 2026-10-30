@@ -26,7 +26,6 @@
     const fb = section.querySelector("[data-action-feedback]");
     const start = section.querySelector('[data-locate-action="start"]');
     const stop = section.querySelector('[data-locate-action="stop"]');
-    const label = section.querySelector("[data-locate-label]");
     const status = section.querySelector("[data-locate-status]");
     let response = {};
     try {
@@ -43,7 +42,7 @@
     start.disabled = started || section.getAttribute("data-locate-start-disabled") === "true";
     // An accepted command does not verify the physical LED, including after stop.
     stop.disabled = section.getAttribute("data-locate-stop-disabled") === "true";
-    label.textContent = started ? "Blink command accepted" : "Blink Locate LED";
+    // The button label stays constant so the row never changes width; state goes to the status line.
     status.textContent = "LED state unverified." +
       (accepted ? " Last accepted command: " + action + "." : "");
 
@@ -58,9 +57,8 @@
       } else {
         fb.textContent = typeof response.message === "string" ? response.message :
           "Command not confirmed. LED state is unverified. " +
-          "Inspect the physical LED and audit log before another Start. " +
-          "Do not repeat Start blindly. " +
-          "Stop Locate can request LED shutdown without maintenance.";
+          "Inspect the physical LED and audit log before pressing Start again. " +
+          "You can request Stop without a maintenance window.";
       }
       fb.className = "drive-actions__feedback drive-actions__feedback--error";
     }

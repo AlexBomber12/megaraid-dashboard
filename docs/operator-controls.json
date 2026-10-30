@@ -11,19 +11,24 @@
   "src/megaraid_dashboard/templates/pages/foreign_config.html": [
     "<a href=\"{{ request.url_for('overview').path }}\">",
     "<a href=\"{{ request.url_for('controller_detail').path }}\">",
-    "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">",
-    "<summary>",
+    "<button type=\"button\" class=\"button button--warning\" data-row-toggle aria-controls=\"foreign-import\" aria-expanded=\"false\" {% if import_reason or other_writes_disabled_reason %}disabled{% endif %}>",
     "<form class=\"form-grid foreign-config__form\" data-foreign-config-form=\"import\" method=\"post\" action=\"{{ request.url_for('controller_foreign_config_import').path }}\" hx-post=\"{{ request.url_for('controller_foreign_config_import').path }}\" hx-ext=\"json-enc\" hx-target=\"#foreign-config-import-result\" hx-swap=\"innerHTML\" >",
     "<input class=\"input mono\" type=\"text\" name=\"confirmation\" required autocomplete=\"off\" spellcheck=\"false\">",
     "<input type=\"checkbox\" name=\"dry_run\" value=\"true\" checked>",
-    "<button type=\"submit\" class=\"button button--warning\">",
-    "<summary>",
+    "<button type=\"submit\" class=\"button button--warning\" {% if import_reason or other_writes_disabled_reason %}disabled{% endif %}>",
+    "<button type=\"button\" class=\"button button--danger\" data-row-toggle aria-controls=\"foreign-clear\" aria-expanded=\"false\" {% if clear_reason or other_writes_disabled_reason %}disabled{% endif %}>",
     "<form class=\"form-grid foreign-config__form\" data-foreign-config-form=\"clear\" method=\"post\" action=\"{{ request.url_for('controller_foreign_config_clear').path }}\" hx-post=\"{{ request.url_for('controller_foreign_config_clear').path }}\" hx-ext=\"json-enc\" hx-target=\"#foreign-config-clear-result\" hx-swap=\"innerHTML\" >",
     "<input type=\"hidden\" name=\"digest\" value=\"{{ foreign_config.digest }}\">",
     "<input class=\"input mono\" type=\"text\" name=\"confirmation\" required autocomplete=\"off\" spellcheck=\"false\" pattern=\"{{ clear_confirmation_phrase }}\">",
     "<input type=\"checkbox\" name=\"dry_run\" value=\"true\" checked>",
-    "<button type=\"submit\" class=\"button button--danger\">",
+    "<button type=\"submit\" class=\"button button--danger\" {% if clear_reason or other_writes_disabled_reason %}disabled{% endif %}>",
     "<a href=\"{{ request.url_for('controller_detail').path }}\">"
+  ],
+  "src/megaraid_dashboard/templates/partials/_actions.html": [
+    "<form class=\"action-gate__form\" hx-post=\"{{ request.url_for('maintenance_start').path }}\" hx-ext=\"json-enc\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >",
+    "<select class=\"input\" name=\"duration_minutes\" aria-label=\"Maintenance duration\">",
+    "<input class=\"input action-gate__reason\" type=\"text\" name=\"reason\" maxlength=\"200\" required placeholder=\"Reason, e.g. Replace drive 252:3\" aria-label=\"Maintenance reason\">",
+    "<button type=\"submit\" class=\"button button--warning\">"
   ],
   "src/megaraid_dashboard/templates/partials/activity_timeline_v2.html": [
     "<a href=\"{{ request.url_for('events').path }}\">"
@@ -32,16 +37,15 @@
     "<a class=\"backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}\" href=\"{{ slot.detail_url }}\" title=\"Slot {{ slot.slot_label }} \u00b7 {{ severity_class | title }}\" {% if slot.is_this %}aria-current=\"page\"{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/buzzer_control.html": [
-    "<a href=\"#maintenance\">",
-    "<form method=\"post\" action=\"{{ view_model.buzzer.enable_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"enable\">",
-    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
-    "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'true' if buzzer_on else 'false' }}\" {% if not view_model.buzzer.can_enable %}disabled{% endif %}>",
-    "<form method=\"post\" action=\"{{ view_model.buzzer.disable_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"disable\">",
-    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
-    "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'false' if buzzer_on else 'true' }}\" {% if not view_model.buzzer.can_disable %}disabled{% endif %}>",
     "<form method=\"post\" action=\"{{ view_model.buzzer.silence_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"silence\">",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
-    "<button type=\"submit\" class=\"button button--warning\" {% if not view_model.buzzer.can_silence %}disabled{% endif %}>"
+    "<button type=\"submit\" class=\"button\" {% if not view_model.buzzer.can_silence or silence_reason %}disabled{% endif %}>",
+    "<form method=\"post\" action=\"{{ view_model.buzzer.enable_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"enable\">",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'true' if buzzer_on else 'false' }}\" {% if not view_model.buzzer.can_enable or enable_reason %}disabled{% endif %}>",
+    "<form method=\"post\" action=\"{{ view_model.buzzer.disable_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"disable\">",
+    "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
+    "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'true' if buzzer_off else 'false' }}\" {% if not view_model.buzzer.can_disable or disable_reason %}disabled{% endif %}>"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/foreign_config.html": [
     "<a class=\"button button--warning\" href=\"{{ request.url_for('controller_foreign_config').path }}\">"
@@ -50,17 +54,17 @@
     "<summary id=\"hardware-identity-heading\">"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/live_operations.html": [
-    "<a href=\"#maintenance\">",
     "<form method=\"post\" action=\"{{ operation.start_url or '#' }}\" class=\"inline-form\" data-csrf-form>",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
-    "<button class=\"button\" type=\"submit\" {% if not operation.can_start %}disabled{% endif %}>",
+    "<button class=\"button\" type=\"submit\" {% if not operation.can_start or start_reason %}disabled{% endif %}>",
     "<form method=\"post\" action=\"{{ operation.stop_url or '#' }}\" class=\"inline-form\" data-csrf-form>",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
-    "<button class=\"button\" type=\"submit\" {% if not operation.can_stop %}disabled{% endif %}>",
+    "<button class=\"button\" type=\"submit\" {% if not operation.can_stop or stop_reason %}disabled{% endif %}>",
     "<form method=\"post\" action=\"{{ operation.mode_url or '#' }}\" class=\"inline-form\" data-csrf-form data-operation-mode-form>",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
-    "<input type=\"hidden\" name=\"mode\" value=\"{{ next_operation_mode }}\">",
-    "<button class=\"button\" type=\"submit\" {% if not operation.can_change_mode %}disabled{% endif %}>"
+    "<input type=\"hidden\" name=\"mode\" value=\"{{ mode }}\">",
+    "<button class=\"button\" type=\"submit\" aria-pressed=\"false\" {% if not operation.can_change_mode or mode_reason %}disabled{% endif %}>",
+    "<button class=\"button\" type=\"button\" aria-pressed=\"true\" disabled>"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/roc_history_chart.html": [
     "<button type=\"button\" class=\"range-tabs__button\" data-range-hours=\"1\" role=\"tab\" aria-selected=\"false\">",
@@ -72,19 +76,18 @@
     "<a href=\"{{ request.url_for('controller_detail').path }}\" class=\"controller-card controller-card--{{ controller.state | lower }}\">"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/advanced_actions.html": [
-    "<form method=\"post\" action=\"{{ action.url }}\" class=\"inline-form\" data-csrf-form data-drive-advanced-action data-confirm-title=\"{{ action.label }} on drive {{ slot_ref }}?\" data-confirm-body=\"{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}\" data-confirm-label=\"{{ action.label }}\" data-confirm-tone=\"{{ 'danger' if action.is_destructive else 'warning' }}\" {% if action.is_destructive %}data-confirm-phrase=\"{{ view_model.identity.serial_number }}\"{% endif %} >",
+    "<form method=\"post\" action=\"{{ action.url }}\" class=\"inline-form\" data-csrf-form data-drive-advanced-action data-confirm-title=\"{{ action.label }} on drive {{ slot_ref }}?\" data-confirm-body=\"{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}\" data-confirm-label=\"{{ copy[2] }}\" data-confirm-tone=\"{{ 'danger' if action.is_destructive else 'warning' }}\" {% if action.is_destructive %}data-confirm-phrase=\"{{ view_model.identity.serial_number }}\"{% endif %} >",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
     "<input type=\"hidden\" name=\"serial_number\" value=\"{{ view_model.identity.serial_number }}\">",
     "<input type=\"hidden\" name=\"dg_id\" value=\"{{ drive_dg_id if drive_dg_id != '-' else '' }}\">",
-    "<button type=\"submit\" class=\"button{% if action.is_destructive %} button--danger{% endif %}\" {% if not action.is_enabled or no_dg %}disabled{% endif %} >",
-    "<a href=\"{{ request.url_for('controller_detail').path }}#maintenance\">"
+    "<button type=\"submit\" class=\"button{% if action.is_destructive %} button--danger{% endif %}\" {% if not action.is_enabled or no_dg or contract_reason %}disabled{% endif %} >"
   ],
-  "src/megaraid_dashboard/templates/partials/drive_detail/health_snapshot.html": [
-    "<button type=\"button\" class=\"button button--primary\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if start_contract_reason or locate_start_disabled_reason or not view_model.health.can_locate_start %}disabled {% endif %} {% if locate_start_disabled_reason %}title=\"{{ locate_start_disabled_reason }}\"{% endif %} >",
-    "<button type=\"button\" class=\"button\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if stop_contract_reason or not view_model.health.can_locate_stop %}disabled{% endif %} >"
+  "src/megaraid_dashboard/templates/partials/drive_detail/locate_control.html": [
+    "<button type=\"button\" class=\"button\" aria-label=\"Start Locate LED\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if start_reason or not view_model.health.can_locate_start %}disabled{% endif %} >",
+    "<button type=\"button\" class=\"button\" aria-label=\"Stop Locate LED\" hx-post=\"{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"stop\" {% if stop_contract_reason or not view_model.health.can_locate_stop %}disabled{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/replace_destructive.html": [
-    "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"open\" {% if replacement_state_blocked %}disabled{% endif %}>",
+    "<button type=\"button\" class=\"button button--danger\" data-replace-action=\"open\" {% if replacement_state_blocked or replacement_reason or other_writes_disabled_reason %}disabled{% endif %} >",
     "<button type=\"button\" class=\"button\" data-replace-action=\"cancel\" autofocus>",
     "<button type=\"button\" class=\"button button--warning\" data-replace-action=\"continue-to-serial\">",
     "<input type=\"text\" class=\"input mono\" data-replace-input=\"serial\" autocomplete=\"off\" spellcheck=\"false\">",
@@ -114,14 +117,7 @@
     "<a class=\"filter-chip{% if chip.active %} filter-chip--active{% endif %}\" href=\"{{ chip.href }}\" aria-pressed=\"{{ 'true' if chip.active else 'false' }}\" >"
   ],
   "src/megaraid_dashboard/templates/partials/maintenance_banner.html": [
-    "<button type=\"button\" class=\"button button--warning\" hx-post=\"{{ request.url_for('maintenance_stop').path }}\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >"
-  ],
-  "src/megaraid_dashboard/templates/partials/maintenance_start_form.html": [
-    "<button type=\"button\" class=\"button button--warning\" hx-post=\"{{ request.url_for('maintenance_stop').path }}\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >",
-    "<form class=\"form-grid\" hx-post=\"{{ request.url_for('maintenance_start').path }}\" hx-ext=\"json-enc\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" >",
-    "<select class=\"input\" name=\"duration_minutes\">",
-    "<input class=\"input\" type=\"text\" name=\"reason\" maxlength=\"200\" required placeholder=\"e.g. Replace drive 252:3\">",
-    "<button type=\"submit\" class=\"button button--warning\">"
+    "<button type=\"button\" class=\"button button--warning\" hx-post=\"{{ request.url_for('maintenance_stop').path }}\" hx-swap=\"none\" hx-on::after-request=\"if (event.detail.successful) window.location.reload()\" {% if maintenance_disabled_reason %}disabled title=\"{{ maintenance_disabled_reason }}\"{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/physical_drive_table.html": [
     "<button type=\"button\" class=\"sort-button\">",

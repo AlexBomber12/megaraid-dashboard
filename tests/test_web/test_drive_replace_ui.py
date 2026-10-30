@@ -27,7 +27,7 @@ class _ReplaceWizardParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr_map = {key: value or "" for key, value in attrs}
-        if tag == "section" and "data-replace-wizard" in attr_map:
+        if tag == "div" and "data-replace-wizard" in attr_map:
             self.wizard_roots.append(attr_map)
         if tag == "button" and "data-replace-action" in attr_map:
             self.buttons.append(attr_map)
@@ -68,7 +68,9 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
     assert response.status_code == 200
     assert parsed.wizard_roots == [
         {
-            "class": "replace-wizard",
+            "class": "action-row action-row--danger",
+            "role": "group",
+            "data-drive-detail-section": "replace",
             "aria-labelledby": "replace-drive-heading",
             "data-replace-wizard": "",
             "data-enclosure": "252",
@@ -83,7 +85,7 @@ def test_drive_detail_renders_replace_wizard_with_metadata(
             "data-replace-rebuild-status-url": "/drives/252:4/replace/rebuild-status",
         }
     ]
-    assert 'id="replace-drive-heading">Replace Drive</h2>' in response.text
+    assert 'id="replace-drive-heading">Replace Drive</h3>' in response.text
     assert "252:4" in response.text
     assert "WDC WD30EFRX-68EUZN0" in response.text
     assert "WD-WM00000005" in response.text

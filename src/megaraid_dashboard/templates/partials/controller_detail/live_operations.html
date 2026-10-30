@@ -1,71 +1,77 @@
-{% if other_writes_disabled_reason %}
-<p class="muted">{{ other_writes_disabled_reason }}</p>
-<fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
-{% endif %}
-<section class="section" data-controller-section="live-operations" aria-labelledby="live-operations-heading">
-  <div class="section-title">
-    <h2 id="live-operations-heading">Live Operations</h2>
-    {% if not maintenance_state.active %}
-      <p class="action-hint">Changes require <a href="#maintenance">maintenance mode</a>.</p>
-    {% endif %}
-  </div>
-  <div class="card">
-    {% if view_model.live_operations %}
-      <div class="ops-list">
-        {% for operation in view_model.live_operations %}
-          {% set operation_mode_text = operation.mode_text | lower %}
-          {% if operation.name == "Consistency Check" %}
-            {% set next_operation_mode = "sequential" if "concurrent" in operation_mode_text else "concurrent" %}
-          {% else %}
-            {% set next_operation_mode = "auto" if "manual" in operation_mode_text else "manual" %}
-          {% endif %}
-          <article class="op-item" data-action-scope>
-            <div>
-              <h3>{{ operation.name }}</h3>
-              <p>{{ operation.status_text }}</p>
-              <p class="muted">{{ operation.mode_text }}</p>
-              {% if operation.progress_percent is not none %}
-                <div class="op-progress-bar" role="progressbar" aria-label="{{ operation.name }} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ operation.progress_percent }}">
-                  <span class="op-progress-fill" style="width: {{ operation.progress_percent }}%"></span>
-                </div>
-                <span class="muted">{{ operation.progress_percent }}%{% if operation.progress_eta_text %} · {{ operation.progress_eta_text }}{% endif %}</span>
-              {% endif %}
-            </div>
-            {% if not operation.can_start %}<p class="muted">Start needs a known idle state. Refresh operation status.</p>{% endif %}
-            {% if not operation.can_stop %}<p class="muted">Stop needs a known active state. Refresh operation status.</p>{% endif %}
-            {% if not operation.can_change_mode %}<p class="muted">Mode changes need a known state. Restore read probes and refresh.</p>{% endif %}
-            <div class="button-row">
-              {% set contract_reason = approved_action_reason(operation.start_url or '#') %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form method="post" action="{{ operation.start_url or '#' }}" class="inline-form" data-csrf-form>
-                <input type="hidden" name="csrf_token" value="">
-                <button class="button" type="submit" {% if not operation.can_start %}disabled{% endif %}>Start</button>
-              </form>
-{% if contract_reason %}</fieldset>{% endif %}
-              {% set contract_reason = approved_action_reason(operation.stop_url or '#') %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form method="post" action="{{ operation.stop_url or '#' }}" class="inline-form" data-csrf-form>
-                <input type="hidden" name="csrf_token" value="">
-                <button class="button" type="submit" {% if not operation.can_stop %}disabled{% endif %}>Stop</button>
-              </form>
-{% if contract_reason %}</fieldset>{% endif %}
-              {% set contract_reason = approved_action_reason(operation.mode_url or '#', next_operation_mode) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form method="post" action="{{ operation.mode_url or '#' }}" class="inline-form" data-csrf-form data-operation-mode-form>
-                <input type="hidden" name="csrf_token" value="">
-                <input type="hidden" name="mode" value="{{ next_operation_mode }}">
-                <button class="button" type="submit" {% if not operation.can_change_mode %}disabled{% endif %}>Switch to {{ next_operation_mode | title }}</button>
-              </form>
-{% if contract_reason %}</fieldset>{% endif %}
-            </div>
-            <div class="form-error" data-controller-action-error hidden role="alert"></div>
-          </article>
-        {% endfor %}
-      </div>
+{% from "partials/_actions.html" import row_note with context %}
+{# Rows of the Controller Actions panel. Process: Start | Stop. Setting: mode switch, current value pressed. #}
+<div class="action-panel__rows" data-controller-section="live-operations">
+  {% for operation in view_model.live_operations %}
+    {% set operation_mode_text = operation.mode_text | lower %}
+    {% set current_operation_mode = operation_mode_text.split(' ')[0] %}
+    {% if operation.name == "Consistency Check" %}
+      {% set modes = ["concurrent", "sequential"] %}
     {% else %}
-      <p class="muted">No live controller operation status is available. The read probes may be unsupported or unavailable.</p>
+      {% set modes = ["auto", "manual"] %}
     {% endif %}
-  </div>
-</section>
-
-{% if other_writes_disabled_reason %}</fieldset>{% endif %}
+    {% set start_reason = approved_action_reason(operation.start_url) if operation.start_url else none %}
+    {% set stop_reason = approved_action_reason(operation.stop_url) if operation.stop_url else none %}
+    {% set notes = [start_reason, stop_reason] %}
+    {% if operation.mode_url %}
+      {% for mode in modes if mode != current_operation_mode %}
+        {% set _ = notes.append(approved_action_reason(operation.mode_url, mode)) %}
+      {% endfor %}
+    {% endif %}
+    {# Idle → Stop disabled, running → Start disabled: normal, needs no text. #}
+    {% if operation.start_url and not operation.can_start and not operation.can_stop %}
+      {% set _ = notes.append("State unknown, so Start and Stop are unavailable. Refresh operation status.") %}
+    {% elif operation.mode_url and not operation.can_change_mode %}
+      {% set _ = notes.append("Mode changes need a known state. Refresh operation status.") %}
+    {% endif %}
+    <div class="action-row" data-action-scope>
+      <div class="action-row__name"><h3>{{ operation.name }}</h3></div>
+      <div class="action-row__now">
+        <strong>{{ operation.status_text }}</strong>
+        <span>{{ operation.mode_text }}</span>
+        {% if operation.progress_percent is not none %}
+          <div class="op-progress-bar" role="progressbar" aria-label="{{ operation.name }} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ operation.progress_percent }}">
+            <span class="op-progress-fill" style="width: {{ operation.progress_percent }}%"></span>
+          </div>
+          <span>{{ operation.progress_percent }}%{% if operation.progress_eta_text %} · {{ operation.progress_eta_text }}{% endif %}</span>
+        {% endif %}
+        {{ row_note(notes) }}
+        <p class="form-error" data-controller-action-error hidden role="alert"></p>
+      </div>
+      {% if operation.start_url or operation.stop_url %}
+      <fieldset class="action-row__cmd" aria-label="{{ operation.name }}"{% if other_writes_disabled_reason %} disabled{% endif %}>
+        <form method="post" action="{{ operation.start_url or '#' }}" class="inline-form" data-csrf-form>
+          <input type="hidden" name="csrf_token" value="">
+          <button class="button" type="submit" {% if not operation.can_start or start_reason %}disabled{% endif %}>Start</button>
+        </form>
+        <form method="post" action="{{ operation.stop_url or '#' }}" class="inline-form" data-csrf-form>
+          <input type="hidden" name="csrf_token" value="">
+          <button class="button" type="submit" {% if not operation.can_stop or stop_reason %}disabled{% endif %}>Stop</button>
+        </form>
+      </fieldset>
+      {% endif %}
+      {% if operation.mode_url %}
+      <fieldset class="action-row__set"{% if other_writes_disabled_reason %} disabled{% endif %}>
+        <div class="segmented" role="group" aria-label="{{ operation.name }} mode">
+          {% for mode in modes %}
+            {% if mode != current_operation_mode %}
+              {% set mode_reason = approved_action_reason(operation.mode_url, mode) %}
+              <form method="post" action="{{ operation.mode_url or '#' }}" class="inline-form" data-csrf-form data-operation-mode-form>
+                <input type="hidden" name="csrf_token" value="">
+                <input type="hidden" name="mode" value="{{ mode }}">
+                <button class="button" type="submit" aria-pressed="false" {% if not operation.can_change_mode or mode_reason %}disabled{% endif %}>{{ mode | title }}</button>
+              </form>
+            {% else %}
+              <div class="inline-form"><button class="button" type="button" aria-pressed="true" disabled>{{ mode | title }}</button></div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="action-row">
+      <div class="action-row__name"><h3>Operations</h3></div>
+      <div class="action-row__now"><span>No live controller operation status is available. The read probes may be unsupported or unavailable.</span></div>
+    </div>
+  {% endfor %}
+</div>

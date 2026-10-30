@@ -32,14 +32,15 @@ def test_foreign_action_browser(
     login_and_navigate(page, f"{live_server}/controller/foreign-config")
     name = action.name.split("-")[-1]
     disclosure = page.locator(f"#foreign-{name}")
-    disclosure.locator("summary").click()
+    toggle = page.locator(f'[data-row-toggle][aria-controls="foreign-{name}"]')
+    toggle.click()
     form = disclosure.locator("form")
     before = database_observation(snapshot_with_drives)
     fake_storcli.clear()
     # Closing a disclosure without confirming must not post anything.
-    disclosure.locator("summary").click()
+    toggle.click()
     assert fake_storcli.calls == []
-    disclosure.locator("summary").click()
+    toggle.click()
     form.locator('[name="confirmation"]').fill(
         "WRONG" if outcome == "confirmation" else body["confirmation"]
     )

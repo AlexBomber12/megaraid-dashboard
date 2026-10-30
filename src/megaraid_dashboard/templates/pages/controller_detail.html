@@ -21,24 +21,42 @@
       <p>{{ view_model.page_subtitle }}</p>
     </header>
 
+    {% from "partials/_actions.html" import action_gate with context %}
+
     <div id="controller-live-status" class="live-group" data-live-region>
       {% include "partials/controller_detail/health_snapshot.html" %}
     </div>
 
-    {% include "partials/maintenance_start_form.html" %}
+    {# Every write for the controller, in one panel, directly after its state. #}
+    <section class="section" aria-labelledby="controller-actions-heading">
+      <div class="section-title"><h2 id="controller-actions-heading">Actions</h2></div>
+      <div class="action-panel">
+        {{ action_gate() }}
+        <div id="controller-live-actions" class="action-panel__rows" data-live-region>
+          {% include "partials/controller_detail/live_operations.html" %}
+          {% include "partials/controller_detail/buzzer_control.html" %}
+          {% include "partials/controller_detail/foreign_config.html" %}
+        </div>
+      </div>
+    </section>
 
-    <div id="controller-live-ops" class="live-group" data-live-region>
-      {% include "partials/controller_detail/live_operations.html" %}
-      {% include "partials/controller_detail/raid_config_table.html" %}
+    {# Read-only details. Two columns ≥ 1200px. #}
+    <div class="page-columns">
+      <div class="page-columns__main">
+        <div id="controller-live-ops" class="live-group" data-live-region>
+          {% include "partials/controller_detail/raid_config_table.html" %}
+        </div>
+        {% include "partials/controller_detail/roc_history_chart.html" %}
+      </div>
+      <aside class="page-columns__side" aria-label="Controller details">
+        <div id="controller-live-details" class="live-group" data-live-region>
+          {% include "partials/controller_detail/cachevault.html" %}
+          {% include "partials/controller_detail/scheduled_tasks.html" %}
+        </div>
+      </aside>
     </div>
 
-    {% include "partials/controller_detail/roc_history_chart.html" %}
-
-    <div id="controller-live-details" class="live-group" data-live-region>
-      {% include "partials/controller_detail/cachevault.html" %}
-      {% include "partials/controller_detail/scheduled_tasks.html" %}
-      {% include "partials/controller_detail/buzzer_control.html" %}
-      {% include "partials/controller_detail/foreign_config.html" %}
+    <div id="controller-live-identity" class="live-group" data-live-region>
       {% include "partials/controller_detail/hardware_identity.html" %}
     </div>
   </div>

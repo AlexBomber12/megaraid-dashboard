@@ -28,7 +28,7 @@ class _DriveActionParser(HTMLParser):
         attr_map = {key: value or "" for key, value in attrs}
         if tag == "button" and "data-locate-action" in attr_map:
             self.buttons.append(attr_map)
-        if tag == "span" and "data-action-feedback" in attr_map:
+        if tag == "p" and "data-action-feedback" in attr_map:
             self.feedback_spans.append(attr_map)
         if tag == "script" and "src" in attr_map:
             self.scripts.append(attr_map["src"])

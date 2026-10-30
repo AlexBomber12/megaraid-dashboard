@@ -6,6 +6,16 @@
 
 # Operator control coverage and safety contract
 
+The compact Actions panel retains the command and failure matrix below. The reviewed
+source inventory also covers the shared maintenance gate on Controller, Drive and
+Foreign Configuration, per-command mode alternatives, and the relocated Locate and
+replacement controls. `tests/e2e/test_actions_panel.py` checks expiry refresh and
+non-overlapping layouts from 375 to 1440 px; `tests/test_web/test_actions_panel.py`
+checks unknown modes, passive rebuild status and silenced/unknown buzzer settings.
+Foreign forms retain typed confirmation, the current digest and checked dry-run
+defaults; replacement retains serial confirmation, identity pauses and resume data.
+No mutation route, exact command grant, authentication or CSRF rule changes here.
+
 This inventory covers PR #127 rebased onto main at
 `223e7fd2cd7151065756b87413e96868830ad26e`, including merged PRs #125 and #126.
 The source baseline in `operator-controls.json`

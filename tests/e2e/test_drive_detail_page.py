@@ -46,9 +46,9 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     with authenticated_page.expect_response(
         lambda response: "/drives/252:0/locate/start" in response.url and response.status == 200
     ):
-        authenticated_page.get_by_role("button", name="Blink Locate LED").click()
-    expect(authenticated_page.get_by_role("button", name="Blink command accepted")).to_be_disabled()
-    expect(authenticated_page.get_by_role("button", name="Stop Locate")).to_be_enabled()
+        authenticated_page.get_by_role("button", name="Start Locate LED").click()
+    expect(authenticated_page.get_by_role("button", name="Start Locate LED")).to_be_disabled()
+    expect(authenticated_page.get_by_role("button", name="Stop Locate LED")).to_be_enabled()
     expect(authenticated_page.locator("[data-action-feedback]")).to_contain_text(
         "Controller accepted start"
     )
@@ -59,16 +59,16 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     assert _operator_event_exists(snapshot_with_drives, "locate start drive 252:0")
 
     authenticated_page.reload()
-    expect(authenticated_page.get_by_role("button", name="Blink command accepted")).to_be_disabled()
-    expect(authenticated_page.get_by_role("button", name="Stop Locate")).to_be_enabled()
+    expect(authenticated_page.get_by_role("button", name="Start Locate LED")).to_be_disabled()
+    expect(authenticated_page.get_by_role("button", name="Stop Locate LED")).to_be_enabled()
     expect(authenticated_page.locator("[data-locate-status]")).to_contain_text(
         "LED state unverified"
     )
 
-    mark_ubad = authenticated_page.get_by_role("button", name="Mark as UBad")
+    mark_ubad = authenticated_page.get_by_role("button", name="Mark Bad")
     expect(mark_ubad).to_be_disabled()
 
-    authenticated_page.get_by_role("button", name="Begin Replacement").click()
+    authenticated_page.get_by_role("button", name="Replace…").click()
     expect(authenticated_page.locator("[data-stage='confirm']")).to_be_visible()
     stepper = authenticated_page.locator("[data-replace-stepper]")
     expect(stepper).to_be_visible()
@@ -82,7 +82,7 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     authenticated_page.locator("[data-stage='serial'] [data-replace-action='cancel']").click()
     expect(authenticated_page.locator("[data-stage='serial']")).to_be_hidden()
     expect(stepper).to_be_hidden()
-    expect(authenticated_page.get_by_role("button", name="Begin Replacement")).to_be_visible()
+    expect(authenticated_page.get_by_role("button", name="Replace…")).to_be_visible()
     # The page stays responsive after the wizard closes.
     assert authenticated_page.evaluate("1 + 1") == 2
 
@@ -140,7 +140,7 @@ def test_advanced_action_browser_matrix(
     assert response.value.status == {"success": 303, "failure": 502, "maintenance": 403}[outcome]
     assert fake_storcli.mutations == ([] if outcome == "maintenance" else [list(action.command)])
     if outcome != "success":
-        expect(page.locator("[data-drive-action-error]")).to_contain_text(
+        expect(page.locator("[data-drive-action-error]:visible")).to_contain_text(
             "storcli command failed" if outcome == "failure" else "maintenance_mode"
         )
         expect(button).to_be_enabled()
@@ -214,7 +214,7 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     page.route("**/locate/start", accept)
     start.click()
     expect(start).to_be_disabled()
-    expect(start).to_contain_text("Blink command accepted")
+    expect(start).to_contain_text("Start")
     expect(stop).to_be_enabled()
     expect(feedback).to_contain_text("Controller accepted start")
     assert "Sent" not in feedback.inner_text()
@@ -238,7 +238,9 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     elif '"message"' in body and isinstance(json.loads(body)["message"], str):
         expect(feedback).to_have_text(json.loads(body)["message"])
     else:
-        expect(feedback).to_contain_text("Do not repeat Start blindly")
+        expect(feedback).to_contain_text(
+            "Inspect the physical LED and audit log before pressing Start again."
+        )
     expect(feedback.locator("img")).to_have_count(0)
 
     page.unroute("**/locate/stop")
@@ -246,7 +248,7 @@ def test_locate_feedback_updates_buttons_immediately_and_keeps_stop_available(
     stop.click()
     expect(feedback).to_contain_text("Controller accepted stop")
     expect(start).to_be_enabled()
-    expect(start).to_contain_text("Blink Locate LED")
+    expect(start).to_contain_text("Start")
     expect(stop).to_be_enabled()
     expect(page.locator("[data-locate-status]")).to_contain_text("Last accepted command: stop")
     assert page.evaluate("window.locatePageMarker") == "same page"
@@ -312,7 +314,7 @@ def test_mutation_has_immediate_busy_feedback(
     if action.family == "foreign":
         login_and_navigate(page, f"{live_server}/controller/foreign-config")
         disclosure = page.locator("#foreign-import")
-        disclosure.locator("summary").click()
+        page.locator(f'[data-row-toggle][aria-controls="{disclosure.get_attribute("id")}"]').click()
         disclosure.locator('[name="confirmation"]').fill(body["confirmation"])
         disclosure.locator('[name="dry_run"]').uncheck()
     else:
@@ -384,7 +386,7 @@ def test_undocumented_legacy_drive_action_is_unavailable(
 ) -> None:
     _set_drive_state(snapshot_with_drives, slot_id=7, state="UGood")
     login_and_navigate(authenticated_page, f"{live_server}/drives/252:7")
-    expect(authenticated_page.get_by_role("button", name="Mark as UBad")).to_be_disabled()
+    expect(authenticated_page.get_by_role("button", name="Mark Bad")).to_be_disabled()
     expect(
         authenticated_page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
     ).to_be_visible()

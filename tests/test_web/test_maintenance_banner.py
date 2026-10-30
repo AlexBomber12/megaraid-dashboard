@@ -122,12 +122,16 @@ def test_controller_hides_start_form_when_maintenance_active(
     assert 'id="maintenance"' in response.text
     assert 'class="card maintenance-start"' not in response.text
     assert 'hx-post="/maintenance/start"' not in response.text
-    assert response.text.count('hx-post="/maintenance/stop"') == 2
+    assert response.text.count('hx-post="/maintenance/stop"') == 1
 
 
 def test_controller_shows_start_form_when_maintenance_inactive(
     sample_snapshot: StorcliSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("CONTROLLER_READ_ONLY", "false")
+    monkeypatch.setenv("CONTROLLER_ACTION_CAPABILITY", "locate")
+    get_settings.cache_clear()
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
@@ -135,8 +139,8 @@ def test_controller_shows_start_form_when_maintenance_inactive(
         response = client.get("/controller")
 
     assert response.status_code == 200
-    assert '<section class="section" id="maintenance"' in response.text
-    assert 'class="card maintenance-start"' in response.text
+    assert 'id="maintenance" data-live-region' in response.text
+    assert 'class="action-gate__form"' in response.text
     assert 'hx-post="/maintenance/start"' in response.text
     assert 'hx-ext="json-enc"' in response.text
     assert 'name="reason" maxlength="200" required' in response.text

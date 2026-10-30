@@ -135,7 +135,7 @@ def test_buzzer_buttons_reflect_current_alarm_state() -> None:
     assert buttons["silence"].disabled is True
     assert buttons["disable"].disabled is True
     assert buttons["enable"].disabled is False
-    assert buttons["silence"].label == "Silence Now"
+    assert buttons["silence"].label == "Silence"
     assert buttons["disable"].label == "Disabled"
     assert buttons["enable"].label == "Enabled"
 
@@ -160,7 +160,7 @@ def test_foreign_config_present_state_links_to_foreign_config_page() -> None:
     assert 'data-foreign-config-state="present"' in response.text
     assert "Foreign configuration detected on 2 drive(s)." in response.text
     assert 'Source controller SN <span class="mono">SRC123</span>' in response.text
-    assert 'href="/controller/foreign-config">Review Foreign Configuration' in response.text
+    assert 'href="/controller/foreign-config">Review…' in response.text
     # Import and clear run only from the dedicated foreign-config page.
     assert 'action="/controller/foreign-config/import"' not in response.text
     assert 'action="/controller/foreign-config/clear"' not in response.text
@@ -383,8 +383,6 @@ class _SectionParser(HTMLParser):
         self.sections: set[str] = set()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "section":
-            return
         for key, value in attrs:
             if key == "data-controller-section" and value is not None:
                 self.sections.add(value)
