@@ -142,7 +142,7 @@ def test_drive_detail_v2_health_snapshot_actions_and_sparkline(
     assert "health-snapshot" in parsed.sections
     assert _button_by_text_attrs(parsed, "start")["hx-post"] == "/drives/252:4/locate/start"
     assert _button_by_text_attrs(parsed, "stop")["hx-post"] == "/drives/252:4/locate/stop"
-    assert 'class="drive-actions" data-locate-state=' in html
+    assert 'class="action-row drive-actions"' in html
     assert parsed.sparkline_current_count == "0"
 
 
@@ -170,7 +170,7 @@ def test_drive_detail_v2_identity_connection_and_action_counts(
     assert parsed.id_fields == 9
     assert parsed.conn_fields == 8
     assert len(advanced_buttons) == 4
-    assert "Mark as UBad" in _button_texts(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    assert "Mark Bad" in _button_texts(_drive_detail_response(sample_snapshot, slot_id=4).text)
 
 
 def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
@@ -194,15 +194,15 @@ def test_drive_detail_v2_replace_card_and_disabled_ubad(
 ) -> None:
     html = _drive_detail_response(sample_snapshot, slot_id=4).text
     parsed = _parse(html)
-    mark_ubad = _submit_button_by_label(html, parsed, "Mark as UBad")
+    mark_ubad = _submit_button_by_label(html, parsed, "Mark Bad")
 
-    assert "destructive-card" in html
-    assert "Begin Replacement" in html
+    assert "action-row--danger" in html
+    assert "Replace…" in html
     assert "disabled" in mark_ubad
     assert (
-        "<li><strong>Mark as UBad</strong> — "
+        '<p class="action-row__note">'
         "Unavailable: StorCLI 1.23.02 does not document set bad. "
-        "Review read-only help; no command is guessed.</li>" in html
+        "Review read-only help; no command is guessed.</p>" in html
     )
 
 

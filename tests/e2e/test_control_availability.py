@@ -44,12 +44,10 @@ def test_drive_state_availability_and_refusal_explanations(
             expect(button).to_be_enabled()
         else:
             expect(button).to_be_disabled()
-            label = button.inner_text()
-            reasons = page.locator(".disabled-reasons")
-            expect(reasons).to_contain_text(label)
-            reason = reasons.locator("li").filter(has=page.locator("strong", has_text=label)).first
-            expect(reason).to_contain_text("—")
-            assert len(reason.inner_text().partition("—")[2].strip()) > 10
+            row = button.locator("xpath=ancestor::div[contains(@class, 'action-row')][1]")
+            reason = row.locator(".action-row__note").first
+            expect(reason).to_be_visible()
+            assert len(reason.inner_text().strip()) > 10
     known = {a.path for a in ACTIONS} | {"/maintenance/start", "/maintenance/stop"}
     rendered = page.locator("[hx-post], form[method=post]").evaluate_all(
         "els => els.map(el => el.getAttribute('hx-post') || el.getAttribute('action'))"
@@ -182,8 +180,10 @@ def test_hot_spare_without_disk_group_explains_refusal(
             .values(state="UGood", disk_group_id=None)
         )
     login_and_navigate(authenticated_page, f"{live_server}/drives/252:0")
-    expect(authenticated_page.get_by_role("button", name="Hot Spare")).to_be_disabled()
-    expect(authenticated_page.locator(".disabled-reasons")).to_contain_text("No disk group")
+    expect(authenticated_page.get_by_role("button", name="Assign")).to_be_disabled()
+    expect(
+        authenticated_page.get_by_text("No disk group is available for this drive.", exact=True)
+    ).to_be_visible()
     assert fake_storcli.calls == []
 
 

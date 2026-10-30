@@ -46,7 +46,7 @@ def test_locate_only_controls(
     else:
         expect(start).to_be_disabled()
         if capability == "locate":
-            expect(page.locator("[data-locate-start-reason]")).to_contain_text("active maintenance")
+            expect(page.locator("#maintenance")).to_contain_text("Start a maintenance window")
             expect(stop).to_be_enabled()
             with page.expect_response("**/locate/stop") as response:
                 stop.click()
@@ -138,7 +138,7 @@ def test_stop_after_uncertain_start_and_window_expiry(
     start = page.locator('[data-locate-action="start"]')
     stop = page.locator('[data-locate-action="stop"]')
     expect(start).to_be_disabled()
-    expect(page.locator("[data-locate-start-reason]")).to_contain_text("active maintenance window")
+    expect(page.locator("#maintenance")).to_contain_text("Start a maintenance window")
     expect(stop).to_be_enabled()
     with page.expect_response("**/locate/stop") as response:
         stop.click()

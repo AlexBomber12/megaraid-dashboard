@@ -1,23 +1,23 @@
-{# Status only — import/clear live on the dedicated Foreign Configuration page. #}
+{# Row of the Controller Actions panel. Import/clear live on the Foreign Configuration page ("Review…"). #}
 {% set fc = view_model.foreign_config %}
-<section class="section" data-controller-section="foreign-config" aria-labelledby="foreign-config-heading">
-  <div class="section-title">
-    <h2 id="foreign-config-heading">Foreign Configuration</h2>
-  </div>
-  <div class="card card--split{% if fc.present %} card--warning{% endif %}" data-foreign-config-state="{% if fc.present %}present{% else %}absent{% endif %}">
-    <div>
+<div class="action-panel__rows" data-controller-section="foreign-config">
+  <div class="action-row" data-foreign-config-state="{% if fc.present %}present{% else %}absent{% endif %}">
+    <div class="action-row__name"><h3>Foreign Configuration</h3></div>
+    <div class="action-row__now">
       {% if fc.present %}
-        <h3 class="status-text--warning">Foreign Configuration Detected</h3>
+        <strong class="status-text--warning">Detected</strong>
       {% else %}
-        <h3>None Present</h3>
+        <strong>None Present</strong>
       {% endif %}
-      <p class="muted">{{ fc.description_text }}</p>
+      <span>{{ fc.description_text }}</span>
       {% if fc.source_controller_serial %}
-        <p class="muted">Source controller SN <span class="mono">{{ fc.source_controller_serial }}</span></p>
+        <span>Source controller SN <span class="mono">{{ fc.source_controller_serial }}</span></span>
       {% endif %}
     </div>
-    {% if fc.present %}
-      <a class="button button--warning" href="{{ request.url_for('controller_foreign_config').path }}">Review Foreign Configuration →</a>
-    {% endif %}
+    <div class="action-row__cmd">
+      {% if fc.present %}
+        <a class="button button--warning" href="{{ request.url_for('controller_foreign_config').path }}">Review…</a>
+      {% endif %}
+    </div>
   </div>
-</section>
+</div>

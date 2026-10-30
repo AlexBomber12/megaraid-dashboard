@@ -1,77 +1,63 @@
-{% if other_writes_disabled_reason %}
-<p class="muted">{{ other_writes_disabled_reason }}</p>
-<fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
-{% endif %}
+{% from "partials/_actions.html" import row_note with context %}
 {% set drive_dg_id = approved_disk_group | string if approved_disk_group is not none else view_model.position.dg_span_row_text.split(" : ")[0] %}
 {% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
 {% set safe_actions = view_model.advanced_actions | rejectattr("is_destructive") | list %}
 {% set destructive_actions = view_model.advanced_actions | selectattr("is_destructive") | list %}
-{% macro action_form(action) -%}
+{# Row name, what it does, button verb. Unknown labels fall back to the label itself. #}
+{% set action_copy = {
+  "Mark as UGood": ["Unconfigured Good", "Clears the bad flag so the drive can be reused.", "Mark Good"],
+  "Spin Down": ["Spin Down", "Stops the motor of an unconfigured drive before removal.", "Spin Down"],
+  "Hot Spare": ["Hot Spare", "Uses this drive as a spare for disk group " ~ drive_dg_id ~ ".", "Assign"],
+  "Mark as UBad": ["Unconfigured Bad", "Flags the drive as failed so the controller stops using it.", "Mark Bad"],
+} %}
+{% macro action_row(action) -%}
+  {% set copy = action_copy.get(action.label, [action.label, "", action.label]) %}
   {% set no_dg = action.label == "Hot Spare" and drive_dg_id == "-" %}
   {% set contract_reason = approved_action_reason(action.url) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form
-    method="post"
-    action="{{ action.url }}"
-    class="inline-form"
-    data-csrf-form
-    data-drive-advanced-action
-    data-confirm-title="{{ action.label }} on drive {{ slot_ref }}?"
-    data-confirm-body="{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}"
-    data-confirm-label="{{ action.label }}"
-    data-confirm-tone="{{ 'danger' if action.is_destructive else 'warning' }}"
-    {% if action.is_destructive %}data-confirm-phrase="{{ view_model.identity.serial_number }}"{% endif %}
-  >
-    <input type="hidden" name="csrf_token" value="">
-    <input type="hidden" name="serial_number" value="{{ view_model.identity.serial_number }}">
-    {% if action.label == "Hot Spare" %}
-      <input type="hidden" name="dg_id" value="{{ drive_dg_id if drive_dg_id != '-' else '' }}">
-    {% endif %}
-    <button
-      type="submit"
-      class="button{% if action.is_destructive %} button--danger{% endif %}"
-      {% if not action.is_enabled or no_dg %}disabled{% endif %}
-    >{{ action.label }}</button>
-  </form>
-{% if contract_reason %}</fieldset>{% endif %}
+  <div class="action-row{% if action.is_destructive %} action-row--danger{% endif %}" data-action-scope>
+    <div class="action-row__name"><h3>{{ copy[0] }}</h3></div>
+    <div class="action-row__now">
+      {% if no_dg %}<span>Uses this drive as a dedicated spare.</span>{% elif copy[1] %}<span>{{ copy[1] }}</span>{% endif %}
+      {{ row_note([
+        none if action.is_enabled else action.disabled_reason,
+        "No disk group is available for this drive." if no_dg else none,
+        contract_reason,
+      ]) }}
+      <p class="form-error" data-drive-action-error role="alert" hidden></p>
+    </div>
+    <fieldset class="action-row__cmd"{% if other_writes_disabled_reason %} disabled{% endif %}>
+      <form
+        method="post"
+        action="{{ action.url }}"
+        class="inline-form"
+        data-csrf-form
+        data-drive-advanced-action
+        data-confirm-title="{{ action.label }} on drive {{ slot_ref }}?"
+        data-confirm-body="{% if action.is_destructive %}This changes the RAID array state and may degrade or take the array offline.{% else %}The controller will apply this change immediately.{% endif %}"
+        data-confirm-label="{{ copy[2] }}"
+        data-confirm-tone="{{ 'danger' if action.is_destructive else 'warning' }}"
+        {% if action.is_destructive %}data-confirm-phrase="{{ view_model.identity.serial_number }}"{% endif %}
+      >
+        <input type="hidden" name="csrf_token" value="">
+        <input type="hidden" name="serial_number" value="{{ view_model.identity.serial_number }}">
+        {% if action.label == "Hot Spare" %}
+          <input type="hidden" name="dg_id" value="{{ drive_dg_id if drive_dg_id != '-' else '' }}">
+        {% endif %}
+        <button
+          type="submit"
+          class="button{% if action.is_destructive %} button--danger{% endif %}"
+          {% if not action.is_enabled or no_dg or contract_reason %}disabled{% endif %}
+        >{{ copy[2] }}</button>
+      </form>
+    </fieldset>
+  </div>
 {%- endmacro %}
-<section class="section" data-drive-detail-section="advanced-actions" aria-labelledby="drive-advanced-actions-heading">
-  <div class="section-title">
-    <h2 id="drive-advanced-actions-heading">Advanced Actions</h2>
-    {% if not maintenance_state.active %}
-      <p class="action-hint">Require <a href="{{ request.url_for('controller_detail').path }}#maintenance">maintenance mode</a>.</p>
-    {% endif %}
-  </div>
-  <div class="card" data-action-scope>
-    {% if safe_actions %}
-      <div class="action-group">
-        <span class="text-label">Configuration</span>
-        <div class="button-row">{% for action in safe_actions %}{{ action_form(action) }}{% endfor %}</div>
-      </div>
-    {% endif %}
-    {% if destructive_actions %}
-      <div class="action-group">
-        <span class="text-label status-text--critical">Changes Array State</span>
-        <div class="button-row">{% for action in destructive_actions %}{{ action_form(action) }}{% endfor %}</div>
-      </div>
-    {% endif %}
-    {% set disabled = [] %}
-    {% for action in view_model.advanced_actions %}
-      {% if not action.is_enabled and action.disabled_reason %}
-        {% set _ = disabled.append((action.label, action.disabled_reason)) %}
-      {% elif action.label == "Hot Spare" and drive_dg_id == "-" %}
-        {% set _ = disabled.append((action.label, "No disk group is available for this drive.")) %}
-      {% endif %}
-    {% endfor %}
-    {% if disabled %}
-      <ul class="disabled-reasons action-group">
-        {% for label, reason in disabled %}
-          <li><strong>{{ label }}</strong> — {{ reason }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-    <div class="form-error" data-drive-action-error role="alert" hidden></div>
-  </div>
+{# Rows of the Drive Actions panel: routine first, then everything that changes array state. #}
+<div class="action-panel__rows" data-drive-detail-section="advanced-actions">
+  {% for action in safe_actions %}{{ action_row(action) }}{% endfor %}
+  {# Replace Drive (replace_destructive.html) always follows, so the group label is always shown. #}
+  <div class="action-panel__group">Changes Array State{% if destructive_mode_reason %}<span>{{ destructive_mode_reason }}</span>{% endif %}</div>
+  {% for action in destructive_actions %}{{ action_row(action) }}{% endfor %}
   <script>
     (function () {
       if (window.__driveAdvancedActionsBound) return;
@@ -143,6 +129,4 @@
       });
     }());
   </script>
-</section>
-
-{% if other_writes_disabled_reason %}</fieldset>{% endif %}
+</div>

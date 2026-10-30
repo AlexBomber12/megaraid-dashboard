@@ -93,10 +93,20 @@ def fake_foreign_config(monkeypatch: pytest.MonkeyPatch) -> None:
         ("/", {"overview-live"}),
         (
             "/controller",
-            {"controller-live-status", "controller-live-ops", "controller-live-details"},
+            {
+                "controller-live-status",
+                "controller-live-ops",
+                "controller-live-details",
+                "controller-live-identity",
+                "controller-live-actions",
+                "maintenance",
+            },
         ),
         ("/drives", {"drives-live"}),
-        ("/drives/252/4", {"drive-live-status", "drive-live-details"}),
+        (
+            "/drives/252/4",
+            {"drive-live-status", "drive-live-details", "drive-live-actions", "maintenance"},
+        ),
     ],
 )
 def test_monitoring_pages_render_identified_live_regions(

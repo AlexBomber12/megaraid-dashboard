@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased] - Compact Actions panel
+
+### Changed
+
+- Put controller, drive and foreign-configuration writes in a shared compact Actions
+  panel, with one maintenance gate and reasons next to the affected action.
+- Keep Locate Stop recovery available outside maintenance; preserve exact-command policy,
+  CSRF, serial confirmations, foreign digests and dry-run defaults.
+- Refresh the maintenance gate together with action availability after window expiry.
+- Stack action rows on narrow screens, leave unknown modes unselected, and show automatic
+  rebuild as status without unsupported controls. A silenced buzzer remains enabled.
+- Clarify that hardware warning/critical Telegram alerts remain active during maintenance.
+
 ## [Unreleased] - Telegram alerts
 
 ### Added

@@ -9,8 +9,8 @@ from tests.safety.harness import FakeStorcli, database_observation
 
 def start_maintenance(page: Page, live_server: str) -> None:
     login_and_navigate(page, f"{live_server}/controller")
-    page.get_by_label("Reason (required)").fill("isolated safety test")
-    page.get_by_label("Duration").select_option("15")
+    page.get_by_label("Maintenance reason").fill("isolated safety test")
+    page.get_by_label("Maintenance duration").select_option("15")
     with page.expect_response("**/maintenance/start") as response:
         page.get_by_role("button", name="Start Maintenance").click()
     assert response.value.status == 200
@@ -26,14 +26,14 @@ def test_maintenance_start_stop_persists_and_refreshes(
     page = authenticated_page
     start_maintenance(page, live_server)
     page.reload()
-    expect(page.get_by_role("button", name="Stop Maintenance")).to_have_count(2)
+    expect(page.get_by_role("button", name="Stop Maintenance")).to_have_count(1)
     events, _ = database_observation(snapshot_with_drives)
     assert any(
         "maintenance start" in summary and "isolated safety test" in summary
         for _, summary in events
     )
     with page.expect_response("**/maintenance/stop") as response:
-        page.locator("#maintenance").get_by_role("button", name="Stop Maintenance").click()
+        page.locator(".maintenance-banner").get_by_role("button", name="Stop Maintenance").click()
     assert response.value.status == 200
     expect(page.get_by_role("button", name="Start Maintenance")).to_be_visible()
     page.reload()
@@ -56,7 +56,7 @@ def test_maintenance_blank_reason_does_not_submit(
         "request", lambda request: posts.append(request.url) if request.method == "POST" else None
     )
     page.get_by_role("button", name="Start Maintenance").click()
-    assert page.get_by_label("Reason (required)").evaluate("el => !el.validity.valid")
+    assert page.get_by_label("Maintenance reason").evaluate("el => !el.validity.valid")
     assert posts == []
     assert database_observation(fresh_db)[0] == []
     assert fake_storcli.calls == []

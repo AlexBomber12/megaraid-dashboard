@@ -1,7 +1,4 @@
-{% if maintenance_disabled_reason %}
-<p class="muted">{{ maintenance_disabled_reason }}</p>
-<fieldset disabled class="read-only-controls" title="{{ maintenance_disabled_reason }}">
-{% endif %}
+{# Lives in the sticky .app-top on every page: renders nothing unless maintenance is active. #}
 {% if maintenance_state.active %}
   <div class="maintenance-banner" role="status">
     <svg class="maintenance-banner__icon" aria-hidden="true">
@@ -29,8 +26,7 @@
       hx-post="{{ request.url_for('maintenance_stop').path }}"
       hx-swap="none"
       hx-on::after-request="if (event.detail.successful) window.location.reload()"
+      {% if maintenance_disabled_reason %}disabled title="{{ maintenance_disabled_reason }}"{% endif %}
     >Stop Maintenance</button>
   </div>
 {% endif %}
-
-{% if maintenance_disabled_reason %}</fieldset>{% endif %}

@@ -1,13 +1,17 @@
+{% from "partials/_actions.html" import row_note with context %}
 {% set replacement_resume = replacement_resume | default({}) %}
 {% set replacement_reason = approved_action_reason(request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path, workflow=true) %}
-{% if replacement_reason %}<p class="muted">{{ replacement_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-{% if other_writes_disabled_reason %}
-<p class="muted">{{ other_writes_disabled_reason }}</p>
-<fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
-{% endif %}
-<section
-  class="replace-wizard"
+{% set replacement_state_blocked = not replacement_resume and view_model.health.state not in ("ONLN", "OFFLN", "FAILED", "UBAD", "UGOOD") %}
+{% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
+{#
+  Last row of the Drive Actions panel. "Replace…" opens the 4-step wizard below the row.
+  The row is the wizard root ([data-replace-wizard]); it stays outside the live region.
+#}
+<div
+  class="action-row action-row--danger"
+  role="group"
   aria-labelledby="replace-drive-heading"
+  data-drive-detail-section="replace"
   data-replace-wizard
   data-enclosure="{{ view_model.position.enclosure }}"
   data-slot="{{ view_model.position.slot }}"
@@ -20,18 +24,25 @@
   data-replace-insert-url="{{ request.url_for('drive_replace_insert', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
   data-replace-rebuild-status-url="{{ request.url_for('drive_rebuild_status', enclosure=view_model.position.enclosure, slot=view_model.position.slot).path }}"
 >
-  {% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
-  <div class="card destructive-card">
-    <div class="replace-wizard__header">
-      <div>
-        <h2 class="replace-wizard__title" id="replace-drive-heading">Replace Drive</h2>
-        <p class="muted">{{ view_model.replace.warning_text }}</p>
-      </div>
-      {% set replacement_state_blocked = not replacement_resume and view_model.health.state not in ("ONLN", "OFFLN", "FAILED", "UBAD", "UGOOD") %}
-      {% if replacement_state_blocked %}<p class="muted">Replacement cannot start in {{ view_model.health.state }} state. Refresh inventory and inspect the drive; monitor an existing rebuild instead.</p>{% endif %}
-      <button type="button" class="button button--danger" data-replace-action="open" {% if replacement_state_blocked %}disabled{% endif %}>{{ 'Resume Replacement' if replacement_resume else 'Begin Replacement' }}</button>
-    </div>
+  <div class="action-row__name"><h3 id="replace-drive-heading">Replace Drive</h3></div>
+  <div class="action-row__now">
+    <span>{{ view_model.replace.warning_text }}</span>
+    {% set replace_notes = [replacement_reason] %}
+    {% if replacement_state_blocked %}
+      {% set _ = replace_notes.append("Replacement cannot start in " ~ view_model.health.state ~ " state. Refresh inventory and inspect the drive; monitor an existing rebuild instead.") %}
+    {% endif %}
+    {{ row_note(replace_notes) }}
+  </div>
+  <div class="action-row__cmd">
+    <button
+      type="button"
+      class="button button--danger"
+      data-replace-action="open"
+      {% if replacement_state_blocked or replacement_reason or other_writes_disabled_reason %}disabled{% endif %}
+    >{{ 'Resume…' if replacement_resume else 'Replace…' }}</button>
+  </div>
 
+  <div class="action-row__steps">
     <ol class="stepper" data-replace-stepper hidden aria-label="Replacement progress">
       <li>Take Offline</li>
       <li>Physical Swap</li>
@@ -48,7 +59,7 @@
         <dt>Serial</dt><dd class="mono">{{ view_model.identity.serial_number }}</dd>
         <dt>State</dt><dd>{{ view_model.health.state }}</dd>
       </dl>
-      <p class="muted">This procedure changes RAID array state. Make sure this is the drive you intend to replace — use Blink Locate LED to check the physical slot.</p>
+      <p class="muted">This procedure changes RAID array state. Make sure this is the drive you intend to replace — use Locate LED → Start above to check the physical slot.</p>
       <div class="replace-wizard__actions">
         <button type="button" class="button" data-replace-action="cancel" autofocus>Cancel</button>
         <button type="button" class="button button--warning" data-replace-action="continue-to-serial">Continue</button>
@@ -123,8 +134,4 @@
       </div>
     </div>
   </div>
-</section>
-
-{% if other_writes_disabled_reason %}</fieldset>{% endif %}
-
-{% if replacement_reason %}</fieldset>{% endif %}
+</div>

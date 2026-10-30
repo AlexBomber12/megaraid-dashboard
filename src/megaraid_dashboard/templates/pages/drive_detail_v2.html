@@ -42,19 +42,32 @@
       </p>
     </header>
 
+    {% from "partials/_actions.html" import action_gate with context %}
+
     <div id="drive-live-status" class="live-group" data-live-region>
       {% include "partials/drive_detail/health_snapshot.html" %}
       {% include "partials/drive_detail/physical_position.html" %}
     </div>
 
+    {# Every write for this drive, in one panel, directly after its state. #}
+    <section class="section" aria-labelledby="drive-actions-heading">
+      <div class="section-title"><h2 id="drive-actions-heading">Actions</h2></div>
+      <div class="action-panel">
+        {{ action_gate() }}
+        <div id="drive-live-actions" class="action-panel__rows" data-live-region>
+          {% include "partials/drive_detail/locate_control.html" %}
+          {% include "partials/drive_detail/advanced_actions.html" %}
+        </div>
+        {% include "partials/drive_detail/replace_destructive.html" %}
+      </div>
+    </section>
+
     {% include "partials/drive_detail/temperature_chart.html" %}
 
-    <div id="drive-live-details" class="live-group" data-live-region>
+    {# Identity | Connection side by side (≤ 900px: one column). #}
+    <div id="drive-live-details" class="live-group live-group--pair" data-live-region>
       {% include "partials/drive_detail/identity_grid.html" %}
       {% include "partials/drive_detail/connection_grid.html" %}
-      {% include "partials/drive_detail/advanced_actions.html" %}
     </div>
-
-    {% include "partials/drive_detail/replace_destructive.html" %}
   </div>
 {% endblock %}

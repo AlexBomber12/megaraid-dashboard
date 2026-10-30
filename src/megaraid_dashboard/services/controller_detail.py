@@ -782,7 +782,9 @@ def _normalize_alarm_state(value: str | None) -> str:
         return "On"
     if normalized in {"silenced", "silence", "mute", "muted"}:
         return "Silenced"
-    return "Off"
+    if normalized in {"off", "disabled", "disable"}:
+        return "Off"
+    return "Unknown"
 
 
 def _truthy(value: Any) -> bool:

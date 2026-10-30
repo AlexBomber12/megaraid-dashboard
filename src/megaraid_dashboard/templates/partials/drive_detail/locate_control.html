@@ -1,0 +1,63 @@
+{% from "partials/_actions.html" import row_note with context %}
+{% set icons = request.url_for('static', path='icons.svg').path %}
+{% set enc = view_model.position.enclosure %}
+{% set slot = view_model.position.slot %}
+{% set start_contract_reason = approved_action_reason(view_model.health.locate_start_url) %}
+{% set stop_contract_reason = approved_action_reason(view_model.health.locate_stop_url) %}
+{% set start_reason = locate_start_disabled_reason or start_contract_reason %}
+{% set stop_reason = locate_disabled_reason or stop_contract_reason %}
+{#
+  Row of the Drive Actions panel. Process: Start | Stop, like every other process.
+  .drive-actions is the scope drive-actions.js uses for buttons, status and feedback.
+#}
+<div class="action-panel__rows" data-drive-detail-section="locate">
+  <div
+    class="action-row drive-actions"
+    data-locate-state="{{ view_model.health.locate_last_action or 'unknown' }}"
+    data-locate-start-disabled="{{ 'true' if start_reason else 'false' }}"
+    data-locate-stop-disabled="{{ 'true' if stop_reason else 'false' }}"
+  >
+    <div class="action-row__name"><h3>Locate LED</h3></div>
+    <div class="action-row__now">
+      <strong data-locate-status>LED state unverified.{% if view_model.health.locate_last_action %} Last accepted command: {{ view_model.health.locate_last_action }}.{% endif %}</strong>
+      {% set notes = [start_contract_reason, stop_contract_reason] %}
+      {% if locate_start_disabled_reason and not locate_disabled_reason %}
+        {% set _ = notes.append("Stop is available without a maintenance window, for recovery.") %}
+      {% endif %}
+      {{ row_note(notes) }}
+      <p class="drive-actions__feedback" data-action-feedback aria-live="polite"></p>
+    </div>
+    <fieldset class="action-row__cmd" aria-label="Locate LED"{% if locate_disabled_reason %} disabled{% endif %}>
+      <button
+        type="button"
+        class="button"
+        aria-label="Start Locate LED"
+        hx-post="{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}"
+        hx-swap="none"
+        hx-sync="closest .drive-actions:drop"
+        hx-on::before-request="window.driveActions.begin(this)"
+        hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+        data-locate-action="start"
+        {% if start_reason or not view_model.health.can_locate_start %}disabled{% endif %}
+      >
+        <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
+        <span data-locate-label>Start</span>
+      </button>
+      <button
+        type="button"
+        class="button"
+        aria-label="Stop Locate LED"
+        hx-post="{{ request.url_for('drive_locate_stop', enclosure=enc, slot=slot).path }}"
+        hx-swap="none"
+        hx-sync="closest .drive-actions:drop"
+        hx-on::before-request="window.driveActions.begin(this)"
+        hx-on::after-request="this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)"
+        data-locate-action="stop"
+        {% if stop_contract_reason or not view_model.health.can_locate_stop %}disabled{% endif %}
+      >
+        <svg class="button__icon button__icon--busy" aria-hidden="true"><use href="{{ icons }}#icon-refresh-cw"/></svg>
+        Stop
+      </button>
+    </fieldset>
+  </div>
+</div>

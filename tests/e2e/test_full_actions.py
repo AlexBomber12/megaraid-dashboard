@@ -38,7 +38,7 @@ def test_online_spin_down_is_disabled(
     login_and_navigate(page, f"{live_server}/drives/252:0")
     expect(page.get_by_role("button", name="Spin Down", exact=True)).to_be_disabled()
     expect(page.locator("body")).to_contain_text("Only unconfigured UGood or UBad")
-    expect(page.get_by_role("button", name="Mark as UBad", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Mark Bad", exact=True)).to_be_disabled()
     assert fake_storcli.calls == []
 
 
@@ -127,7 +127,7 @@ def test_incomplete_replacement_policy_disables_whole_wizard(
     full_controller_handlers.write_text(json.dumps(data))
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/drives/252:0")
-    expect(page.get_by_role("button", name="Begin Replacement", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Replace…", exact=True)).to_be_disabled()
     expect(page.locator("body")).to_contain_text(
         f"{step.title()} command or topology is not approved"
     )
@@ -221,7 +221,7 @@ def test_direct_missing_cannot_bypass_the_disabled_replacement_wizard(
     full_controller_handlers.write_text(json.dumps(data))
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/drives/252:0")
-    expect(page.get_by_role("button", name="Begin Replacement", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Replace…", exact=True)).to_be_disabled()
     expect(page.locator("body")).to_contain_text(
         f"{absent.title()} command or topology is not approved"
     )

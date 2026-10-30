@@ -1,0 +1,71 @@
+{#
+  Shared parts of the Actions panel — the one place every page puts its writes.
+  Grammar (CSS: "Actions" in app.css):
+    gate  — lock state for the whole page; the only place that explains maintenance/policy.
+    rows  — Name | Now (state, details, row-only reasons, result) | Commands | Setting.
+  {% from "partials/_actions.html" import action_gate, row_note with context %}
+#}
+{% macro action_gate() -%}
+{%- set policy = page_action_reasons | default([]) -%}
+{%- set active = controller_writes_enabled -%}
+{%- set can_start = not maintenance_state.active and not maintenance_disabled_reason -%}
+<div class="action-gate action-gate--{{ 'open' if active else 'locked' }}" id="maintenance" data-live-region>
+  <div class="action-gate__state">
+    <div class="action-gate__title">
+      {% if active and not policy %}
+        <span class="status-badge status-badge--warning">Unlocked</span>
+      {% elif active %}
+        <span class="status-badge status-badge--warning">Limited</span>
+      {% else %}
+        <span class="status-badge status-badge--neutral">Locked</span>
+      {% endif %}
+      {% if active %}Maintenance window active{% elif can_start %}Start a maintenance window to unlock actions{% else %}Actions are turned off on this server{% endif %}
+    </div>
+    {% if maintenance_state.active %}
+      <span>
+        Started by {{ maintenance_state.started_by or "unknown" }}
+        {%- if maintenance_state.expires_at %} · ends
+          <time datetime="{{ maintenance_state.expires_at | iso_utc }}" data-local-time>{{ maintenance_state.expires_at | iso_utc }} UTC</time>
+        {%- endif %}. Stop it from the banner at the top.
+      </span>
+    {% elif active %}
+      <span>Maintenance is enabled by server configuration. Start a timed window to set an expiry.</span>
+    {% elif can_start %}
+      <span>Hardware warning/critical Telegram alerts remain active during maintenance.</span>
+    {% endif %}
+    {% for reason in policy %}<span>{{ reason }}</span>{% endfor %}
+  </div>
+  {% if can_start %}
+    <form
+      class="action-gate__form"
+      hx-post="{{ request.url_for('maintenance_start').path }}"
+      hx-ext="json-enc"
+      hx-swap="none"
+      hx-on::after-request="if (event.detail.successful) window.location.reload()"
+    >
+      <select class="input" name="duration_minutes" aria-label="Maintenance duration">
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes</option>
+        <option value="60" selected>1 hour</option>
+        <option value="240">4 hours</option>
+        <option value="1440">24 hours</option>
+      </select>
+      <input class="input action-gate__reason" type="text" name="reason" maxlength="200" required placeholder="Reason, e.g. Replace drive 252:3" aria-label="Maintenance reason">
+      <button type="submit" class="button button--warning">Start Maintenance</button>
+    </form>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{#
+  Row-only reasons. Gate reasons (maintenance, policy) and anything in `skip` are dropped,
+  so a reason is never printed twice on a page.
+#}
+{% macro row_note(reasons, skip=[]) -%}
+  {%- set hidden = (gate_reasons | default([])) + skip -%}
+  {%- set shown = [] -%}
+  {%- for reason in reasons if reason and reason not in hidden and reason not in shown -%}
+    {%- set _ = shown.append(reason) -%}
+  {%- endfor -%}
+  {%- for reason in shown %}<p class="action-row__note">{{ reason }}</p>{% endfor -%}
+{%- endmacro %}

@@ -32,7 +32,7 @@ def test_csrf_refusal_from_browser_click(
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/controller")
     before = database_observation(fresh_db)
-    page.get_by_label("Reason (required)").fill("must be refused")
+    page.get_by_label("Maintenance reason").fill("must be refused")
     if failure == "missing-cookie":
         page.context.clear_cookies()
     else:

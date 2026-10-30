@@ -35,7 +35,7 @@ def test_controller_operation_browser_matrix(
         snapshot.raw_json = {
             **snapshot.raw_json,
             action.family.replace("-", "_"): {
-                "mode": "manual",
+                "mode": "sequential" if action.family == "consistency-check" else "manual",
                 "state": "active" if action.name.endswith("stop") else "stopped",
             },
         }

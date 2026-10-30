@@ -92,7 +92,7 @@ def test_locate_ui_maintenance_reason(monkeypatch, sample_snapshot, active):
         _insert_app_snapshot(app, sample_snapshot)
         response = client.get("/drives/252:0")
         assert response.status_code == 200
-        assert ("Locate Start requires an active maintenance window." in response.text) == (
-            not active
-        )
+        assert (
+            "Stop is available without a maintenance window, for recovery." in response.text
+        ) == (not active)
         assert "Only Locate Start/Stop is supported" in response.text

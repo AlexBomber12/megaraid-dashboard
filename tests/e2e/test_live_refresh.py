@@ -63,7 +63,7 @@ def test_disk_change_reloads_identity_and_initializes_new_wizard(
     expect(page.locator(".page-header")).not_to_contain_text(OLD_SERIAL)
     wizard = page.locator("[data-replace-wizard]")
     expect(wizard).to_have_attribute("data-serial", NEW_SERIAL)
-    page.get_by_role("button", name="Begin Replacement").click()
+    page.get_by_role("button", name="Replace…").click()
     expect(wizard.locator("[data-stage='confirm']")).to_contain_text("Replacement model")
     expect(wizard.locator("[data-stage='confirm']")).to_contain_text("UGOOD")
     page.get_by_role("button", name="Continue", exact=True).click()
@@ -78,7 +78,7 @@ def test_disk_change_blocks_old_serial_without_resetting_active_wizard(
 ) -> None:
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/drives/252:0")
-    page.get_by_role("button", name="Begin Replacement").click()
+    page.get_by_role("button", name="Replace…").click()
     page.get_by_role("button", name="Continue", exact=True).click()
     serial = page.locator("[data-replace-input='serial']")
     serial.fill(OLD_SERIAL)
@@ -134,7 +134,7 @@ def test_disk_change_preserves_physical_swap_and_accepts_replacement_serial(
 
     page.route("**/drives/252:0/locate/start", locate_response)
     login_and_navigate(page, f"{live_server}/drives/252:0")
-    page.get_by_role("button", name="Begin Replacement").click()
+    page.get_by_role("button", name="Replace…").click()
     page.get_by_role("button", name="Continue", exact=True).click()
     page.locator("[data-replace-input='serial']").fill(OLD_SERIAL)
     page.locator("[data-replace-input='dry-run']").uncheck()
@@ -225,7 +225,7 @@ def test_confirmation_opened_during_fetch_keeps_connected_form_and_blocks_stale_
         with page.expect_response(lambda response: "/actions/spindown" in response.url):
             dialog.get_by_role("button", name="Spin Down", exact=True).click()
         assert posted == [f"{live_server}/drives/252:0/actions/spindown"]
-        expect(page.locator("[data-drive-action-error]")).to_be_visible()
+        expect(page.locator("[data-drive-action-error]:visible")).to_be_visible()
 
 
 def test_pause_is_rechecked_between_region_updates(

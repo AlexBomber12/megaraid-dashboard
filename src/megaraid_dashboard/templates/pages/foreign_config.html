@@ -6,6 +6,7 @@
 {% block body_attrs %} data-live-refresh="off"{% endblock %}
 
 {% block content %}
+  {% from "partials/_actions.html" import action_gate, row_note with context %}
   {% set icons = request.url_for('static', path='icons.svg').path %}
   <section class="foreign-config" aria-labelledby="foreign-config-title">
     <header class="page-header">
@@ -35,12 +36,6 @@
           with {{ foreign_config.drive_count }} drive(s).
         </p>
       </div>
-
-      {% if not maintenance_state.active %}
-        <p class="action-hint action-hint--warning">
-          Start <a href="{{ request.url_for('controller_detail').path }}#maintenance">maintenance mode</a> before running import or clear.
-        </p>
-      {% endif %}
 
       <div class="section">
         <div class="section-title"><h2>Summary</h2></div>
@@ -81,21 +76,30 @@
         </div>
       {% endif %}
 
-      <div class="section">
-        <div class="section-title"><h2>Actions</h2></div>
-        {% if other_writes_disabled_reason %}<p class="muted">{{ other_writes_disabled_reason }}</p>{% endif %}
+      {% set import_reason = approved_action_reason(request.url_for('controller_foreign_config_import').path) %}
+      {% set clear_reason = approved_action_reason(request.url_for('controller_foreign_config_clear').path) %}
+      {# Same Actions panel as Controller and Drive pages. "…" opens the confirmation step below the row. #}
+      <section class="section" aria-labelledby="foreign-actions-heading">
+        <div class="section-title"><h2 id="foreign-actions-heading">Actions</h2></div>
+        <div class="action-panel">
+          {{ action_gate() }}
+          <div class="action-panel__group">
+            Changes Array State
+            {% if destructive_mode_reason %}<span>{{ destructive_mode_reason }}</span>{% endif %}
+          </div>
 
-        <details class="disclosure disclosure--warning" id="foreign-import">
-          <summary>Import Foreign Configuration — High Risk</summary>
-          <div class="disclosure__body">
-            <p class="muted">
-              Importing adopts the foreign configuration onto this controller. This is irreversible.
-              Type the digest shown above exactly to confirm.
-            </p>
-            {% if other_writes_disabled_reason %}<fieldset disabled class="read-only-controls">{% endif %}
-            {% set contract_reason = approved_action_reason(request.url_for('controller_foreign_config_import').path) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form
+          <div class="action-row action-row--danger" data-action-scope>
+            <div class="action-row__name"><h3>Import</h3></div>
+            <div class="action-row__now">
+              <span>Adopts the foreign configuration onto this controller. Irreversible.</span>
+              {{ row_note([import_reason], skip=[destructive_mode_reason]) }}
+            </div>
+            <div class="action-row__cmd">
+              <button type="button" class="button button--warning" data-row-toggle aria-controls="foreign-import" aria-expanded="false" {% if import_reason or other_writes_disabled_reason %}disabled{% endif %}>Import…</button>
+            </div>
+            <div class="action-row__steps" id="foreign-import" hidden>
+            <p class="muted">Type the digest shown above exactly to confirm.</p>
+            <form
               class="form-grid foreign-config__form"
               data-foreign-config-form="import"
               method="post"
@@ -113,25 +117,24 @@
                 <input type="checkbox" name="dry_run" value="true" checked>
                 Dry run (validate without executing)
               </label>
-              <button type="submit" class="button button--warning">Import Foreign Configuration</button>
+              <button type="submit" class="button button--warning" {% if import_reason or other_writes_disabled_reason %}disabled{% endif %}>Import Foreign Configuration</button>
             </form>
-{% if contract_reason %}</fieldset>{% endif %}
-            {% if other_writes_disabled_reason %}</fieldset>{% endif %}
             <pre id="foreign-config-import-result" class="foreign-config__result" aria-live="polite"></pre>
+            </div>
           </div>
-        </details>
 
-        <details class="disclosure disclosure--danger" id="foreign-clear">
-          <summary>Clear Foreign Configuration — Destructive</summary>
-          <div class="disclosure__body">
-            <p class="muted">
-              Clearing tells the controller to forget the foreign metadata. This is the most destructive
-              operation in the application: the metadata may be the only path back to the data on those drives.
-            </p>
-            {% if other_writes_disabled_reason %}<fieldset disabled class="read-only-controls">{% endif %}
-            {% set contract_reason = approved_action_reason(request.url_for('controller_foreign_config_clear').path) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form
+          <div class="action-row action-row--danger" data-action-scope>
+            <div class="action-row__name"><h3>Clear</h3></div>
+            <div class="action-row__now">
+              <span>Forgets the foreign metadata. It may be the only path back to the data on those drives.</span>
+              {{ row_note([clear_reason], skip=[destructive_mode_reason]) }}
+            </div>
+            <div class="action-row__cmd">
+              <button type="button" class="button button--danger" data-row-toggle aria-controls="foreign-clear" aria-expanded="false" {% if clear_reason or other_writes_disabled_reason %}disabled{% endif %}>Clear…</button>
+            </div>
+            <div class="action-row__steps" id="foreign-clear" hidden>
+            <p class="muted">The most destructive operation in the application. Type the phrase to confirm.</p>
+            <form
               class="form-grid foreign-config__form"
               data-foreign-config-form="clear"
               method="post"
@@ -150,14 +153,13 @@
                 <input type="checkbox" name="dry_run" value="true" checked>
                 Dry run (validate without executing)
               </label>
-              <button type="submit" class="button button--danger">Clear Foreign Configuration</button>
+              <button type="submit" class="button button--danger" {% if clear_reason or other_writes_disabled_reason %}disabled{% endif %}>Clear Foreign Configuration</button>
             </form>
-{% if contract_reason %}</fieldset>{% endif %}
-            {% if other_writes_disabled_reason %}</fieldset>{% endif %}
             <pre id="foreign-config-clear-result" class="foreign-config__result" aria-live="polite"></pre>
+            </div>
           </div>
-        </details>
-      </div>
+        </div>
+      </section>
     {% else %}
       <div class="empty-state">
         <h2>No Foreign Configuration</h2>
@@ -166,4 +168,20 @@
       </div>
     {% endif %}
   </section>
+  <script>
+    // "Import…" / "Clear…" open their confirmation step under the row.
+    document.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-row-toggle]");
+      if (!button) return;
+      const step = document.getElementById(button.getAttribute("aria-controls"));
+      if (!step) return;
+      const open = step.hidden;
+      step.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+      if (open) {
+        const field = step.querySelector("input:not([type=hidden])");
+        if (field) field.focus();
+      }
+    });
+  </script>
 {% endblock %}

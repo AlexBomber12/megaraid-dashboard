@@ -1,52 +1,45 @@
-{% if other_writes_disabled_reason %}
-<p class="muted">{{ other_writes_disabled_reason }}</p>
-<fieldset disabled class="read-only-controls" title="{{ other_writes_disabled_reason }}">
-{% endif %}
-{% set buzzer_on = (view_model.buzzer.current_setting | string | lower) in ("enabled", "on", "true") %}
-<section class="section" data-controller-section="buzzer-control" aria-labelledby="buzzer-control-heading">
-  <div class="section-title">
-    <h2 id="buzzer-control-heading">Alarm Buzzer</h2>
-    {% if not maintenance_state.active %}
-      <p class="action-hint">Changes require <a href="#maintenance">maintenance mode</a>.</p>
-    {% endif %}
-  </div>
-  <div class="card card--split buzzer-card" data-action-scope>
-    <div>
-      <span class="text-label">Current Setting</span>
+{% from "partials/_actions.html" import row_note with context %}
+{% set buzzer_state = view_model.buzzer.current_setting | string | lower %}
+{% set buzzer_on = buzzer_state in ("enabled", "on", "true", "silenced") %}
+{% set buzzer_off = buzzer_state in ("disabled", "off", "false") %}
+{% set enable_reason = approved_action_reason(view_model.buzzer.enable_url) %}
+{% set disable_reason = approved_action_reason(view_model.buzzer.disable_url) %}
+{% set silence_reason = approved_action_reason(view_model.buzzer.silence_url) %}
+{# Row of the Controller Actions panel. Command: Silence. Setting: Enabled | Disabled. #}
+<div class="action-panel__rows" data-controller-section="buzzer-control">
+  <div class="action-row" data-action-scope>
+    <div class="action-row__name"><h3>Alarm Buzzer</h3></div>
+    <div class="action-row__now">
       <strong>{{ view_model.buzzer.current_setting }}</strong>
-      <p class="muted">{{ view_model.buzzer.explainer_text }}</p>
-      <p class="muted">Enable is available when Off; Disable when On or Silenced; Silence when On. For an unknown setting, restore collection and refresh.</p>
+      <span>{{ view_model.buzzer.explainer_text }}</span>
+      {{ row_note([enable_reason, disable_reason, silence_reason]) }}
+      <p class="form-error" data-controller-action-error hidden role="alert"></p>
     </div>
-    <div class="button-row">
-      <div class="segmented" role="group" aria-label="Buzzer setting">
-        {% set contract_reason = approved_action_reason(view_model.buzzer.enable_url) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form method="post" action="{{ view_model.buzzer.enable_url }}" class="inline-form" data-csrf-form data-buzzer-action="enable">
-          <input type="hidden" name="csrf_token" value="">
-          <button type="submit" class="button" aria-pressed="{{ 'true' if buzzer_on else 'false' }}" {% if not view_model.buzzer.can_enable %}disabled{% endif %}>Enabled</button>
-        </form>
-{% if contract_reason %}</fieldset>{% endif %}
-        {% set contract_reason = approved_action_reason(view_model.buzzer.disable_url) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form method="post" action="{{ view_model.buzzer.disable_url }}" class="inline-form" data-csrf-form data-buzzer-action="disable">
-          <input type="hidden" name="csrf_token" value="">
-          <button type="submit" class="button" aria-pressed="{{ 'false' if buzzer_on else 'true' }}" {% if not view_model.buzzer.can_disable %}disabled{% endif %}>Disabled</button>
-        </form>
-{% if contract_reason %}</fieldset>{% endif %}
-      </div>
-      {% set contract_reason = approved_action_reason(view_model.buzzer.silence_url) %}
-{% if contract_reason %}<p class="muted">{{ contract_reason }}</p><fieldset disabled class="read-only-controls">{% endif %}
-<form method="post" action="{{ view_model.buzzer.silence_url }}" class="inline-form" data-csrf-form data-buzzer-action="silence">
+    <fieldset class="action-row__cmd"{% if other_writes_disabled_reason %} disabled{% endif %}>
+      <form method="post" action="{{ view_model.buzzer.silence_url }}" class="inline-form" data-csrf-form data-buzzer-action="silence">
         <input type="hidden" name="csrf_token" value="">
-        <button type="submit" class="button button--warning" {% if not view_model.buzzer.can_silence %}disabled{% endif %}>
+        <button type="submit" class="button" {% if not view_model.buzzer.can_silence or silence_reason %}disabled{% endif %}>
           <svg class="button__icon" aria-hidden="true"><use href="{{ request.url_for('static', path='icons.svg').path }}#icon-bell-off"/></svg>
-          Silence Now
+          Silence
         </button>
       </form>
-{% if contract_reason %}</fieldset>{% endif %}
-    </div>
-    <div class="form-error" data-controller-action-error hidden role="alert"></div>
+    </fieldset>
+    <fieldset class="action-row__set"{% if other_writes_disabled_reason %} disabled{% endif %}>
+      <div
+        class="segmented"
+        role="group"
+        aria-label="Buzzer setting"
+        title="Silenced keeps the alarm enabled. Enable when Off; Disable when On or Silenced; Silence when On."
+      >
+        <form method="post" action="{{ view_model.buzzer.enable_url }}" class="inline-form" data-csrf-form data-buzzer-action="enable">
+          <input type="hidden" name="csrf_token" value="">
+          <button type="submit" class="button" aria-pressed="{{ 'true' if buzzer_on else 'false' }}" {% if not view_model.buzzer.can_enable or enable_reason %}disabled{% endif %}>Enabled</button>
+        </form>
+        <form method="post" action="{{ view_model.buzzer.disable_url }}" class="inline-form" data-csrf-form data-buzzer-action="disable">
+          <input type="hidden" name="csrf_token" value="">
+          <button type="submit" class="button" aria-pressed="{{ 'true' if buzzer_off else 'false' }}" {% if not view_model.buzzer.can_disable or disable_reason %}disabled{% endif %}>Disabled</button>
+        </form>
+      </div>
+    </fieldset>
   </div>
-</section>
-
-{% if other_writes_disabled_reason %}</fieldset>{% endif %}
+</div>

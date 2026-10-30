@@ -287,7 +287,7 @@
           }
 
           resumeStage = "physical-swap";
-          openButton.textContent = "Resume Replacement";
+          openButton.textContent = "Resume…";
           show("physical-swap");
         } catch (error) {
           appendRequestError("replace request failed", error);
