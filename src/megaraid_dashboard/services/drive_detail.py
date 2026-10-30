@@ -639,7 +639,9 @@ def _summary_text(drive: PhysicalDriveSnapshot) -> str:
 def _dg_span_row_text(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) -> str:
     """Display observed topology for this identity; slot order is not RAID row order."""
     try:
-        controllers = (snapshot.raw_json or {})["physical_drives"]["Controllers"]
+        raw = snapshot.raw_json or {}
+        payload = raw.get("physical_drive_positions", raw.get("physical_drives", {}))
+        controllers = payload["Controllers"]
         if len(controllers) != 1:
             return "N/A"
         response = controllers[0]["Response Data"]

@@ -38,7 +38,7 @@ def insert_snapshot(
     controller = snapshot.controller
     operation_state = {
         key: raw_payload[key]
-        for key in ("patrol_read", "consistency_check")
+        for key in ("patrol_read", "consistency_check", "physical_drive_positions")
         if raw_payload is not None and raw_payload.get(key) is not None
     }
     controller_snapshot = ControllerSnapshot(

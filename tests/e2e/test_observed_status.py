@@ -42,7 +42,7 @@ def test_observed_status_across_pages(
         with get_sessionmaker(engine)() as session, session.begin():
             snapshot = session.scalars(select(ControllerSnapshot)).one()
             snapshot.raw_json = {
-                "physical_drives": physical,
+                "physical_drive_positions": physical,
                 "patrol_read": {"mode": mode, "state": "stopped"},
             }
     finally:

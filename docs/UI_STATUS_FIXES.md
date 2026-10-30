@@ -3,7 +3,9 @@
 The drive position card displays DG / Span / Row from the saved physical-drive
 response for the same enclosure, slot, device ID and serial number. Row is not
 inferred from slot order. Missing, malformed, ambiguous or mismatched evidence
-displays N/A; raw snapshot storage must be enabled to display observed topology.
+displays N/A. Normal collection retains compact position and identity evidence
+even when full raw snapshot storage is disabled. Existing snapshots without
+position evidence display N/A until the next successful scheduled collection.
 This presentation value does not authorize replacement commands.
 
 The drive footer uses the same last successful collector run state and current
