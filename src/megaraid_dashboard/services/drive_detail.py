@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
@@ -17,6 +18,7 @@ from megaraid_dashboard.services.drive_history import (
 from megaraid_dashboard.services.event_detector import physical_drive_state_severity
 from megaraid_dashboard.services.overview import (
     SystemHealthViewModel,
+    _CollectorStateProvider,
     _event_severity_to_status,
     _load_system_health,
     compute_drive_tile_severity,
@@ -85,6 +87,7 @@ class BackplaneSlot:
 class PhysicalPosition:
     enclosure: int
     slot: int
+    disk_group_id: int | None
     dg_span_row_text: str
     port_text: str
     backplane_layout: list[BackplaneSlot]
@@ -175,6 +178,7 @@ def load_drive_detail_view_model(
     settings: Settings,
     app_version: str,
     range_days: int = 30,
+    scheduler: _CollectorStateProvider | None = None,
 ) -> DriveDetailViewModel:
     if range_days <= 0:
         msg = "range_days must be positive"
@@ -204,7 +208,8 @@ def load_drive_detail_view_model(
         position=PhysicalPosition(
             enclosure=drive.enclosure_id,
             slot=drive.slot_id,
-            dg_span_row_text=_dg_span_row_text(drive),
+            disk_group_id=drive.disk_group_id,
+            dg_span_row_text=_dg_span_row_text(drive, snapshot),
             port_text=_port_text(drive),
             backplane_layout=_load_backplane_layout(
                 session,
@@ -227,10 +232,10 @@ def load_drive_detail_view_model(
         replace=_replace_wizard_state(session, drive),
         system_health=_load_system_health(
             settings=settings,
-            scheduler=None,
+            scheduler=scheduler,
             collector_enabled=settings.collector_enabled,
             app_version=app_version,
-            now=now,
+            now=datetime.now(UTC),
         ),
         updated_at=now,
         auto_refresh_seconds=getattr(settings, "auto_refresh_seconds", _DEFAULT_REFRESH_SECONDS),
@@ -631,9 +636,32 @@ def _summary_text(drive: PhysicalDriveSnapshot) -> str:
     return " ".join(parts)
 
 
-def _dg_span_row_text(drive: PhysicalDriveSnapshot) -> str:
-    dg_text = "-" if drive.disk_group_id is None else str(drive.disk_group_id)
-    return f"{dg_text} : 0 : {drive.slot_id}"
+def _dg_span_row_text(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) -> str:
+    """Display observed topology for this identity; slot order is not RAID row order."""
+    try:
+        raw = snapshot.raw_json or {}
+        payload = raw.get("physical_drive_positions", raw.get("physical_drives", {}))
+        controllers = payload["Controllers"]
+        if len(controllers) != 1:
+            return "N/A"
+        response = controllers[0]["Response Data"]
+        key = f"Drive /c0/e{drive.enclosure_id}/s{drive.slot_id}"
+        (summary,) = response[key]
+        detail = response[f"{key} - Detailed Information"]
+        serial = detail[f"{key} Device attributes"]["SN"]
+        position = detail[f"{key} Policies/Settings"]["Drive position"]
+        if (
+            serial.strip() != drive.serial_number
+            or summary["EID:Slt"] != f"{drive.enclosure_id}:{drive.slot_id}"
+            or summary["DID"] != drive.device_id
+        ):
+            return "N/A"
+        match = re.fullmatch(r"DriveGroup:(\d+),\s*Span:(\d+),\s*Row:(\d+)", position)
+        if match is None or int(match[1]) != drive.disk_group_id:
+            return "N/A"
+        return " : ".join(str(int(value)) for value in match.groups())
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return "N/A"
 
 
 def _port_text(drive: PhysicalDriveSnapshot) -> str:

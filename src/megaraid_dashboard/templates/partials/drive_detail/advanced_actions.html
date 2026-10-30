@@ -1,5 +1,5 @@
 {% from "partials/_actions.html" import row_note with context %}
-{% set drive_dg_id = approved_disk_group | string if approved_disk_group is not none else view_model.position.dg_span_row_text.split(" : ")[0] %}
+{% set drive_dg_id = approved_disk_group | string if approved_disk_group is not none else view_model.position.disk_group_id | string if view_model.position.disk_group_id is not none else "-" %}
 {% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
 {% set safe_actions = view_model.advanced_actions | rejectattr("is_destructive") | list %}
 {% set destructive_actions = view_model.advanced_actions | selectattr("is_destructive") | list %}

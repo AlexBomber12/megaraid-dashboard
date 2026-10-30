@@ -86,6 +86,23 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
         "bbu": bbu_payload,
         "foreign_config": foreign_config_payload,
     }
+    # Retain only the observed identity and position when full raw storage is off.
+    # Inventory parsing above already validates this single-controller response.
+    response = physical_drives_payload["Controllers"][0]["Response Data"]
+    positions: dict[str, Any] = {}
+    for drive in physical_drives:
+        key = f"Drive /c0/e{drive.enclosure_id}/s{drive.slot_id}"
+        detail = response[f"{key} - Detailed Information"]
+        positions[key] = [
+            {"EID:Slt": f"{drive.enclosure_id}:{drive.slot_id}", "DID": drive.device_id}
+        ]
+        positions[f"{key} - Detailed Information"] = {
+            f"{key} Device attributes": {"SN": drive.serial_number},
+            f"{key} Policies/Settings": {
+                "Drive position": detail[f"{key} Policies/Settings"].get("Drive position")
+            },
+        }
+    raw_payload["physical_drive_positions"] = {"Controllers": [{"Response Data": positions}]}
     # Optional read-only operation probes. Unknown/unsupported state must not be
     # presented as an idle operation or prevent inventory collection.
     try:

@@ -281,16 +281,19 @@ def _failure_payload(err_msg: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("progress_fails", [False, True])
+@pytest.mark.parametrize("position_available", [False, True])
 async def test_operation_states_are_collected_and_persisted_without_raw_inventory(
     monkeypatch: pytest.MonkeyPatch,
     session: Any,
     progress_fails: bool,
+    position_available: bool,
 ) -> None:
     from megaraid_dashboard.db.dao import insert_snapshot
     from megaraid_dashboard.services.controller_detail import (
         _load_consistency_check_state,
         _load_patrol_read_state,
     )
+    from megaraid_dashboard.services.drive_detail import _dg_span_row_text
 
     fixtures = {
         "/c0 show all": "c0_show_all.json",
@@ -306,7 +309,13 @@ async def test_operation_states_are_collected_and_persisted_without_raw_inventor
         command = " ".join(args)
         calls.append(command)
         if command in fixtures:
-            return _load_fixture(fixtures[command])
+            payload = _load_fixture(fixtures[command])
+            if command == "/c0/eall/sall show all" and not position_available:
+                key = "Drive /c0/e252/s0"
+                del payload["Controllers"][0]["Response Data"][f"{key} - Detailed Information"][
+                    f"{key} Policies/Settings"
+                ]["Drive position"]
+            return payload
         if progress_fails and command == "/c0/vall show cc":
             return _failure_payload("unsupported progress")
         return {
@@ -328,6 +337,11 @@ async def test_operation_states_are_collected_and_persisted_without_raw_inventor
     snapshot, raw = await collect_storcli_snapshot(settings=_settings())
     row = insert_snapshot(session, snapshot, store_raw=False, raw_payload=raw)
     assert row.raw_json is not None and "controller" not in row.raw_json
+    assert "physical_drives" not in row.raw_json
+    compact = row.raw_json["physical_drive_positions"]
+    assert len(json.dumps(compact)) < len(json.dumps(raw["physical_drives"])) / 4
+    drive = next(drive for drive in row.physical_drives if drive.slot_id == 0)
+    assert _dg_span_row_text(drive, row) == ("0 : 0 : 4" if position_available else "N/A")
     patrol = _load_patrol_read_state(row)
     assert patrol is not None and patrol.state == "stopped"
     cc = _load_consistency_check_state(row)
