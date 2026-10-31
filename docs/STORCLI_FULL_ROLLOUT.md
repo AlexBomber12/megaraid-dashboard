@@ -1,12 +1,14 @@
 # One-shot production rollout: all approved supported actions
 
-Independent button-chain audit and deployment hold:
-[OPERATOR_ACTION_READINESS.md](OPERATOR_ACTION_READINESS.md). The audit fixes have
-not been deployed; the previously staged activation helper was withdrawn.
+The combined rollout and later audit/UI/compatibility fixes have been deployed.
+SERVER now runs `cfad744`; see [the dated inventory and evidence](CURRENT_STATE.md).
+The [button-chain audit](OPERATOR_ACTION_READINESS.md) documents software verification
+and physical limits. Its original deployment hold is historical and has been satisfied.
 
-This is the combined release procedure. Do not deploy intermediate read-only
-or locate-only releases. No procedure in this PR has been executed on production;
-no controller write is a permission test. Keep this PR open and unmerged until review.
+This document retains the reviewed capability/approval procedure for future changes.
+It is not an instruction to replay a completed activation or install intermediate
+read-only/locate-only releases. No controller write is a permission test. Future
+changes still require their own reviewed artifact, green CI and current host evidence.
 
 ## Evidence and approval boundary
 

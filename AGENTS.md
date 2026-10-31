@@ -25,7 +25,7 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
 
 - Use `pytest` with asyncio mode `auto`.
 - Tests must never call real `storcli` or touch real hardware; mock the `storcli` wrapper at the boundary.
-- Aim for coverage growth, with no hard percentage gate yet. (To enforce a gate, add `--cov-fail-under=N` to pyproject.toml `[tool.pytest.ini_options]` `addopts` and update `scripts/ci.sh` to mirror.)
+- The default suite enforces 100% statement and branch coverage via `--cov-branch --cov-fail-under=100` in `pyproject.toml`. Keep the existing gate; do not disable it to fix failures.
 - Integration tests live under `tests/integration/` and are skipped by default with a marker.
 
 # Architecture Rules
@@ -40,7 +40,7 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
 # Security Model
 
 - Do not put secrets in code; load all config from `.env` via `pydantic-settings`.
-- The web app runs as the dedicated unprivileged user `raid-monitor`.
+- Fresh installs run as the dedicated unprivileged user `raid-monitor`. Existing SERVER uses `megaraid`; preserve its reviewed deployment account and protected rollout configuration (see `docs/CURRENT_STATE.md`).
 - `sudo` is allowed only through a narrow sudoers entry that whitelists exact `storcli` commands.
 - The web layer is protected by HTTP basic auth via nginx in front of FastAPI.
 - The app starts in read-only mode by default.
@@ -92,7 +92,7 @@ Project-specific equivalents for orchestrator-level concepts:
 
 - Integration tests in this project: `tests/integration/`, skipped by default via marker.
 - This project has no external testbed repository.
-- CI workflow: `.github/workflows/ci.yml` running `ruff check`, `ruff format --check`, `mypy src`, and `pytest`. No coverage threshold currently enforced (pyproject.toml has `--cov=src/megaraid_dashboard --cov-report=term-missing` but no `--cov-fail-under`).
+- CI workflow: `.github/workflows/ci.yml` runs Ruff, strict mypy, the default pytest suite with 100% statement/branch coverage, isolated integration tests and Chromium E2E. `scripts/ci.sh` runs local lint/type/shell/unit/integration checks; E2E runs separately.
 - This project has no `task_status.py` module; it is not part of pipeline-orchestrator.
 
 <!-- pipeline-orchestrator: managed BEGIN work_modes -->

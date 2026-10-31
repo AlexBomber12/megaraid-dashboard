@@ -1,5 +1,15 @@
 # MegaRAID Dashboard Threat Model
 
+> Current operational inventory: [CURRENT_STATE.md](CURRENT_STATE.md), 2026-10-31.
+> This model describes trust boundaries, not proof that the latest deployment has
+> undergone a new penetration test. SERVER-specific account/policy differs from
+> fresh-install defaults; this documentation update changes no security controls.
+
+The systemd hardening section describes the repository unit template. Existing
+SERVER uses the reviewed sudo-based rollout with `NoNewPrivileges=no`; do not claim
+the template's `NoNewPrivileges=true` is effective there. That deployment exception
+and its exact-command boundary need to be included in a future security re-audit.
+
 Date: 2026-Q2
 
 This document describes the pass-1 threat model for MegaRAID Dashboard, a single-host,

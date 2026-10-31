@@ -1,10 +1,15 @@
 # MegaRAID Dashboard
 
+Production checkpoint (2026-10-31): SERVER runs `cfad744` after review and green CI.
+Read [current state and verification limits](docs/CURRENT_STATE.md),
+[the operational runbook](docs/RUNBOOK.md) and [the remaining plan](docs/roadmap.md).
+Installer defaults and historical screenshots are not SERVER's current deployment inventory.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/AlexBomber12/megaraid-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexBomber12/megaraid-dashboard/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/AlexBomber12/megaraid-dashboard?sort=semver)](https://github.com/AlexBomber12/megaraid-dashboard/releases/latest)
 
-MegaRAID Dashboard is a web dashboard and email alerter for LSI MegaRAID controllers, JSON-driven via `storcli`, intended as a sustainable replacement for the unmaintained MegaRAID Storage Manager (MSM).
+MegaRAID Dashboard is a web dashboard and email/Telegram alerter for LSI MegaRAID controllers, JSON-driven via `storcli`, intended as a sustainable replacement for the unmaintained MegaRAID Storage Manager (MSM).
 
 ## Why
 
@@ -53,8 +58,8 @@ single drive when a slot needs action.
 
 1. Open `/` for the main dashboard. The first viewport shows one controller card, an
    eight-drive backplane grid, the latest activity timeline, and the system status bar.
-   The page refreshes through HTMX every 30 seconds, so it can lag real controller state by
-   up to one polling interval.
+   The page refreshes every 30 seconds when live refresh is eligible. Hardware data is
+   collected separately (300 seconds on SERVER), so a UI refresh is not a new hardware poll.
 2. Open `/controller` from the navigation or the controller card when controller-level
    details matter. The page includes health, live operation status, CacheVault, RAID
    configuration, scheduled tasks, hardware identity, foreign config status, buzzer control,
@@ -715,20 +720,17 @@ transition or diagnostic footer. It writes nothing to the database and runs no `
 command. It sends a real message; `--chat-id` changes the destination, not a dry-run mode.
 Successful manual delivery does not verify or enable automatic monitoring or delivery.
 
-## Roadmap
+## Roadmap and readiness
 
-1. [x] Skeleton and CI.
-2. [x] `storcli` wrapper with JSON parsing and pydantic models.
-3. [x] SQLite schema and migrations.
-4. [x] Background metrics collector.
-5. [x] Read-only web dashboard.
-6. Email alerts via SMTP.
-7. Basic auth.
-8. Maintenance mode for Locate Start, alarm, patrol read, and consistency check;
-   Locate Stop remains a gated recovery action outside maintenance.
-9. Destructive mode for drive replace workflow.
-10. Production deployment with systemd and nginx.
+The core monitoring, email/Telegram delivery, authentication, maintenance/destructive
+gates and supported action workflows are implemented. The compact UI, status corrections
+and CacheVault learn-date recovery are deployed on SERVER. See the dated
+[production checkpoint](docs/CURRENT_STATE.md) for release and test evidence.
 
-## Status
+Next: independent application/Collector monitoring, recurring backup/restore verification,
+and repeatable deployment tooling. [The roadmap](docs/roadmap.md) separates these from
+delivered work and physical effects that have not been tested on the healthy array.
 
-Active development, not production-ready yet.
+Software tests and production reads do not certify every physical controller operation
+or prove the absence of undiscovered defects. Keep the installed command policy and
+operator gates; do not use a healthy RAID as a test fixture.

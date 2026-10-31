@@ -1,5 +1,11 @@
 # MegaRAID Dashboard Architecture
 
+Deployment inventory is recorded separately in [CURRENT_STATE.md](CURRENT_STATE.md).
+SERVER uses the `megaraid` account and root HTTPS origin; `raid-monitor` and `/raid/`
+in generic examples are installer/proxy options. Automatic Telegram is configured;
+neutral delivery is proven, while real hardware incidents are tested with mocks.
+The application's own notifier cannot report a total process/host outage.
+
 ```
                 +-------------+
                 |  storcli64  |
@@ -21,7 +27,7 @@
                 +------+------+        +------+------+
                        |                      |
                        v                      v
-           Proton SMTP + Telegram        nginx /raid/
+           Proton SMTP + Telegram        nginx HTTPS
                                               |
                                       operator browser
 ```

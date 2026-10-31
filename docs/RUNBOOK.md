@@ -1,8 +1,33 @@
 # MegaRAID Dashboard Runbook
 
 This runbook is the operator reference for routine checks, common incidents, and recovery
-tasks. It assumes the production service runs behind nginx at `/raid/`, uses SQLite for local
-state, and runs as the `raid-monitor` service user.
+tasks. Generic command examples below use fresh-install defaults (`raid-monitor`,
+`/opt/megaraid-dashboard`, optional `/raid/` prefix). Existing SERVER instead uses
+`megaraid`, `/opt/megaraid-dashboard-ui-cfad744` and the root HTTPS origin.
+Use [CURRENT_STATE.md](CURRENT_STATE.md) for the observed release, protected rollout
+configuration, test evidence and remaining work. Resolve the effective account and
+release before adapting generic commands; do not print secret environment values.
+
+## Current production and safe verification
+
+Release `cfad744` is deployed. Compact Actions, drive DG/Span/Row, shared Collector
+ages, observed Patrol scheduling and CacheVault learn-date recovery are active.
+The Telegram transport test reached the owner; no real hardware failure was induced.
+
+After an SSH disconnect, check service WorkingDirectory/health and the matching
+rollout status before taking action. The cfad744 rollout finished `verified`;
+repeating its one-shot activation fails its old-baseline guard before changes.
+See [the exact recovery checks](CURRENT_STATE.md#recovery-after-ssh-disconnect-or-repeated-activation).
+Never bypass the guard or restore the database solely because the terminal disconnected.
+
+For Learn Cycle, INFO `cachevault_next_learn_time_recovered` means the documented
+numeric timestamp repaired invalid legacy calendar text. It is not a new hardware
+fault. WARNING `cachevault_next_learn_time_invalid` still means unsupported/unrecoverable
+data; preserve redacted evidence and investigate rather than starting Learn Cycle.
+
+Independent outage detection and a recurring backup restore drill remain unverified.
+The routines below describe how to verify them, not proof that they are installed.
+
 
 ## Routines
 
@@ -128,16 +153,17 @@ The locate-only rollout does not enable the replacement steps in this general in
 
 ### Alert flood; what now?
 
-1. Start maintenance mode with a clear reason and bounded duration.
-   Expected output: notifier skips alert delivery while the dashboard still records events.
+1. Inspect the repeated events and the affected notification channel before changing modes.
+   Expected output: current incidents are distinguished from delivery retries and audit noise.
+   Maintenance is not a Telegram mute: real hardware incidents remain eligible.
 2. Group events by category and subject.
    Expected output: the flood has a dominant source, such as a failed drive or collection error.
 3. Fix the underlying cause first.
    Expected output: new events slow down or stop.
 4. Check alert suppression and per-category behavior only after the cause is understood.
    Expected output: suppression is used to reduce repeats, not to hide an unresolved incident.
-5. Stop maintenance mode when the event stream is stable.
-   Expected output: normal alerting resumes.
+5. Close any actual maintenance window when the authorized work is complete.
+   Expected output: controller-write authorization ends; incident delivery keeps its normal checks.
 
 ### Read a concise Telegram alert
 
@@ -159,8 +185,9 @@ monitoring uncertainty as healthy hardware.
 
 1. Confirm the event exists on the Events page.
    Expected output: the event severity is at or above `ALERT_SEVERITY_THRESHOLD`.
-2. Confirm maintenance mode was not active at the event time.
-   Expected output: no active maintenance window explains the skip.
+2. Identify the channel and its delivery policy. Maintenance can explain SMTP suppression;
+   it does not explain a permanent skip of a real hardware Telegram incident.
+   Expected output: channel-specific state, rather than an assumed global mute, explains the result.
 3. Check whether a recent matching event was already notified.
    Expected output: deduplication explains only repeated events inside the suppress window.
 4. Check SMTP configuration and network reachability to the SMTP host.
@@ -374,7 +401,8 @@ monitoring uncertainty as healthy hardware.
 
 ## Quarterly Review Checklist
 
-1. Confirm the service still runs as `raid-monitor`.
+1. Confirm the service runs as the approved unprivileged account (`raid-monitor` on
+   fresh installs, `megaraid` on existing SERVER).
    Expected output: systemd `User` and `Group` are unchanged.
 2. Confirm the app starts read-only unless maintenance mode is explicitly enabled.
    Expected output: write controls are not usable during normal operation.
@@ -393,10 +421,12 @@ monitoring uncertainty as healthy hardware.
 
 ## Existing megaraid production service
 
-For the installed StorCLI 1.23.02 read-only selection and reversible operator
-procedure, follow [the rollout runbook](STORCLI_READ_ONLY_ROLLOUT.md). Production runs as `megaraid`; installer
-`raid-monitor` defaults must not replace its service configuration.
+For the installed `cfad744` release, pinned StorCLI 1.23.02 and full-capability
+policy, follow [the current checkpoint](CURRENT_STATE.md) and the
+[full rollout contract](STORCLI_FULL_ROLLOUT.md). Production runs as `megaraid`;
+installer `raid-monitor` defaults must not replace its service configuration.
 
-A separate [locate-only rollout](STORCLI_LOCATE_ONLY_ROLLOUT.md) inventories action
-POSTs and documents the additive 16-command policy, capability gates, activation
-and rollback. Preparation does not authorize a production window or verify LEDs.
+The [read-only](STORCLI_READ_ONLY_ROLLOUT.md) and
+[locate-only](STORCLI_LOCATE_ONLY_ROLLOUT.md) procedures are historical preparation
+records, not the active selection or instructions to redeploy. Current capability
+does not certify physical actions or authorize a production test window.

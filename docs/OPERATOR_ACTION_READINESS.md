@@ -12,11 +12,12 @@ including the intentionally unavailable Mark UBad operation. Maintenance adds tw
 database-only POSTs. Navigation, filters, pagination, charts, refresh, disclosure,
 confirmation, cancellation and wizard progression are included.
 
-No production deployment or controller mutation was performed during this audit.
-The healthy array was not used as a test fixture. The previously staged activation
-helper was withdrawn before this audit and exits without installing anything.
-The last observed production service remains #130 (`51267e8`) in read-only mode.
-The audited fixes are not active there.
+Historical audit boundary: no production deployment or controller mutation was
+performed during the audit itself, and the healthy array was not a test fixture.
+The withdrawn pre-audit helper must not be reused. The audit fixes subsequently
+shipped in #134 (`25c2b74`) and remain in the deployed `cfad744` release.
+See [CURRENT_STATE.md](CURRENT_STATE.md) for the 2026-10-31 production evidence.
+The test counts below belong to the audit revision, not the current release.
 
 ## Findings and fixes
 

@@ -1,9 +1,12 @@
 # Concise Telegram catalog and delivery audit
 
-Implementation base: `6385bfbb7af81da564fcef8c97988cf665ab8a31`.
-Evidence is repository code, redacted storcli fixtures and mocked pipeline tests.
-This PR does not inspect production hardware, change configuration, enable automatic
-Telegram delivery, send a live test, merge or deploy anything.
+Implementation-audit base: `6385bfbb7af81da564fcef8c97988cf665ab8a31` (historical).
+The contract below is verified with redacted fixtures and mocked pipeline tests.
+At the [2026-10-31 production checkpoint](CURRENT_STATE.md), SERVER runs `cfad744`
+with automatic Telegram enabled. A single neutral test on 2026-10-30 at 22:11:08 UTC
+was API-accepted and receipt confirmed by the owner. No real hardware incident was
+induced; transport delivery and mocked incident behavior are separate evidence.
+This docs update sends no message or changes service/notification configuration.
 
 ## Detection to delivery
 
@@ -193,13 +196,17 @@ including after a restart with the saved high-temperature snapshot.
 - Delivery still requires configuration, eligibility and fresh evidence, and remote receipt
   cannot be exactly-once across a crash or timeout.
 
-For a later authorized deployment, keep automatic Telegram disabled, back up the database
-and record the installed revision, install the reviewed artifact, and inspect collection
-success/uncertainty locally before considering any separately authorized real manual test.
-Do not induce hardware faults or replay events. No migration is required. Rollback restores
-the previous application artifact with the same database/configuration; preserve delivery
-rows and keep automatic Telegram disabled. Old code restores its previous detection gaps
-and button behavior, so rollback is a fallback, not a way to validate the new contract.
+For future upgrades, preserve the observed notification settings and delivery/cooldown
+rows, back up the database/configuration, install only a reviewed artifact after green
+CI, and verify normal collection. An upgrade does not authorize changing channel enablement
+or sending a new test. Do not induce hardware faults or replay events. Keep rollback
+compatible with the database; do not downgrade/delete delivery history as a routine rollback.
+Older application code can reintroduce detection, retry or UI defects.
+
+Complete process/host failure cannot be reported by the stopped notifier itself.
+Independent availability and Collector-freshness monitoring remains a planned check,
+not a proven deployed feature. Arbitrary UI/HTTP errors and operator audit noise are
+not mapped automatically to Telegram incidents.
 
 ## Verification references
 
@@ -239,7 +246,6 @@ strict mypy, install-script checks and all unit/regression tests with the existi
 100% line/branch coverage gate. CI also runs browser tests separately using
 `pytest -o "addopts=" tests/e2e/ --browser chromium --no-cov -v`.
 
-The [prepared knowledge-vault runbook update](knowledge-vault-megaraid-update.md) contains
-the proposed external update. It preserves the historical user-reported deployment
-checkpoint and describes the pending fixes without asserting a new production check.
-It has not been applied to knowledge-vault.
+The [knowledge-vault handoff](knowledge-vault-megaraid-update.md) identifies the
+Obsidian notes maintained with this checkpoint. External notes carry the same
+deployment, transport-proof and physical-verification boundaries.

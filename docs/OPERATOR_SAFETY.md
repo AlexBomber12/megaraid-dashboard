@@ -1,4 +1,9 @@
 > Final production procedure: [STORCLI_FULL_ROLLOUT.md](STORCLI_FULL_ROLLOUT.md).
+
+> Deployment checkpoint: the audited safety fixes are included in SERVER's `cfad744`.
+> [CURRENT_STATE.md](CURRENT_STATE.md) separates software proof, production reads and
+> physical effects that remain untested. Full capability never authorizes a test on
+> the healthy RAID; all state/identity/approval gates below remain in force.
 > Full capability uses root-approved topology and exact commands; the older inferred
 > row/single-span examples below describe legacy handler tests, not production approval.
 > Independent follow-up findings and current readiness:

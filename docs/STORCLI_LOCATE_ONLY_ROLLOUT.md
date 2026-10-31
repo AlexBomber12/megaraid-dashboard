@@ -1,3 +1,7 @@
+> **Historical procedure, not the installed release.** SERVER runs `cfad744` with
+> the reviewed full-capability policy. See [CURRENT_STATE.md](CURRENT_STATE.md).
+> Old version/account/binary selections below are dated preparation evidence.
+
 > Superseded for the requested final release by [STORCLI_FULL_ROLLOUT.md](STORCLI_FULL_ROLLOUT.md).
 > Do not deploy this historical intermediate release. Its binary staging and read-only
 > probe instructions remain reference material for the single final activation.

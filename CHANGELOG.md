@@ -1,5 +1,30 @@
 # Changelog
 
+## Production checkpoint — 2026-10-31
+
+This is a deployment record, not a new semver tag. SERVER runs `cfad744`.
+See [current state](docs/CURRENT_STATE.md) for evidence and outstanding operational work.
+
+### Delivered
+
+- #134 (`25c2b74`): independent operator-chain safety fixes and refusal paths.
+- #135 (`16c06d9`): compact Actions layout with the existing safety gates.
+- #136 (`8b166c6`): identity-bound observed DG/Span/Row, shared Collector footer ages,
+  and Patrol Auto/Manual/Unknown scheduling display without invented intervals.
+- #137 (`cfad744`): bounded UTC recovery of a malformed legacy CacheVault learn date
+  from its documented numeric counter; no schema, firmware, schedule or policy change.
+- Neutral Telegram test accepted on 2026-10-30 22:11:08 UTC and receipt confirmed.
+  No real hardware fault was induced or controller write used for validation.
+
+### Documentation
+
+- Reconciled current deployment, remaining monitoring/backup/tooling work, historical
+  audit boundaries and Obsidian handoff. Future releases require review and green CI.
+
+The older “Unreleased” sections below retain development history and original
+intermediate behavior. They are not a list of changes missing from SERVER; current
+Telegram text is concise plain text, with no inline button or runbook link.
+
 ## [Unreleased] - Compact Actions panel
 
 ### Changed
@@ -18,7 +43,7 @@
 ### Added
 
 - Optional alert-only Telegram channel (`TELEGRAM_ENABLED`, default off) with Russian
-  messages that explain the problem, risk, and one action and link to the runbook.
+  messages that explain the problem, risk and one action; the final contract has no links/buttons.
 - `event_deliveries` table (migration `0009`) for independent per-channel delivery and
   retry state; existing events are backfilled as already handled for Telegram.
 - `python -m megaraid_dashboard.alerts telegram-test` for a neutral manual delivery check.
@@ -64,7 +89,8 @@
 - Keep Russian Telegram alerts within two content lines plus a Rome-time/event-ID footer
   and 160 characters for SERVER / AI-SERVER. Distinguish failed, missing and offline
   disks; use only structured facts and retain detailed diagnostics in the event store.
-- Move the fixed runbook link into one inline URL button, without text parsing.
+- The intermediate inline runbook button was removed by the concise-message contract;
+  final messages have no links, buttons or text parsing.
 - Make `telegram-test` neutral and independent of incidents; manual success does not
   verify automatic delivery. Document existing detector limits without changing policy.
 
