@@ -147,22 +147,23 @@ def test_foreign_config_page_renders_status_bar_without_live_refresh(
     assert '<body data-live-refresh="off">' in response.text
 
 
-def test_destructive_advanced_actions_require_typed_serial_phrase(
+def test_supported_advanced_actions_and_replacement_keep_confirmation_gates(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    forms = _parse(_get(sample_snapshot, "/drives/252/4").text).advanced_action_forms
-    destructive = [form for form in forms if form["data-confirm-tone"] == "danger"]
-    safe = [form for form in forms if form["data-confirm-tone"] == "warning"]
-
-    assert destructive
-    assert safe
-    assert len(destructive) + len(safe) == len(forms)
-    for form in destructive:
-        assert form["data-confirm-phrase"] == "WD-WM00000005"
-        assert form["data-confirm-title"].endswith("on drive 252:4?")
-    for form in safe:
+    html = _get(sample_snapshot, "/drives/252/4").text
+    forms = _parse(html).advanced_action_forms
+    assert {form["action"] for form in forms} == {
+        "/drives/252:4/actions/mark-ugood",
+        "/drives/252:4/actions/spindown",
+        "/drives/252:4/actions/hotspare",
+    }
+    for form in forms:
+        assert form["data-confirm-tone"] == "warning"
         assert "data-confirm-phrase" not in form
         assert form["data-confirm-title"].endswith("on drive 252:4?")
+    assert 'data-serial="WD-WM00000005"' in html
+    assert 'data-replace-input="serial"' in html
+    assert 'data-replace-input="new-serial"' in html
 
 
 def test_events_partial_keeps_events_title_for_operator_actions(

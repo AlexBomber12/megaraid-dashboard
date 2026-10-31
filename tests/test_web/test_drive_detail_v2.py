@@ -150,7 +150,7 @@ def test_drive_detail_v2_precomputed_urls_include_forwarded_prefix(
     assert response.status_code == 200
     assert 'href="/raid/drives/252:3"' in response.text
     assert 'href="/raid/drives/252:5"' in response.text
-    assert 'action="/raid/drives/252:4/actions/mark-ubad"' in response.text
+    assert 'action="/raid/drives/252:4/actions/mark-ubad"' not in response.text
     assert 'action="/raid/drives/252:4/actions/hotspare"' in response.text
 
 
@@ -190,8 +190,8 @@ def test_drive_detail_v2_identity_connection_and_action_counts(
 
     assert parsed.id_fields == 9
     assert parsed.conn_fields == 8
-    assert len(advanced_buttons) == 4
-    assert "Mark Bad" in _button_texts(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    assert len(advanced_buttons) == 3
+    assert "Mark Bad" not in _button_texts(_drive_detail_response(sample_snapshot, slot_id=4).text)
 
 
 def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
@@ -210,21 +210,15 @@ def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
     assert f'name="serial_number" value="{serial}"' in response.text
 
 
-def test_drive_detail_v2_replace_card_and_disabled_ubad(
+def test_drive_detail_v2_replace_card_without_unsupported_ubad(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     html = _drive_detail_response(sample_snapshot, slot_id=4).text
-    parsed = _parse(html)
-    mark_ubad = _submit_button_by_label(html, parsed, "Mark Bad")
-
-    assert "action-row--danger" in html
     assert "Replace…" in html
-    assert "disabled" in mark_ubad
-    assert (
-        '<p class="action-row__note">'
-        "Unavailable: StorCLI 1.23.02 does not document set bad. "
-        "Review read-only help; no command is guessed.</p>" in html
-    )
+    assert "Mark Bad" not in html
+    assert "Unconfigured Bad" not in html
+    assert "/actions/mark-ubad" not in html
+    assert "does not document set bad" not in html
 
 
 def test_drive_charts_v2_compat_returns_404_without_snapshot() -> None:

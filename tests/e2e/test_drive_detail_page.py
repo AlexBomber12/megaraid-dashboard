@@ -66,7 +66,7 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     )
 
     mark_ubad = authenticated_page.get_by_role("button", name="Mark Bad")
-    expect(mark_ubad).to_be_disabled()
+    expect(mark_ubad).to_have_count(0)
 
     authenticated_page.get_by_role("button", name="Replace…").click()
     expect(authenticated_page.locator("[data-stage='confirm']")).to_be_visible()
@@ -110,10 +110,8 @@ def test_advanced_action_browser_matrix(
     before = database_observation(snapshot_with_drives)
     button = page.locator(f'form[action="{action.path}"] button')
     if action.name == "mark-ubad":
-        expect(button).to_be_disabled()
-        expect(
-            page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
-        ).to_be_visible()
+        expect(button).to_have_count(0)
+        expect(page.get_by_role("button", name="Mark Bad", exact=True)).to_have_count(0)
         assert fake_storcli.calls == []
         assert database_observation(snapshot_with_drives) == before
         return
@@ -386,10 +384,8 @@ def test_undocumented_legacy_drive_action_is_unavailable(
 ) -> None:
     _set_drive_state(snapshot_with_drives, slot_id=7, state="UGood")
     login_and_navigate(authenticated_page, f"{live_server}/drives/252:7")
-    expect(authenticated_page.get_by_role("button", name="Mark Bad")).to_be_disabled()
-    expect(
-        authenticated_page.get_by_text("Unavailable: StorCLI 1.23.02 does not document set bad.")
-    ).to_be_visible()
+    expect(authenticated_page.get_by_role("button", name="Mark Bad")).to_have_count(0)
+    expect(authenticated_page.locator('form[action$="/actions/mark-ubad"]')).to_have_count(0)
 
 
 pytestmark = pytest.mark.usefixtures("legacy_controller_handlers")

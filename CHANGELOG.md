@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased] - Readable chart times and observed mode labels
+
+- Show short browser-local dates/times on RoC, drive-temperature and error charts;
+  full date/time and timezone remain in hover. Limit horizontal labels to eight
+  and retain times for sparse history. Parse legacy UTC bucket labels explicitly as UTC.
+- Remove known CC/Patrol mode prose repeated by selected buttons, preserving
+  reported intervals and unknown/disabled modes. Selection remains based on saved state.
+- Hide the CC Concurrent/Sequential switch for exactly one saved VD, retaining CC
+  Start/Stop and Patrol modes. Remove unsupported Mark Bad from rendered drive rows;
+  retain existing API/wrapper refusal and safety gates.
+- Add an operator action reference. No controller, authorization or schema changes;
+  this follow-up is not part of the deployed `cfad744` checkpoint below.
+
 ## Production checkpoint — 2026-10-31
 
 This is a deployment record, not a new semver tag. SERVER runs `cfad744`.
