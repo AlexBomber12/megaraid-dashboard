@@ -37,6 +37,13 @@ mode descriptions, automatic rebuild information and reported Patrol intervals r
 Refresh changes the selected buttons when new saved evidence changes; clicking a mode
 does not optimistically claim that it is already active. See [action meanings](ACTIONS_REFERENCE.md).
 
+The CC Concurrent/Sequential switch is omitted for exactly one VD in the latest
+saved inventory. CC status/progress and Start/Stop remain; Patrol Auto/Manual remains.
+Multiple VDs or missing inventory do not trigger single-VD hiding. Read-only refresh
+updates visibility when saved inventory changes. Hidden mode actions contribute no
+irrelevant policy/availability notes. Mark Bad is removed entirely from drive action
+rows, while the existing unsupported API/wrapper refusal remains covered.
+
 All RoC, drive-temperature and error-history charts share browser-local date formatting:
 time for 1h; date/time on two lines for short spans; short dates for week/month spans;
 date/year for longer spans. Sparse long-range views retain useful times. Horizontal

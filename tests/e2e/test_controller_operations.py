@@ -4,7 +4,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from sqlalchemy import select
 
-from megaraid_dashboard.db import ControllerSnapshot
+from megaraid_dashboard.db import ControllerSnapshot, VirtualDriveSnapshot
 from tests.e2e.conftest import _LiveServerHandle, login_and_navigate
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
@@ -32,6 +32,19 @@ def test_controller_operation_browser_matrix(
     with _live_server_handle.app.state.session_factory() as session, session.begin():
         snapshot = session.scalar(select(ControllerSnapshot))
         assert snapshot is not None
+        if action.name == "consistency-check-mode":
+            session.add(
+                VirtualDriveSnapshot(
+                    snapshot_id=snapshot.id,
+                    vd_id=1,
+                    name="second",
+                    raid_level="RAID5",
+                    size_bytes=1000000,
+                    state="Optl",
+                    access="RW",
+                    cache="RWBD",
+                )
+            )
         snapshot.raw_json = {
             **snapshot.raw_json,
             action.family.replace("-", "_"): {

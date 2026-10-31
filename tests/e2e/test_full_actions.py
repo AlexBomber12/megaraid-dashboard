@@ -38,7 +38,7 @@ def test_online_spin_down_is_disabled(
     login_and_navigate(page, f"{live_server}/drives/252:0")
     expect(page.get_by_role("button", name="Spin Down", exact=True)).to_be_disabled()
     expect(page.locator("body")).to_contain_text("Only unconfigured UGood or UBad")
-    expect(page.get_by_role("button", name="Mark Bad", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Mark Bad", exact=True)).to_have_count(0)
     assert fake_storcli.calls == []
 
 

@@ -21,11 +21,14 @@ Foreign forms retain typed confirmation, the current digest and checked dry-run
 defaults; replacement retains serial confirmation, identity pauses and resume data.
 No mutation route, exact command grant, authentication or CSRF rule changes here.
 
-The mode-label follow-up removes only text already represented by a pressed button;
-it retains unknown modes and observed intervals. Source controls and POST inventory
-are unchanged. `tests/e2e/test_actions_panel.py` also checks selected modes after
-saved-state refresh without a controller mutation. Operator-facing definitions are
-in [ACTIONS_REFERENCE.md](ACTIONS_REFERENCE.md).
+The mode-label follow-up retains unknown modes and observed intervals. The CC mode
+switch is hidden for exactly one saved VD, with CC Start/Stop and Patrol modes retained;
+missing inventory is not treated as one VD. Mark Bad is absent from rendered drive rows,
+while its unsupported API and wrapper still refuse requests. Generic source control
+declarations and POST inventory were reviewed and remain unchanged; rendered availability
+is covered by browser tests. `tests/e2e/test_actions_panel.py` checks selected modes
+and visibility after saved-state refresh without a controller mutation. Definitions:
+[ACTIONS_REFERENCE.md](ACTIONS_REFERENCE.md).
 
 This inventory covers PR #127 rebased onto main at
 `223e7fd2cd7151065756b87413e96868830ad26e`, including merged PRs #125 and #126.
@@ -58,7 +61,7 @@ exact argument tuples in `tests/safety/scenarios.py`.
 | Consistency Check Start / Stop; Switch to Concurrent / Sequential | POST `/controller/consistency-check/start`, `/stop`, `/mode`; `/c0/vall start/stop cc J`, `/c0 set cc=conc/seq J` | Only when CC status exists; ready/stopped vs running gates and maintenance. API VD-specific start has existing tests; UI targets all VDs. Read-only refresh must not manufacture snapshot updates. | Controller browser suite; `tests/test_web/test_routes_consistency_check_branches.py`, `tests/test_services/test_consistency_check.py`, integration matrix |
 | Spin Down | POST `/drives/{e}:{s}/actions/spindown`; `/c0/eE/sS spindown J` | UGood/UBad only (unconfigured; Onln refused), maintenance, live state and identity check; the request carries the serial displayed on the page. It changes operational state even though shown under Configuration. Confirmation dialog Cancel must issue no request. | `tests/e2e/test_drive_detail_page.py`, `tests/test_web/test_drive_advanced_routes.py`, integration matrix |
 | Hot Spare | POST `/drives/{e}:{s}/actions/hotspare`; `/c0/eE/sS add hotsparedrive dgs=0 J` | UGood, existing target DG, maintenance, live state/identity. Missing DG disables with reason. Target DG bounds and wrong DG refused. | Advanced browser/route suites; integration matrix |
-| Mark as UBad; Mark as UGood | POST `/drives/{e}:{s}/actions/mark-ubad`, `/mark-ugood`; `/c0/eE/sS set bad/good J` | Mark as UBad is unavailable for StorCLI 1.23.02 and rejected by the wrapper; UBad→UGood remains state-gated. State mismatch disables with explanation. Maintenance and both submitted/snapshot/live identity checks apply; UBad additionally requires the destructive flag and typed serial confirmation; wrong serial keeps dialog Confirm disabled. Cancel must preserve DB and trace. | Advanced browser/route suites; integration matrix |
+| Mark as UGood; unsupported Mark UBad API | POST `/drives/{e}:{s}/actions/mark-ugood`; `/c0/eE/sS set good J`. Legacy `/mark-ubad` remains denied. | UBad→UGood remains state-gated with maintenance; submitted/snapshot/live serials must agree. Cancel preserves DB and trace. Mark Bad has no rendered row/button/form, and direct requests remain rejected by the existing API/wrapper. | Advanced browser/route suites; integration matrix |
 | Begin Replacement; Continue; Cancel | Local wizard controls; no mutation until confirmed step | Drive exists. Initial Cancel focuses entry button. Serial must match visible outgoing drive; dry-run checked by default. Wizard must disable while running and block old identity after a live refresh. | `tests/e2e/test_replace_wizard_flow.py`, `tests/e2e/test_drive_detail_page.py`, `tests/e2e/test_live_refresh.py`, `tests/test_web/test_drive_replace_ui.py` |
 | Set Offline & Missing (Step 1 runs two endpoints) | POST `/drives/{e}:{s}/replace/offline`, `/missing`; `/c0/eE/sS set offline/missing J`; separate audits | Offline: Onln/Offln/Failed/UBad/UGood; Missing: Offln. Maintenance + destructive flag, persisted and live serial, live state. Failure in Offline stops Missing. Dry runs validate without executing anything or adding audit rows. | Replacement browser suite; `tests/test_web/test_drive_replace_routes.py`, integration matrix |
 | New Drive Inserted; new serial; dry-run checkbox | Local stage transition plus GET `/drives/{e}:{s}/replace/topology` | Server-derived DG/array/row. Replacement serial must differ from outgoing serial. Topology failures leave Insert disabled. Existing tests cover identity changes and refresh during wizard. | Replacement browser suite; `tests/test_web/test_drive_replace_step3.py`, `tests/e2e/test_live_refresh.py` |

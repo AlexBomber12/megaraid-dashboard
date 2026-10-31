@@ -9,12 +9,13 @@
     {% else %}
       {% set modes = ["auto", "manual"] %}
     {% endif %}
+    {% set show_mode_controls = operation.mode_url and not (operation.name == "Consistency Check" and view_model.raid_config | length == 1) %}
     {# The pressed button already states a known mode. Retain observed intervals/unknowns. #}
     {% set mode_detail = operation.mode_text.split(' mode.', 1)[-1] | trim if current_operation_mode in modes else operation.mode_text %}
     {% set start_reason = approved_action_reason(operation.start_url) if operation.start_url else none %}
     {% set stop_reason = approved_action_reason(operation.stop_url) if operation.stop_url else none %}
     {% set notes = [start_reason, stop_reason] %}
-    {% if operation.mode_url %}
+    {% if show_mode_controls %}
       {% for mode in modes if mode != current_operation_mode %}
         {% set _ = notes.append(approved_action_reason(operation.mode_url, mode)) %}
       {% endfor %}
@@ -22,7 +23,7 @@
     {# Idle → Stop disabled, running → Start disabled: normal, needs no text. #}
     {% if operation.start_url and not operation.can_start and not operation.can_stop %}
       {% set _ = notes.append("State unknown, so Start and Stop are unavailable. Refresh operation status.") %}
-    {% elif operation.mode_url and not operation.can_change_mode %}
+    {% elif show_mode_controls and not operation.can_change_mode %}
       {% set _ = notes.append("Mode changes need a known state. Refresh operation status.") %}
     {% endif %}
     <div class="action-row" data-action-scope>
@@ -51,7 +52,7 @@
         </form>
       </fieldset>
       {% endif %}
-      {% if operation.mode_url %}
+      {% if show_mode_controls %}
       <fieldset class="action-row__set"{% if other_writes_disabled_reason %} disabled{% endif %}>
         <div class="segmented" role="group" aria-label="{{ operation.name }} mode">
           {% for mode in modes %}

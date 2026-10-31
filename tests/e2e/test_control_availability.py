@@ -40,6 +40,9 @@ def test_drive_state_availability_and_refusal_explanations(
     }
     for action in (a for a in ACTIONS if a.family == "advanced"):
         button = page.locator(f'form[action="{action.path}"] button')
+        if action.name == "mark-ubad":
+            expect(button).to_have_count(0)
+            continue
         if expected[action.name]:
             expect(button).to_be_enabled()
         else:

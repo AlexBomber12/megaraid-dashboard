@@ -4,9 +4,9 @@ import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
-from megaraid_dashboard.db import ControllerSnapshot, PhysicalDriveSnapshot
+from megaraid_dashboard.db import ControllerSnapshot, PhysicalDriveSnapshot, VirtualDriveSnapshot
 from megaraid_dashboard.db.dao import set_maintenance_state
 from tests.test_full_rollout import full_app as full_app
 from tests.test_web.test_drive_actions_routes import app_settings  # noqa: F401
@@ -111,6 +111,18 @@ def test_known_modes_use_selected_buttons_and_keep_observed_interval(full_app, c
     client, app, fake, _contract = full_app
     with app.state.session_factory() as session, session.begin():
         snapshot = session.scalar(select(ControllerSnapshot))
+        session.add(
+            VirtualDriveSnapshot(
+                snapshot_id=snapshot.id,
+                vd_id=1,
+                name="second",
+                raid_level="RAID5",
+                size_bytes=1000000,
+                state="Optl",
+                access="RW",
+                cache="RWBD",
+            )
+        )
         snapshot.raw_json = {
             **(snapshot.raw_json or {}),
             "consistency_check": {"mode": cc, "state": "Stopped"},
@@ -129,3 +141,41 @@ def test_known_modes_use_selected_buttons_and_keep_observed_interval(full_app, c
     assert f"{patrol} mode." not in operations
     assert "Interval 72h." in operations
     assert fake.mutations == []
+
+
+@pytest.mark.parametrize("vd_count", [0, 1, 2])
+@pytest.mark.parametrize("state", ["Stopped", "Active", "Unknown"])
+def test_cc_mode_controls_hidden_only_for_one_saved_virtual_drive(full_app, vd_count, state):
+    client, app, fake, _contract = full_app
+    with app.state.session_factory() as session, session.begin():
+        snapshot = session.scalar(select(ControllerSnapshot))
+        session.execute(
+            delete(VirtualDriveSnapshot).where(VirtualDriveSnapshot.snapshot_id == snapshot.id)
+        )
+        for vd_id in range(vd_count):
+            session.add(
+                VirtualDriveSnapshot(
+                    snapshot_id=snapshot.id,
+                    vd_id=vd_id,
+                    name=f"VD {vd_id}",
+                    raid_level="RAID5",
+                    size_bytes=1000000,
+                    state="Optl",
+                    access="RW",
+                    cache="RWBD",
+                )
+            )
+        snapshot.raw_json = {
+            **(snapshot.raw_json or {}),
+            "consistency_check": {"mode": "Concurrent", "state": state},
+            "patrol_read": {"mode": "Auto", "state": "Stopped"},
+        }
+    html = client.get("/controller").text
+    assert ('aria-label="Consistency Check mode"' in html) is (vd_count != 1)
+    assert 'aria-label="Patrol Read mode"' in html
+    assert 'action="/controller/consistency-check/start"' in html
+    assert 'action="/controller/consistency-check/stop"' in html
+    if vd_count == 1:
+        assert 'action="/controller/consistency-check/mode"' not in html
+        assert "Concurrent mode." not in html
+    assert fake.calls == []
