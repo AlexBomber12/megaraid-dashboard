@@ -1,5 +1,11 @@
 # Read-only production smoke check
 
+> Verification record: the GET-only UI check for #136 found no browser errors or
+> horizontal overflow in the checked views and confirmed the three status fixes.
+> The #137 post-deploy check used service health, persisted date and current-process
+> journal; it was not a fresh full browser audit. See [CURRENT_STATE.md](CURRENT_STATE.md).
+> This manual procedure remains read-only even when production has action capability.
+
 This is a manual procedure for `https://megaraid.alexbomber.com/`, not a scheduled
 job or deployment step. It has not been run by the automated safety suite. Use an
 already authorized account. Do not put credentials in commands, URLs, screenshots,

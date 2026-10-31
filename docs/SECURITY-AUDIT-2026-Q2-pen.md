@@ -1,5 +1,10 @@
 # Security Audit 2026-Q2 Penetration Pass
 
+> Historical audit: findings, test counts and pending-remediation labels below refer
+> to the audit revision, not a current vulnerability assessment or open work queue.
+> [CURRENT_STATE.md](CURRENT_STATE.md) records the deployed release and remaining
+> operational checks. A new periodic security review remains separate work.
+
 PR: PR-055
 
 Scope: manual penetration pass against the web application security controls after the

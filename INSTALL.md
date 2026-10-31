@@ -1,5 +1,14 @@
 # Install MegaRAID Dashboard
 
+> Scope: **fresh installation defaults**, not an in-place SERVER upgrade recipe.
+> At the [2026-10-31 production checkpoint](docs/CURRENT_STATE.md), SERVER runs as
+> `megaraid` from `/opt/megaraid-dashboard-ui-cfad744`, behind
+> `https://megaraid.alexbomber.com/`, with pinned StorCLI 1.23.02 and protected
+> full-capability policy/drop-ins. Preserve those settings and the existing database.
+> Do not rerun this installer to repair an SSH disconnect or a completed rollout.
+> Future upgrades require a reviewed release, green CI, backup and normal-collection
+> verification; they must not execute controller writes as a smoke test.
+
 This guide installs MegaRAID Dashboard on a fresh Ubuntu 24.04 host as the
 `raid-monitor` service user. It assumes one local LSI MegaRAID controller, `storcli64` at
 `/usr/local/sbin/storcli64`, and nginx in front of the FastAPI service after the local

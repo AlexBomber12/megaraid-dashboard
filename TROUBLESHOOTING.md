@@ -1,5 +1,35 @@
 # MegaRAID Dashboard Troubleshooting
 
+> Fresh-install defaults below differ from existing SERVER: use account `megaraid`,
+> release `/opt/megaraid-dashboard-ui-cfad744` and the root HTTPS origin there.
+> [Current inventory and evidence](docs/CURRENT_STATE.md) take precedence over old paths.
+
+## Activation reports an approved-baseline mismatch
+
+`RuntimeError: Service differs from the approved running baseline` is a refusal
+before installation. A one-shot helper expects the exact old service configuration;
+an already installed new release also differs from that baseline. The cfad744
+activation completed successfully on 2026-10-31; its later repeat was refused.
+
+Read `systemctl show megaraid-dashboard.service -pWorkingDirectory -pActiveState -pSubState`,
+local `/healthz`, and the matching `/run/megaraid-ui-*/status.json` if still present.
+If the expected release is healthy and status is `verified`, do not repeat activation.
+Otherwise diagnose the actual mismatch; do not remove baseline guards or old releases.
+Status under `/run` does not survive reboot and its absence alone proves no failure.
+
+## CacheVault next-learn calendar contains month 13
+
+On pinned StorCLI 1.23.02, `2026/13/07 17:50:43 (847389043 seconds)` is invalid
+calendar text with a usable numeric timestamp. Release `cfad744` recovers
+`2026-11-07T17:50:43+00:00`, logs INFO `cachevault_next_learn_time_recovered`, and
+preserves the raw response. The new-process journal showed eight successful normal
+polls without the old warning. This repairs interpretation, not firmware or a schedule.
+
+Unknown formats/counters still produce `cachevault_next_learn_time_invalid` and an
+unknown date. Keep redacted JSON and service/release evidence; see
+[the bounded parsing contract](docs/CACHEVAULT_LEARN_TIME.md). Do not change the
+controller clock, launch Learn Cycle or replace StorCLI merely to silence a warning.
+
 This document is the symptom-to-cause index for production deploy and runtime failures.
 It assumes the standard Ubuntu 24.04 install from `INSTALL.md`: service user
 `raid-monitor`, systemd unit `megaraid-dashboard.service`, SQLite database under
@@ -156,7 +186,9 @@ See [Telegram delivery](README.md#delivery) and [missed alerts](docs/RUNBOOK.md#
   only after confirming repeat alerts will not become noisy.
 - Severity threshold: set `ALERT_SEVERITY_THRESHOLD=warning` if warning emails are
   required, then restart.
-- Maintenance mode: stop the maintenance window from the UI after the work is complete.
+- Maintenance mode: inspect SMTP suppression separately. Real hardware Telegram incidents
+  retain confirmation/freshness/retry checks during maintenance; do not end a window
+  merely to diagnose Telegram delivery. Close it after the authorized work is complete.
 
 ## Drive shows wrong state
 
@@ -392,7 +424,8 @@ temperature, but no warning or critical alert email arrives.
 1. `ROC_TEMP_WARNING_CELSIUS` or `ROC_TEMP_CRITICAL_CELSIUS` is configured too high.
 2. Hysteresis is blocking a repeat notification until the temperature clears and crosses
    the threshold again.
-3. Maintenance mode or notifier delivery is paused.
+3. SMTP is suppressed by maintenance, its threshold excludes the event, or transport failed.
+   Hardware Telegram incidents remain eligible during maintenance under their own rules.
 
 ### Diagnostics
 
@@ -413,8 +446,9 @@ journalctl --namespace=megaraid-dashboard -u megaraid-dashboard.service -n 200 -
 - Hysteresis blocking repeats: cool the controller below
   `ROC_TEMP_WARNING_CELSIUS - ROC_TEMP_HYSTERESIS_CELSIUS`, then watch for a new crossing
   event if the temperature rises again.
-- Notifier paused: stop maintenance mode, verify SMTP with the alert test command, and
-  confirm `ALERT_SEVERITY_THRESHOLD` allows the event severity.
+- SMTP suppressed: confirm `ALERT_SEVERITY_THRESHOLD` and the maintenance window before
+  changing settings. For Telegram inspect `event_deliveries` and current evidence;
+  maintenance is not a global pause. Any new real test send needs authorization.
 
 ## Buzzer keeps sounding
 

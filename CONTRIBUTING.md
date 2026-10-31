@@ -1,5 +1,10 @@
 # Contributing
 
+For the deployed revision, verification limits and current priorities, read
+[CURRENT_STATE.md](docs/CURRENT_STATE.md) and [the roadmap](docs/roadmap.md).
+Keep operational docs and the related Obsidian notes aligned with release evidence;
+preserve historical audit context instead of presenting old holds as current blockers.
+
 MegaRAID Dashboard is a small, hardware-adjacent project. Contributions are welcome when
 they keep the core contract intact: the application talks to MegaRAID hardware only through
 `storcli -J`, validates JSON into typed models, and keeps unsafe operations behind explicit

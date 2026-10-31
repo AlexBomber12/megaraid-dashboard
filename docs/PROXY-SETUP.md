@@ -1,5 +1,9 @@
 # Reverse Proxy Setup
 
+> SERVER's observed production origin is `https://megaraid.alexbomber.com/`.
+> Prefix-based `/raid/` configurations below remain supported examples, not its current
+> URL. See [CURRENT_STATE.md](CURRENT_STATE.md) before applying deployment-specific paths.
+
 ## Goals
 
 The production dashboard is published through the existing nginx instance on the NAS at

@@ -1,102 +1,34 @@
-# Proposed knowledge-vault runbook update
+# Obsidian documentation handoff — 2026-10-31
 
-Prepared for `AlexBomber12/knowledge-vault`, `20-homelab/notifications/megaraid.md`.
-The earlier proposal referenced blob `094fdeb488c86308ab77e4567c3b30f5e43f43fe` on
-2026-10-26. This revision supersedes that proposal's pending-format and detection-limit
-statements. It is saved only in the dashboard PR; the external file has not been updated
-or published. Recheck its current sections before applying these replacements.
+Canonical production evidence: [CURRENT_STATE.md](CURRENT_STATE.md).
+The installed release is `cfad744` (#137); #134 safety, #135 compact design and #136
+status corrections are included. The earlier proposal against the 2026-10-26
+knowledge-vault blob is superseded by this checkpoint.
 
-## Production checkpoint and pending work
+Related notes in `AlexBomber12/knowledge-vault` / Obsidian:
 
-> **Историческая отметка от 26.10.2026, со слов владельца:** SERVER работал на
-> `232a719`, схема БД — `0009_event_deliveries`; реальная ручная доставка Telegram
-> прошла успешно, автоматическая доставка оставалась отключённой. Эта работа не
-> проверяла SERVER заново и не меняла его настройки. Отметка не устанавливает
-> текущую версию production.
->
-> Исправления обнаружения подготовлены от main
-> `6385bfbb7af81da564fcef8c97988cf665ab8a31` в отдельном PR
-> `fix/alert-detection-gaps`. Слияние и развёртывание этой работой не выполняются.
+- `10-projects/megaraid-dashboard/megaraid-dashboard-overview.md`: purpose, architecture,
+  delivered state, priorities, decisions and verification limits.
+- `20-homelab/notifications/megaraid.md`: current deployment, Telegram contract,
+  neutral-delivery evidence, safe diagnostics and rollback boundaries.
+- `20-homelab/notifications/README.md`: MegaRAID row reconciled without changing
+  other services' historical observations or notification policy.
+- `20-homelab/homelab-restore-map-20260504.md`: dated MegaRAID inventory addendum.
+- `20-homelab/infrastructure-inspector-maintenance-policy.md`: dated MegaRAID addendum;
+  older notifier plans are historical and independent host monitoring remains unproven.
 
-## Target message format
+Maintain those notes together; use the documentation PRs as publication evidence.
+Editing a local note does not prove GitHub merge or synchronization to another machine.
+Preserve existing local frontmatter/sync metadata and unrelated edits. Do not edit
+the generated `mirror/` tree or copy credential notes into project documentation.
 
-Пример формата, не текущая авария:
+Telegram's neutral test was API-accepted on 2026-10-30 22:11:08 UTC and the owner
+confirmed receipt. Exactly one message was sent. It did not create an incident or
+exercise real hardware failure. Current alerts use short plain Russian text without
+links/buttons; details remain in Events and independent `event_deliveries` state.
+Hardware incidents are not suppressed by maintenance; operator audit noise is ineligible.
 
-```text
-🔴 SERVER: сбой массива, риск потери данных.
-Перешли в ChatGPT. Диски не трогай.
-26.10 10:57 · №42
-```
-
-Не более двух коротких строк и одной диагностической строки, без пустых строк;
-всего до 160 символов для SERVER и AI-SERVER. 🔴 — критическое событие, 🟠 —
-подтверждённый перегрев уровня warning. Отказ, отсутствие и офлайн-состояние диска
-описываются по-разному. Сообщения не содержат кнопок или ссылок на runbook.
-Текст передаётся без HTML/Markdown-разбора; reply_markup, callbacks и входящих команд нет.
-
-Нейтральный ручной тест:
-
-```text
-🧪 SERVER: тест уведомлений
-Действий не требуется.
-```
-
-У теста нет события, номера или диагностического времени; кнопок и ссылок тоже нет.
-Он не утверждает, что автоматическая доставка проверена. Команда отправляет реальное
-сообщение; смена chat-id не превращает отправку в dry run. Новая реальная отправка
-требует отдельного поручения. В этой работе её не выполняли.
-
-## Detection and diagnosis
-
-1. По hostname выбрать сервер. Номер `№42` — `events.id` этого сервера.
-2. Найти событие в Events/БД. Время сообщения — Europe/Rome, время БД — UTC;
-   год и секунды брать из записи. Учитывать летний/зимний сдвиг.
-3. Читать summary и before/after в записи события. По `event_deliveries` с этим
-   event_id и channel=telegram проверить статус, попытки и причину ожидания/пропуска.
-   Почтовую отметку `events.notified_at` проверять отдельно.
-4. Перед выводом об аварии проверить свежесть и состояние данных. Недоступность
-   мониторинга означает неизвестное состояние RAID, а не доказанный отказ оборудования.
-
-Исправления в подготовленном PR:
-
-- Подтверждённое исчезновение PD или VD создаёт критическое событие, в том числе
-  при исчезновении обоих списков. Событие PD сохраняет прежний серийный номер.
-  Возврат или замена отменяет устаревшую доставку; повторное исчезновение после
-  восстановления — новый инцидент. Температурное состояние исчезнувшего диска очищается.
-- Полнота инвентаря подтверждается успешными JSON-ответами одного контроллера 0,
-  явными целочисленными счётчиками PD/VD и совпадением идентификаторов и состояний
-  сводки контроллера с детальными командами. Явные нулевые счётчики подтверждают
-  пустые списки; исчезновение деталей при ненулевой сводке — неопределённость.
-- CacheVault отсутствует подтверждённо только при успешных явных пустых
-  `Cachevault_Info` в ответе контроллера и ответе CV. Ошибка команды, firmware
-  Failure, неподдерживаемая команда или противоречие ответов не доказывает отсутствие.
-- Неопределённый опрос целиком отклоняется до сохранения аппаратного снимка.
-  Прежний достоверный снимок сохраняется, ошибка записывается как Collection failed.
-  Минимум три ошибки и настроенный интервал устаревания подтверждают одно критическое
-  событие о недоступности мониторинга. Ожидающие аппаратные сообщения ждут свежих
-  достоверных данных. Это состояние переживает перезапуск без миграции БД.
-- Температура контроллера проверяется с первого пригодного снимка. Критический
-  перегрев немедленный, warning подтверждается 15 минут; неизменная высокая
-  температура не создаёт событие при каждом опросе или перезапуске.
-- Известные состояния PD/CV/VD сравниваются без учёта регистра и краевых пробелов;
-  семантические алиасы согласованы с дедупликацией и актуальностью доставки.
-  Неизвестное состояние не превращается в конкретный известный отказ.
-
-Полная матрица и ограничения: `docs/TELEGRAM_ALERTS.md` в dashboard.
-Неизвестные формы JSON требуют обезличенных примеров и тестов. В этом PR отсутствующий
-CV проверялся контрактной фикстурой, а не экспериментом на production. При неопределённом
-CV консервативно приостанавливаются все аппаратные обновления. Замены между опросами
-и история, удалённая retention до сравнения, не восстанавливаются задним числом.
-
-## Safe future deployment and rollback
-
-Это описание возможных будущих действий, не разрешение выполнять их сейчас.
-Автоматическая доставка остаётся отключённой. Работа ограничена кодом, моками и PR;
-SERVER, токены, службы и настройки не затрагиваются.
-
-При отдельном разрешении: сохранить БД и установленную ревизию, установить проверенный
-артефакт с выключенным Telegram, проверить успешность/неопределённость сбора без
-имитации аппаратных отказов и без воспроизведения старых событий. Миграций нет.
-Откат — предыдущий артефакт с прежней БД и конфигурацией; строки доставки не удалять,
-Telegram автоматически не включать. Старый код вернёт прежние ограничения обнаружения
-и прежний транспорт сообщений. Реальный тест или включение — отдельное поручение.
+The #137 deployment completed `verified`; its subsequent baseline-mismatch refusal
+was a repeated one-shot invocation, not a failed initial deployment. Do not repeat
+activation or change RAID merely because SSH disconnected. Backup/restore verification,
+independent app/Collector monitoring and durable deployment tooling remain next work.

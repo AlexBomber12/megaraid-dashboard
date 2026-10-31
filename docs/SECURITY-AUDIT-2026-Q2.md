@@ -1,5 +1,10 @@
 # Security Audit 2026-Q2
 
+> Historical audit: findings, test counts and pending-remediation labels below refer
+> to the audit revision, not a current vulnerability assessment or open work queue.
+> [CURRENT_STATE.md](CURRENT_STATE.md) records the deployed release and remaining
+> operational checks. A new periodic security review remains separate work.
+
 PR: PR-054
 
 Scope: internal pass-1 security audit covering code review, configuration review, dependency

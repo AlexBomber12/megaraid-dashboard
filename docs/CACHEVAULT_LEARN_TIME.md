@@ -1,5 +1,11 @@
 # CacheVault next-learn timestamp compatibility
 
+Deployed through [PR #137](https://github.com/AlexBomber12/megaraid-dashboard/pull/137)
+as `cfad744` after fresh review and green CI. Normal collection persisted
+`2026-11-07T17:50:43+00:00`; eight observed new-process polls logged INFO recovery
+without the former warning. No controller writes or forced Learn Cycle were used.
+See [CURRENT_STATE.md](CURRENT_STATE.md) for the dated verification boundary.
+
 ## Cause and evidence
 
 The observed StorCLI 1.23.02 response contains

@@ -1,18 +1,24 @@
 # StorCLI 1.23.02 compatibility on the 9270CV-8i
 
 Target: production LSI MegaRAID SAS 9270CV-8i, SAS 2208, firmware
-23.34.0-0019. The operator corrected the production binary/account inventory:
+23.34.0-0019. **Current selection:** pinned 1.23.02 at
+`/usr/local/libexec/megaraid-dashboard/storcli-1.23.02/storcli64`, service account
+`megaraid`, with the protected exact-command policy. Application release is `cfad744`.
+See [CURRENT_STATE.md](CURRENT_STATE.md) for verified deployment evidence.
 
-- `/usr/local/sbin/storcli64` is **7.37**, the currently deployed selection.
+The following is the **historical pre-rollout inventory**, retained to explain why
+the binary selection changed; it does not identify the currently selected executable:
+
+- `/usr/local/sbin/storcli64` is **7.37**, the pre-rollout deployed selection.
 - `/usr/local/MegaRAID Storage Manager/StorCLI/storcli64` is **1.23.02**,
   the binary used for the supplied successful legacy read observations.
 - The production service account is **megaraid**, whose existing sudo permission
-  covers only `/usr/local/sbin/storcli64`. It cannot currently sudo either the
-  legacy source path or a new staged path.
+  covered only `/usr/local/sbin/storcli64` at that checkpoint; the later protected
+  rollout policy separately approved the pinned executable.
 
 These production facts differ from repository installer defaults (`raid-monitor`).
-This PR does not change installer defaults, replace either binary, or execute
-anything on production.
+The compatibility implementation did not change installer defaults or itself perform
+activation; deployment happened later through the separately reviewed rollout.
 No physical write operation has been verified by this PR.
 
 ## Evidence and parsing contract
