@@ -30,6 +30,14 @@ is covered by browser tests. `tests/e2e/test_actions_panel.py` checks selected m
 and visibility after saved-state refresh without a controller mutation. Definitions:
 [ACTIONS_REFERENCE.md](ACTIONS_REFERENCE.md).
 
+The schedule/scenario follow-up adds two source disclosure declarations: the repeated
+operation information summary and the buzzer information summary. They disclose text only;
+no form, input, command or mutation route is added. Their click paths and unknown-state
+behavior are covered by `tests/e2e/test_actions_scenarios.py`. The reviewed source baseline
+includes these disclosures. The [32 operator scenarios](ACTIONS_SCENARIOS.md) additionally
+cover compact schedule/foreign evidence, Overview consistency, pending commands, network
+uncertainty and shared lock presentation. These changes do not grant controller access.
+
 This inventory covers PR #127 rebased onto main at
 `223e7fd2cd7151065756b87413e96868830ad26e`, including merged PRs #125 and #126.
 The source baseline in `operator-controls.json`

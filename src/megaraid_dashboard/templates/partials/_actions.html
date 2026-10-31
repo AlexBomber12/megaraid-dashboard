@@ -7,7 +7,7 @@
 #}
 {% macro action_gate() -%}
 {%- set policy = page_action_reasons | default([]) -%}
-{%- set active = controller_writes_enabled -%}
+{%- set active = controller_writes_enabled and not maintenance_disabled_reason -%}
 {%- set can_start = not maintenance_state.active and not maintenance_disabled_reason -%}
 <div class="action-gate action-gate--{{ 'open' if active else 'locked' }}" id="maintenance" data-live-region>
   <div class="action-gate__state">
@@ -19,7 +19,7 @@
       {% else %}
         <span class="status-badge status-badge--neutral">Locked</span>
       {% endif %}
-      {% if active %}Maintenance window active{% elif can_start %}Start a maintenance window to unlock actions{% else %}Actions are turned off on this server{% endif %}
+      {% if active %}Maintenance active{% elif can_start %}Maintenance required{% else %}Actions unavailable{% endif %}
     </div>
     {% if maintenance_state.active %}
       <span>
@@ -31,7 +31,7 @@
     {% elif active %}
       <span>Maintenance is enabled by server configuration. Start a timed window to set an expiry.</span>
     {% elif can_start %}
-      <span>Hardware warning/critical Telegram alerts remain active during maintenance.</span>
+      <span>Hardware Telegram alerts stay active.</span>
     {% endif %}
     {% for reason in policy %}<span>{{ reason }}</span>{% endfor %}
   </div>

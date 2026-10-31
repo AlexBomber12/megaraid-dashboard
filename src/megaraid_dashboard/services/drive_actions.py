@@ -255,6 +255,8 @@ class PatrolReadStatus:
     progress_percent: int | None = None
     completed_drive_count: int | None = None
     last_run_timestamp: str | None = None
+    interval_hours: int | None = None
+    next_start_timestamp: str | None = None
 
     @property
     def is_running(self) -> bool:
@@ -359,7 +361,24 @@ def parse_patrol_read_status(payload: dict[str, Any]) -> PatrolReadStatus:
         ),
         completed_drive_count=completed_drive_count,
         last_run_timestamp=last_run_timestamp,
+        interval_hours=_patrol_interval_hours(
+            _find_patrol_read_text(response_data, ("execution delay", "reoccurrence"))
+        ),
+        next_start_timestamp=_find_patrol_read_text(
+            response_data, ("next start time", "next patrol read launch")
+        ),
     )
+
+
+def _patrol_interval_hours(value: str | None) -> int | None:
+    # StorCLI documents delay in hours. Do not silently accept minutes or fractions.
+    if value is None:
+        return None
+    match = re.fullmatch(r"([0-9]{1,8})\s*(?:h|hr|hrs|hour|hours)?", value, re.IGNORECASE)
+    if match is None:
+        return None
+    hours = int(match[1])
+    return hours if hours > 0 else None
 
 
 def parse_consistency_check_status(

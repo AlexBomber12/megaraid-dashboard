@@ -41,7 +41,8 @@ def test_controller_detail_smoke_populates_all_sections(
     )
 
     assert view_model.page_title == "Controller"
-    assert view_model.page_subtitle.startswith("SN SV00000001. Updated ")
+    assert view_model.page_subtitle.startswith("SN SV00000001. Observed ")
+    assert view_model.observed_at == _optimal_snapshot(sample_snapshot).captured_at
     assert view_model.health.state == "OPTIMAL"
     assert view_model.health.roc_temperature_celsius == 70
     assert view_model.health.cv_capacitance_percent == 89
@@ -201,7 +202,7 @@ def test_scheduled_tasks_include_patrol_read_next_run(
     assert tasks == [
         controller_detail_module.ScheduledTaskRow(
             name="Patrol Read",
-            schedule_text="Every 168h (7 days). Next May 24, 18:00.",
+            schedule_text="Every 7 days · Next 24 May 2026, 18:00 (controller time).",
             is_enabled=True,
             configure_url="/controller/patrol-read/mode",
         )
@@ -268,7 +269,7 @@ def test_foreign_config_state_parses_stored_storcli_payload() -> None:
     assert present.can_clear
 
 
-def test_foreign_config_state_treats_unparseable_stored_payload_as_absent() -> None:
+def test_foreign_config_state_treats_unparseable_stored_payload_as_unknown() -> None:
     raw_json = {
         "foreign_config": {
             "Controllers": [
@@ -287,6 +288,7 @@ def test_foreign_config_state_treats_unparseable_stored_payload_as_absent() -> N
     absent = controller_detail_module._build_foreign_config_state(raw_json)
 
     assert not absent.present
+    assert not absent.is_known
     assert absent.drive_count == 0
     assert not absent.can_import
     assert not absent.can_clear
@@ -396,7 +398,8 @@ def test_roc_history_chart_url_can_include_forwarded_prefix(
 def test_empty_controller_detail_when_no_snapshot(session: Session, tmp_path: Path) -> None:
     view_model = _load(session, tmp_path)
 
-    assert view_model.page_subtitle.startswith("SN Unknown.")
+    assert view_model.page_subtitle == "Waiting for first controller snapshot."
+    assert view_model.observed_at is None
     assert view_model.health.state == "UNKNOWN"
     assert view_model.live_operations == []
     assert view_model.cachevault is None
@@ -494,24 +497,21 @@ def test_operation_and_schedule_helper_fallbacks() -> None:
     cc_card = controller_detail_module._consistency_check_card(idle_cc, now=now)
 
     assert patrol_card.mode_text == "Unknown mode."
-    assert patrol_card.status_text == "Stopped. Last completion unknown."
+    assert patrol_card.status_text == "Stopped"
+    assert patrol_card.detail_text == "Last reported run unknown."
     assert patrol_card.progress_percent is None
     assert patrol_card.progress_eta_text is None
-    assert cc_card.status_text == "Stopped. Last completed May 20 (2h 0m ago)."
+    assert cc_card.status_text == "Stopped"
+    assert cc_card.detail_text == "Last reported run 20 May 2026, 10:00 (controller time)."
     assert cc_card.progress_percent is None
-    assert controller_detail_module._schedule_text(None, None, None, now=now) == "Next: unknown."
-    assert (
-        controller_detail_module._schedule_text(5, None, None, now=now)
-        == "Every 5h. Next: unknown."
-    )
+    assert controller_detail_module._schedule_text(None, None) == "Schedule unknown."
+    assert controller_detail_module._schedule_text(5, None) == "Every 5h · Next start unknown."
     assert (
         controller_detail_module._schedule_text(
             168,
             datetime(2026, 5, 17, 12, 0, tzinfo=UTC),
-            None,
-            now=now,
         )
-        == "Every 168h (7 days). Next May 24, 12:00."
+        == "Every 7 days · Next 17 May 2026, 12:00 (controller time)."
     )
     assert controller_detail_module._mode_text("manual", interval_hours=None) == "Manual mode."
     assert controller_detail_module._strip_size_text({"VD1 Strip Size": "512"}, 1) == "512 KB"

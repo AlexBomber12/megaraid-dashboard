@@ -11,7 +11,7 @@
     {% endif %}
     {% set show_mode_controls = operation.mode_url and not (operation.name == "Consistency Check" and view_model.raid_config | length == 1) %}
     {# The pressed button already states a known mode. Retain observed intervals/unknowns. #}
-    {% set mode_detail = operation.mode_text.split(' mode.', 1)[-1] | trim if current_operation_mode in modes else operation.mode_text %}
+    {% set mode_detail = '' if current_operation_mode in modes else operation.mode_text %}
     {% set start_reason = approved_action_reason(operation.start_url) if operation.start_url else none %}
     {% set stop_reason = approved_action_reason(operation.stop_url) if operation.stop_url else none %}
     {% set notes = [start_reason, stop_reason] %}
@@ -26,11 +26,24 @@
     {% elif show_mode_controls and not operation.can_change_mode %}
       {% set _ = notes.append("Mode changes need a known state. Refresh operation status.") %}
     {% endif %}
-    <div class="action-row" data-action-scope>
-      <div class="action-row__name"><h3>{{ operation.name }}</h3></div>
+    <div class="action-row" data-action-scope data-action-key="{{ operation.name }}" data-observed-at="{{ view_model.observed_at | iso_utc if view_model.observed_at else '' }}">
+      <div class="action-row__name">
+        <h3>{{ operation.name }}</h3>
+        {% if operation.detail_text %}
+        <details class="action-help" id="operation-help-{{ operation.name | lower | replace(' ', '-') }}">
+          <summary aria-label="About {{ operation.name }}">ⓘ</summary>
+          <p>{{ 'Checks virtual-drive consistency.' if operation.name == 'Consistency Check' else 'Scans physical drives for unreadable sectors.' }} {{ operation.detail_text }}</p>
+        </details>
+        {% endif %}
+      </div>
       <div class="action-row__now">
-        <strong>{{ operation.status_text }}</strong>
-        {% if mode_detail %}<span>{{ mode_detail }}</span>{% endif %}
+        <span class="status-badge status-badge--{{ 'warning' if operation.status_text in ['Unknown', 'Paused'] else 'info' if operation.status_text == 'Running' else 'neutral' }}" data-operation-state>{{ operation.status_text }}</span>
+        {% if mode_detail and (show_mode_controls or not operation.mode_url) %}<span>{{ mode_detail }}</span>{% endif %}
+        {% if operation.name == 'Patrol Read' %}
+          {% for task in view_model.scheduled_tasks if task.name == 'Patrol Read' %}
+            <span data-patrol-schedule>{{ task.schedule_text }}</span>
+          {% endfor %}
+        {% endif %}
         {% if operation.progress_percent is not none %}
           <div class="op-progress-bar" role="progressbar" aria-label="{{ operation.name }} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ operation.progress_percent }}">
             <span class="op-progress-fill" style="width: {{ operation.progress_percent }}%"></span>
@@ -38,6 +51,7 @@
           <span>{{ operation.progress_percent }}%{% if operation.progress_eta_text %} · {{ operation.progress_eta_text }}{% endif %}</span>
         {% endif %}
         {{ row_note(notes) }}
+        <p class="action-row__feedback" data-controller-action-status hidden role="status"></p>
         <p class="form-error" data-controller-action-error hidden role="alert"></p>
       </div>
       {% if operation.start_url or operation.stop_url %}

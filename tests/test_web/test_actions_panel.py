@@ -40,6 +40,18 @@ def test_monitoring_pages_do_not_repeat_action_locks(full_app, path):
     assert fake.mutations == []
 
 
+def test_read_only_gate_is_locked_even_with_configured_maintenance(full_app):
+    client, app, fake, _contract = full_app
+    app.state.settings = app.state.settings.model_copy(
+        update={"controller_read_only": True, "maintenance_mode": True}
+    )
+    html = client.get("/controller").text
+    assert ">Locked</span>" in html
+    assert ">Unlocked</span>" not in html
+    assert ">Limited</span>" not in html
+    assert fake.mutations == []
+
+
 @pytest.mark.parametrize("persisted,expired", [(False, False), (True, False), (True, True)])
 def test_gate_honors_effective_maintenance_and_expiry(full_app, persisted, expired):
     client, app, fake, _contract = full_app
@@ -85,9 +97,7 @@ def test_rebuild_has_status_without_guessed_controls(full_app):
         snapshot.raw_json = {}
         session.execute(update(PhysicalDriveSnapshot).values(state="Rbld"))
     html = client.get("/controller").text
-    operations = html.split('data-controller-section="live-operations"')[1].split(
-        'data-controller-section="buzzer-control"'
-    )[0]
+    operations = html.split('data-action-key="Rebuild"')[1].split('data-action-key="Consistency')[0]
     assert "Running on drive" in operations
     assert "Automatic rebuild." in operations
     assert "State unknown" not in operations
@@ -139,7 +149,9 @@ def test_known_modes_use_selected_buttons_and_keep_observed_interval(full_app, c
     ]
     assert f"{cc} mode." not in operations
     assert f"{patrol} mode." not in operations
-    assert "Interval 72h." in operations
+    assert ("Every 3 days" in operations) is (patrol == "Auto")
+    assert "Interval 72h." not in operations
+    assert "Scheduled Tasks" not in html
     assert fake.mutations == []
 
 

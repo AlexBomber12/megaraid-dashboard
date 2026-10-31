@@ -457,7 +457,7 @@ def test_main_page_active_operation_tooltip_with_started_at(
     )
 
     assert view_model.controller.active_operations[0].tooltip == (
-        "Controller, started 18:15 - ETA unknown"
+        "Controller, last reported run 18:15 (controller time) - ETA unknown"
     )
     assert view_model.controller.last_patrol_read_completed_at == datetime(
         2026,

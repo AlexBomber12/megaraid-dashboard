@@ -57,7 +57,6 @@ def test_controller_detail_page_renders_expected_sections() -> None:
         "cachevault",
         "roc-history",
         "raid-config",
-        "scheduled-tasks",
         "hardware-identity",
         "buzzer-control",
         "foreign-config",
@@ -92,7 +91,7 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert "Patrol Read" in html
     assert html.count("<dt>") >= 18
     assert 'data-foreign-config-state="absent"' in html
-    assert "No foreign configuration detected." in html
+    assert "None detected" in html
 
 
 def test_controller_detail_unknown_health_state_uses_neutral_class() -> None:
@@ -158,7 +157,7 @@ def test_foreign_config_present_state_links_to_foreign_config_page() -> None:
 
     assert response.status_code == 200
     assert 'data-foreign-config-state="present"' in response.text
-    assert "Foreign configuration detected on 2 drive(s)." in response.text
+    assert "Detected on 2 drive(s)" in response.text
     assert 'Source controller SN <span class="mono">SRC123</span>' in response.text
     assert 'href="/controller/foreign-config">Review…' in response.text
     # Import and clear run only from the dedicated foreign-config page.

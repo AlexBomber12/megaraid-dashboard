@@ -1142,6 +1142,11 @@ th[aria-sort="descending"] .sort-button::after { content: "↓"; opacity: 1; }
 }
 .action-row__name { min-width: 0; }
 .action-row__name h3 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-strong); }
+.action-help { margin-top: 2px; color: var(--color-muted-strong); font-size: var(--fs-sm); }
+.action-help summary { width: fit-content; cursor: pointer; }
+.action-help p { margin: var(--space-1) 0 0; }
+.action-row__now > .status-badge { justify-self: start; }
+.action-row__feedback { color: var(--color-accent); }
 .action-row--danger .action-row__name h3 { color: var(--color-critical); }
 .action-row__now { display: grid; gap: 2px; min-width: 0; color: var(--color-muted); font-size: var(--fs-sm); }
 .action-row__now > strong { color: var(--color-text); font-size: var(--fs-md); font-weight: var(--fw-label); }

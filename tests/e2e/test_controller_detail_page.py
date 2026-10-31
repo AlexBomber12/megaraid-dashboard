@@ -24,7 +24,6 @@ def test_controller_detail_sections_and_roc_chart(
         "cachevault",
         "roc-history",
         "raid-config",
-        "scheduled-tasks",
         "hardware-identity",
         "buzzer-control",
         "foreign-config",
