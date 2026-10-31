@@ -9,6 +9,8 @@
     {% else %}
       {% set modes = ["auto", "manual"] %}
     {% endif %}
+    {# The pressed button already states a known mode. Retain observed intervals/unknowns. #}
+    {% set mode_detail = operation.mode_text.split(' mode.', 1)[-1] | trim if current_operation_mode in modes else operation.mode_text %}
     {% set start_reason = approved_action_reason(operation.start_url) if operation.start_url else none %}
     {% set stop_reason = approved_action_reason(operation.stop_url) if operation.stop_url else none %}
     {% set notes = [start_reason, stop_reason] %}
@@ -27,7 +29,7 @@
       <div class="action-row__name"><h3>{{ operation.name }}</h3></div>
       <div class="action-row__now">
         <strong>{{ operation.status_text }}</strong>
-        <span>{{ operation.mode_text }}</span>
+        {% if mode_detail %}<span>{{ mode_detail }}</span>{% endif %}
         {% if operation.progress_percent is not none %}
           <div class="op-progress-bar" role="progressbar" aria-label="{{ operation.name }} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ operation.progress_percent }}">
             <span class="op-progress-fill" style="width: {{ operation.progress_percent }}%"></span>

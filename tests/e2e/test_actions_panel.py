@@ -87,6 +87,34 @@ def test_action_layout_across_breakpoints(
     assert fake_storcli.mutations == []
 
 
+def test_mode_selection_tracks_observed_snapshot_on_refresh(
+    authenticated_page,
+    live_server,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+):
+    page = authenticated_page
+    app = _live_server_handle.app
+    login_and_navigate(page, f"{live_server}/controller")
+    for cc_mode, patrol_mode in (("Concurrent", "Auto"), ("Sequential", "Manual")):
+        with app.state.session_factory() as session, session.begin():
+            snapshot = session.scalar(select(ControllerSnapshot))
+            snapshot.raw_json = {
+                **snapshot.raw_json,
+                "patrol_read": {"mode": patrol_mode, "state": "Stopped"},
+                "consistency_check": {"mode": cc_mode, "state": "Active"},
+            }
+        page.get_by_role("button", name="Refresh now").click()
+        for operation, selected in (("Consistency Check", cc_mode), ("Patrol Read", patrol_mode)):
+            group = page.get_by_role("group", name=f"{operation} mode", exact=True)
+            expect(group.locator('[aria-pressed="true"]')).to_have_text(selected)
+            expect(group.locator('[aria-pressed="true"]')).to_be_disabled()
+            row = group.locator("xpath=ancestor::div[contains(@class, 'action-row')][1]")
+            expect(row.locator(".action-row__now")).not_to_contain_text(f"{selected} mode.")
+    assert fake_storcli.mutations == []
+
+
 @pytest.mark.parametrize("path", ["/controller", "/drives/252:0"])
 def test_expired_window_refreshes_gate_and_recovery_availability(
     authenticated_page,

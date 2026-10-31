@@ -21,6 +21,12 @@ Foreign forms retain typed confirmation, the current digest and checked dry-run
 defaults; replacement retains serial confirmation, identity pauses and resume data.
 No mutation route, exact command grant, authentication or CSRF rule changes here.
 
+The mode-label follow-up removes only text already represented by a pressed button;
+it retains unknown modes and observed intervals. Source controls and POST inventory
+are unchanged. `tests/e2e/test_actions_panel.py` also checks selected modes after
+saved-state refresh without a controller mutation. Operator-facing definitions are
+in [ACTIONS_REFERENCE.md](ACTIONS_REFERENCE.md).
+
 This inventory covers PR #127 rebased onto main at
 `223e7fd2cd7151065756b87413e96868830ad26e`, including merged PRs #125 and #126.
 The source baseline in `operator-controls.json`

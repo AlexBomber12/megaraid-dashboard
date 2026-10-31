@@ -84,6 +84,7 @@
             interaction: { mode: "index", intersect: false },
             plugins: {
               legend: { labels: { color: "#f6f8fb" } },
+              tooltip: window.localTime.chartTooltip(labels),
               rocThresholdLines: {
                 thresholds: [
                   { label: "Warning", value: payload.warning_threshold, color: "#f0b44d" },
@@ -92,7 +93,7 @@
               },
             },
             scales: {
-              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+              x: window.localTime.chartAxis(labels, rangeHours),
               y: {
                 suggestedMin: payload.min_celsius,
                 suggestedMax: payload.critical_threshold,

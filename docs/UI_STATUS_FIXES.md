@@ -26,3 +26,25 @@ shows an interval only when the controller actually supplied it.
 Validation uses saved redacted responses and fake StorCLI. Healthy production
 RAID is not a test fixture. These changes issue no controller commands and do
 not change command policy, permissions or the database schema.
+
+## Follow-up: mode duplication and readable chart times
+
+Prepared after the `cfad744` production checkpoint; not yet deployed.
+
+Known CC/Patrol mode descriptions no longer repeat the pressed mode button. The
+selection still comes from the latest saved controller state. Unknown/disabled
+mode descriptions, automatic rebuild information and reported Patrol intervals remain.
+Refresh changes the selected buttons when new saved evidence changes; clicking a mode
+does not optimistically claim that it is already active. See [action meanings](ACTIONS_REFERENCE.md).
+
+All RoC, drive-temperature and error-history charts share browser-local date formatting:
+time for 1h; date/time on two lines for short spans; short dates for week/month spans;
+date/year for longer spans. Sparse long-range views retain useful times. Horizontal
+labels are unrotated, automatically spaced and capped at eight. Hover retains full
+local date/time with seconds and timezone; the axis names the browser's timezone.
+
+UTC bucket labels in older drive range partials are explicitly read as UTC, not as
+local wall-clock time. Raw labels/series, thresholds and replacement markers are
+unchanged. `tests/e2e/test_chart_time_labels.py` verifies actual tick spacing and
+pointer tooltips through initial rendering and HTMX range swaps at 375/650/1440 px,
+Europe/Rome and America/New_York, including the DST fold. Hardware remains mocked.

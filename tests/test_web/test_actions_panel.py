@@ -104,3 +104,28 @@ def test_buzzer_does_not_confuse_unknown_or_silenced_with_off(full_app, state, s
     html = client.get("/controller").text
     assert re.findall(r'<button[^>]*aria-pressed="true"[^>]*>([^<]+)</button>', html) == selected
     assert fake.mutations == []
+
+
+@pytest.mark.parametrize("cc,patrol", [("Concurrent", "Auto"), ("Sequential", "Manual")])
+def test_known_modes_use_selected_buttons_and_keep_observed_interval(full_app, cc, patrol):
+    client, app, fake, _contract = full_app
+    with app.state.session_factory() as session, session.begin():
+        snapshot = session.scalar(select(ControllerSnapshot))
+        snapshot.raw_json = {
+            **(snapshot.raw_json or {}),
+            "consistency_check": {"mode": cc, "state": "Stopped"},
+            "patrol_read": {"mode": patrol, "state": "Stopped"},
+            "Patrol Read Reoccurrence": "72",
+        }
+    html = client.get("/controller").text
+    operations = html.split('data-controller-section="live-operations"')[1].split(
+        'data-controller-section="buzzer-control"'
+    )[0]
+    assert re.findall(r'<button[^>]*aria-pressed="true"[^>]*>([^<]+)</button>', operations) == [
+        cc,
+        patrol,
+    ]
+    assert f"{cc} mode." not in operations
+    assert f"{patrol} mode." not in operations
+    assert "Interval 72h." in operations
+    assert fake.mutations == []

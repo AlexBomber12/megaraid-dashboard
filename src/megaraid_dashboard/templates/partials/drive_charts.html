@@ -197,12 +197,12 @@
             interaction: { mode: "index", intersect: false },
             plugins: {
               legend: { labels: { color: "#f6f8fb" } },
-              tooltip: { mode: "index", intersect: false },
+              tooltip: window.localTime.chartTooltip(payload.labels),
               driveReplacementLines: { markers: payload.replacementMarkers },
               ...annotationOptions,
             },
             scales: {
-              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+              x: window.localTime.chartAxis(payload.labels, Number(chartArea.dataset.rangeDays) * 24),
               y: {
                 min: payload.yMin,
                 max: payload.yMax,
@@ -230,11 +230,11 @@
             interaction: { mode: "index", intersect: false },
             plugins: {
               legend: { labels: { color: "#f6f8fb" } },
-              tooltip: { mode: "index", intersect: false },
+              tooltip: window.localTime.chartTooltip(payload.labels),
               driveReplacementLines: { markers: payload.replacementMarkers },
             },
             scales: {
-              x: { ticks: { color: "#9aa5b1", maxRotation: 0, autoSkip: true } },
+              x: window.localTime.chartAxis(payload.labels, Number(chartArea.dataset.rangeDays) * 24),
               y: {
                 beginAtZero: true,
                 ticks: { color: "#9aa5b1", precision: 0 },
