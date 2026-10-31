@@ -37,6 +37,7 @@
     "<a class=\"backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}\" href=\"{{ slot.detail_url }}\" title=\"Slot {{ slot.slot_label }} \u00b7 {{ severity_class | title }}\" {% if slot.is_this %}aria-current=\"page\"{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/buzzer_control.html": [
+    "<summary aria-label=\"About Alarm Buzzer\">",
     "<form method=\"post\" action=\"{{ view_model.buzzer.silence_url }}\" class=\"inline-form\" data-csrf-form data-buzzer-action=\"silence\">",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
     "<button type=\"submit\" class=\"button\" {% if not view_model.buzzer.can_silence or silence_reason %}disabled{% endif %}>",
@@ -54,6 +55,7 @@
     "<summary id=\"hardware-identity-heading\">"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/live_operations.html": [
+    "<summary aria-label=\"About {{ operation.name }}\">",
     "<form method=\"post\" action=\"{{ operation.start_url or '#' }}\" class=\"inline-form\" data-csrf-form>",
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
     "<button class=\"button\" type=\"submit\" {% if not operation.can_start or start_reason %}disabled{% endif %}>",

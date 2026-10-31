@@ -1,15 +1,16 @@
 {# Row of the Controller Actions panel. Import/clear live on the Foreign Configuration page ("Review…"). #}
 {% set fc = view_model.foreign_config %}
 <div class="action-panel__rows" data-controller-section="foreign-config">
-  <div class="action-row" data-foreign-config-state="{% if fc.present %}present{% else %}absent{% endif %}">
+  <div class="action-row" data-foreign-config-state="{% if not fc.is_known %}unknown{% elif fc.present %}present{% else %}absent{% endif %}">
     <div class="action-row__name"><h3>Foreign Configuration</h3></div>
     <div class="action-row__now">
-      {% if fc.present %}
-        <strong class="status-text--warning">Detected</strong>
+      {% if not fc.is_known %}
+        <span class="status-badge status-badge--warning">Unknown</span>
+      {% elif fc.present %}
+        <strong class="status-text--warning">Detected on {{ fc.drive_count }} drive(s)</strong>
       {% else %}
-        <strong>None Present</strong>
+        <span>None detected</span>
       {% endif %}
-      <span>{{ fc.description_text }}</span>
       {% if fc.source_controller_serial %}
         <span>Source controller SN <span class="mono">{{ fc.source_controller_serial }}</span></span>
       {% endif %}

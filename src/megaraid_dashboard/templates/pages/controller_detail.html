@@ -51,7 +51,6 @@
       <aside class="page-columns__side" aria-label="Controller details">
         <div id="controller-live-details" class="live-group" data-live-region>
           {% include "partials/controller_detail/cachevault.html" %}
-          {% include "partials/controller_detail/scheduled_tasks.html" %}
         </div>
       </aside>
     </div>
@@ -62,6 +61,30 @@
   </div>
   <script>
     (function () {
+      const pending = new Map();
+
+      function feedback(scope, message) {
+        const el = scope?.querySelector("[data-controller-action-status]");
+        if (!el) return;
+        el.textContent = message;
+        el.hidden = false;
+      }
+
+      function restorePending() {
+        document.querySelectorAll("[data-action-key]").forEach(scope => {
+          const item = pending.get(scope.dataset.actionKey);
+          if (!item) return;
+          const observed = Date.parse(scope.dataset.observedAt);
+          if (observed > item.baseline && observed >= item.acceptedAt) {
+            pending.delete(scope.dataset.actionKey);
+            return;
+          }
+          scope.querySelectorAll("button").forEach(button => { button.disabled = true; });
+          feedback(scope, item.message);
+        });
+      }
+      document.addEventListener("live:updated", restorePending);
+
       function getCookie(name) {
         const match = document.cookie.match(
           new RegExp("(?:^|; )" + name.replace(/[$()*+./?[\\\]^{|}-]/g, "\\$&") + "=([^;]*)")
@@ -124,12 +147,32 @@
         event.preventDefault();
         clearFormError(form);
         if (form.getAttribute("aria-busy") === "true") return;
+        const scope = form.closest("[data-action-scope]");
+        if (pending.has(scope?.dataset.actionKey)) return;
         form.setAttribute("aria-busy", "true");
-        const buttons = Array.from(form.querySelectorAll("button"));
+        // Prevent an opposing action and live-region replacement while this request is in flight.
+        scope?.setAttribute("data-live-pause", "");
+        const buttons = Array.from((scope || form).querySelectorAll("button"));
+        const disabled = buttons.map(button => button.disabled);
         buttons.forEach(button => { button.disabled = true; });
+        feedback(scope, "Applying…");
         function release() {
           form.removeAttribute("aria-busy");
-          buttons.forEach(button => { button.disabled = false; });
+          scope?.removeAttribute("data-live-pause");
+          if (pending.has(scope?.dataset.actionKey)) return;
+          buttons.forEach((button, index) => { button.disabled = disabled[index]; });
+          const status = scope?.querySelector("[data-controller-action-status]");
+          if (status) status.hidden = true;
+        }
+        function waitForObservation(message, serverDate) {
+          if (!scope?.dataset.actionKey) { window.location.reload(); return; }
+          pending.set(scope.dataset.actionKey, {
+            baseline: Date.parse(scope.dataset.observedAt) || 0,
+            // Compare server timestamps only; a fast client clock must not lock the row forever.
+            acceptedAt: Date.parse(serverDate) || 0,
+            message,
+          });
+          restorePending();
         }
         const jsonPayload = payloadFor(form);
         fetch(form.action, {
@@ -140,20 +183,22 @@
           },
           body: jsonPayload,
         }).then((response) => {
-          if (response.redirected) {
-            window.location.assign(response.url);
-            return;
-          }
           if (response.ok) {
-            window.location.reload();
+            waitForObservation("Command accepted. Waiting for a new collector snapshot.", response.headers.get("Date"));
             return;
           }
-          response.text().then((body) => {
+          if (response.status >= 500) {
+            waitForObservation("Result uncertain. Check the audit log; waiting for a new collector snapshot.", response.headers.get("Date"));
+          }
+          return response.text().then((body) => {
             let payload = body;
             try { payload = JSON.parse(body); } catch { payload = body; }
             showFormError(form, responseErrorMessage(payload, "Controller action failed."));
           });
-        }).catch(() => showFormError(form, "Controller action failed.")).finally(release);
+        }).catch(() => {
+          waitForObservation("Result unknown. Check the audit log before retrying; waiting for a new collector snapshot.");
+          showFormError(form, "Could not confirm the controller result.");
+        }).finally(release);
       });
     })();
   </script>

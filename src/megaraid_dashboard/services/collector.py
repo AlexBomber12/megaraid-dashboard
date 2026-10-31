@@ -85,6 +85,9 @@ async def collect_storcli_snapshot(*, settings: Settings) -> tuple[StorcliSnapsh
         "cachevault": cachevault_payload,
         "bbu": bbu_payload,
         "foreign_config": foreign_config_payload,
+        "foreign_config_state": (
+            None if foreign_config is None else foreign_config.model_dump(mode="json")
+        ),
     }
     # Retain only the observed identity and position when full raw storage is off.
     # Inventory parsing above already validates this single-controller response.

@@ -39,14 +39,23 @@ def test_buzzer_control_flow(
     assert response.value.status == expected
     assert fake_storcli.mutations == ([] if outcome == "maintenance" else [list(action.command)])
     if outcome == "success":
-        page.wait_for_url(f"{live_server}/")
+        expect(page).to_have_url(f"{live_server}/controller")
+        expect(page.locator("[data-controller-action-status]:visible")).to_contain_text(
+            "Command accepted"
+        )
         page.goto(f"{live_server}/events?category=controller_buzzer_{action.name.split('-')[-1]}")
         expect(page.locator("body")).to_contain_text("succeeded")
     else:
         expect(page.locator("[data-controller-action-error]:visible")).to_contain_text(
             "TEST refusal" if outcome == "failure" else "maintenance_mode"
         )
-        expect(button).to_be_enabled()
+        if outcome == "failure":
+            expect(button).to_be_disabled()
+            expect(page.locator("[data-controller-action-status]:visible")).to_contain_text(
+                "Result uncertain"
+            )
+        else:
+            expect(button).to_be_enabled()
     after = database_observation(snapshot_with_drives)
     assert after[1] == before[1]
     assert len(after[0]) == len(before[0]) + 1

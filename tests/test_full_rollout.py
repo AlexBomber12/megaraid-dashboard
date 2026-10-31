@@ -77,7 +77,7 @@ def test_full_ui_refuses_missing_command_and_maintenance(full_app):
     client, app, fake, contract = full_app
     settings = app.state.settings
     app.state.settings = settings.model_copy(update={"maintenance_mode": False})
-    assert "Start a maintenance window" in client.get("/drives/252:0").text
+    assert "Maintenance required" in client.get("/drives/252:0").text
     app.state.settings = settings.model_copy(
         update={"maintenance_mode": True, "destructive_mode": False}
     )

@@ -7,12 +7,18 @@
 {% set silence_reason = approved_action_reason(view_model.buzzer.silence_url) %}
 {# Row of the Controller Actions panel. Command: Silence. Setting: Enabled | Disabled. #}
 <div class="action-panel__rows" data-controller-section="buzzer-control">
-  <div class="action-row" data-action-scope>
-    <div class="action-row__name"><h3>Alarm Buzzer</h3></div>
+  <div class="action-row" data-action-scope data-action-key="Alarm Buzzer" data-observed-at="{{ view_model.observed_at | iso_utc if view_model.observed_at else '' }}">
+    <div class="action-row__name">
+      <h3>Alarm Buzzer</h3>
+      <details class="action-help" id="buzzer-help">
+        <summary aria-label="About Alarm Buzzer">ⓘ</summary>
+        <p>Enabled allows audible alarms; it does not mean the buzzer is sounding. Silence mutes the current alarm. Disabled turns off audible alarms until enabled again.</p>
+      </details>
+    </div>
     <div class="action-row__now">
-      <strong>{{ view_model.buzzer.current_setting }}</strong>
-      <span>{{ view_model.buzzer.explainer_text }}</span>
+      {% if buzzer_state == 'silenced' %}<span>Current alarm silenced</span>{% elif not buzzer_on and not buzzer_off %}<span class="status-badge status-badge--warning">Unknown</span>{% endif %}
       {{ row_note([enable_reason, disable_reason, silence_reason]) }}
+      <p class="action-row__feedback" data-controller-action-status hidden role="status"></p>
       <p class="form-error" data-controller-action-error hidden role="alert"></p>
     </div>
     <fieldset class="action-row__cmd"{% if other_writes_disabled_reason %} disabled{% endif %}>
@@ -29,7 +35,7 @@
         class="segmented"
         role="group"
         aria-label="Buzzer setting"
-        title="Silenced keeps the alarm enabled. Enable when Off; Disable when On or Silenced; Silence when On."
+        title="Observed setting. Enabled does not mean the buzzer is sounding."
       >
         <form method="post" action="{{ view_model.buzzer.enable_url }}" class="inline-form" data-csrf-form data-buzzer-action="enable">
           <input type="hidden" name="csrf_token" value="">

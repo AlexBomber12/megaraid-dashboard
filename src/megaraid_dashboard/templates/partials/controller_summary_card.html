@@ -31,7 +31,7 @@
         </span>
       {% endfor %}
     {% else %}
-      <span>No active operations</span>
+      <span>{{ 'No active operations' if controller.operations_known else 'Operation status unknown' }}</span>
       <span class="controller-ops__meta">
         Last patrol read {{ controller.last_patrol_read_completed_text or "unknown" }}
         {%- if controller.last_patrol_read_duration_text %} ({{ controller.last_patrol_read_duration_text }}){% endif %}

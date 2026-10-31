@@ -17,7 +17,12 @@ from tests.safety.harness import FakeStorcli
 
 
 @pytest.mark.parametrize(
-    ("mode", "badge"), [("auto", "Enabled"), ("manual", "Disabled"), ("unknown", "Unknown")]
+    ("mode", "schedule_text"),
+    [
+        ("auto", "Schedule unknown."),
+        ("manual", "Automatic scheduling disabled."),
+        ("unknown", "Schedule unknown."),
+    ],
 )
 def test_observed_status_across_pages(
     authenticated_page: Page,
@@ -26,7 +31,7 @@ def test_observed_status_across_pages(
     fake_storcli: FakeStorcli,
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
-    badge: str,
+    schedule_text: str,
 ) -> None:
     physical = json.loads(
         (
@@ -59,10 +64,10 @@ def test_observed_status_across_pages(
         login_and_navigate(page, f"{live_server}{path}")
         expect(page.locator(".status-bar-v2")).to_contain_text("Collector 2 min ago")
         if path == "/controller":
-            schedule = page.locator("[data-controller-section='scheduled-tasks']")
-            expect(schedule.locator(".status-badge")).to_have_text(badge)
+            schedule = page.locator("[data-patrol-schedule]")
+            expect(schedule).to_have_text(schedule_text)
             if mode == "auto":
-                expect(schedule).to_contain_text("Next: unknown.")
+                expect(schedule).to_contain_text("Schedule unknown.")
                 expect(
                     page.locator("[data-controller-section='live-operations']")
                 ).not_to_contain_text("168h")

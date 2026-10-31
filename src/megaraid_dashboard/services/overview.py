@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol
 
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, selectinload
@@ -23,6 +24,7 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
 )
+from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
 from megaraid_dashboard.services.event_detector import (
     physical_drive_state_severity,
     virtual_drive_state_severity,
@@ -113,6 +115,7 @@ class ControllerSummaryViewModel:
     last_patrol_read_completed_text: str | None
     last_patrol_read_duration_text: str | None
     next_patrol_read_in_text: str | None
+    operations_known: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,9 +170,14 @@ class _CollectorStateProvider(Protocol):
 
 
 class _OperationState(Protocol):
-    is_running: bool
-    progress_percent: int | None
-    last_run_timestamp: str | None
+    @property
+    def is_running(self) -> bool: ...
+
+    @property
+    def progress_percent(self) -> int | None: ...
+
+    @property
+    def last_run_timestamp(self) -> str | None: ...
 
 
 def load_main_page_view_model(
@@ -257,6 +265,11 @@ def _load_controller_summary(
         last_patrol_read_completed_text=_format_short_date(last_patrol_read_completed_at),
         last_patrol_read_duration_text=None,
         next_patrol_read_in_text=_format_future_time(next_patrol_read_at, now=now),
+        operations_known=all(
+            getattr(state, "state", "unknown").strip().lower()
+            in {"active", "running", "in progress", "paused", "stopped", "ready"}
+            for state in (patrol_read_state, _load_consistency_check_state(snapshot))
+        ),
     )
 
 
@@ -398,7 +411,7 @@ def _load_active_operations(snapshot: ControllerSnapshot) -> list[ActiveOperatio
     consistency_check_state = _load_consistency_check_state(snapshot)
     if consistency_check_state is not None and consistency_check_state.is_running:
         candidates.append(
-            (1, _active_operation("Consistency check", consistency_check_state, "VD 0"))
+            (1, _active_operation("Consistency check", consistency_check_state, "Controller"))
         )
     patrol_read_state = _load_patrol_read_state(snapshot)
     if patrol_read_state is not None and patrol_read_state.is_running:
@@ -413,7 +426,10 @@ def _active_operation(name: str, state: _OperationState, subject: str) -> Active
     tooltip = f"{subject}, ETA unknown"
     started_at = _parse_operation_timestamp(state.last_run_timestamp)
     if started_at is not None:
-        tooltip = f"{subject}, started {started_at.strftime('%H:%M')} - ETA unknown"
+        tooltip = (
+            f"{subject}, last reported run {started_at.strftime('%H:%M')} "
+            "(controller time) - ETA unknown"
+        )
     return ActiveOperation(
         name=name,
         progress_percent=state.progress_percent,
@@ -437,14 +453,22 @@ def _load_foreign_config_import_operation(snapshot: ControllerSnapshot) -> Activ
     return None
 
 
-def _load_patrol_read_state(snapshot: ControllerSnapshot) -> _OperationState | None:
-    del snapshot
-    return None
+def _load_patrol_read_state(snapshot: ControllerSnapshot) -> PatrolReadStatus | None:
+    try:
+        return TypeAdapter(PatrolReadStatus).validate_python(
+            (snapshot.raw_json or {}).get("patrol_read")
+        )
+    except ValidationError:
+        return None
 
 
-def _load_consistency_check_state(snapshot: ControllerSnapshot) -> _OperationState | None:
-    del snapshot
-    return None
+def _load_consistency_check_state(snapshot: ControllerSnapshot) -> ConsistencyCheckStatus | None:
+    try:
+        return TypeAdapter(ConsistencyCheckStatus).validate_python(
+            (snapshot.raw_json or {}).get("consistency_check")
+        )
+    except ValidationError:
+        return None
 
 
 def _count_recent_warning_and_critical_events(session: Session, *, now: datetime) -> int:

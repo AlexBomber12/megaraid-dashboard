@@ -6,9 +6,9 @@ Exact commands and gates remain in [the full rollout contract](STORCLI_FULL_ROLL
 | Control | Effect |
 | --- | --- |
 | Start Maintenance | Opens a timed authorization window for supported controller writes. It does not start CC, Patrol Read or replacement. Hardware Telegram incidents remain eligible. |
-| CC Start / Stop | Starts/stops RAID consistency checking: redundant data/parity are checked for agreement. This is not a filesystem check or backup. |
+| CC Start / Stop | Starts/stops the current RAID consistency check: redundant data/parity are checked for agreement. Stop does not disable firmware scheduling. This is not a filesystem check or backup. |
 | CC Concurrent / Sequential | Checks virtual drives concurrently or one at a time. Hidden when the latest saved inventory contains exactly one VD; CC Start/Stop remain. With multiple VDs or unavailable inventory the switch remains subject to normal state/approval gates. |
-| Patrol Read Start / Stop | Starts/stops background media reading to discover latent read errors. It can consume I/O bandwidth. |
+| Patrol Read Start / Stop | Starts/stops the current background media read to discover latent read errors. Stop does not change Auto/Manual. It can consume I/O bandwidth. |
 | Patrol Auto / Manual | Firmware scheduling versus operator-initiated starts. Choosing Auto does not prove a pass just started or provide a next-run time. |
 | Buzzer Silence | Silences the current audible condition while leaving alarm capability enabled. |
 | Buzzer Enabled / Disabled | Enables/disables the controller's audible alarm. Enabled does not mean it is currently sounding; this setting does not control Telegram. |
@@ -27,6 +27,14 @@ remain subject to the [readiness limits](OPERATOR_ACTION_READINESS.md).
 
 Mark Bad is absent from the panel. Its retained API/wrapper refusal still rejects
 unsupported requests for pinned StorCLI 1.23.02; removing the row grants no command.
+
+Patrol's observed interval/next launch appear in its action row. Unzoned launch dates
+are explicitly controller time. Missing schedule evidence stays unknown; Manual turns
+off automatic scheduling even if an old recurrence is still stored. Explanations and
+last-reported-run details are available under the row's accessible information disclosure.
+After a command, the row waits for a newer normal collector sample before presenting a
+changed state. Network/5xx uncertainty is visible and never triggers automatic retry.
+See the [operator scenario review](ACTIONS_SCENARIOS.md) for the complete acceptance list.
 
 Semantics references: [classic StorCLI manual](https://docs.broadcom.com/doc/12352476)
 and [Broadcom software guide, CC scheduling](https://docs.broadcom.com/wcs-public/user-guide/products/design--reference-guides/user-guide/574/208/pub-005110_db15-001199-08_2017-06-09_mr-6.14-sw-ug.pdf).

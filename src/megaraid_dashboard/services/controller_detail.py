@@ -72,6 +72,7 @@ class LiveOperationCard:
     start_url: str | None
     stop_url: str | None
     mode_url: str | None
+    detail_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,7 @@ class ForeignConfigState:
     can_clear: bool
     import_url: str
     clear_url: str
+    is_known: bool = True
 
 
 @dataclass(frozen=True)
@@ -169,6 +171,7 @@ class ControllerDetailViewModel:
     system_health: SystemHealthViewModel
     updated_at: datetime
     auto_refresh_seconds: int
+    observed_at: datetime | None = None
 
 
 class _CollectorStateProvider(Protocol):
@@ -239,6 +242,7 @@ def load_controller_detail_view_model(
             "auto_refresh_seconds",
             _DEFAULT_AUTO_REFRESH_SECONDS,
         ),
+        observed_at=None if snapshot is None else _require_aware_utc(snapshot.captured_at),
     )
 
 
@@ -300,15 +304,17 @@ def _build_live_operations(
     rebuild_card = _build_rebuild_operation_card(snapshot)
     if rebuild_card is not None:
         cards.append((0, rebuild_card))
-    consistency_check = _load_consistency_check_state(snapshot)
-    if consistency_check is not None:
-        cards.append((1, _consistency_check_card(consistency_check, now=now)))
-    patrol_read = _load_patrol_read_state(snapshot)
-    if patrol_read is not None:
-        interval = _parse_interval_hours(
-            _first_raw_text(snapshot.raw_json or {}, "Patrol Read Reoccurrence")
-        )
-        cards.append((2, _patrol_read_card(patrol_read, now=now, interval_hours=interval)))
+    consistency_check = _load_consistency_check_state(snapshot) or ConsistencyCheckStatus(
+        mode="unknown", state="unknown"
+    )
+    cards.append((1, _consistency_check_card(consistency_check, now=now)))
+    patrol_read = _load_patrol_read_state(snapshot) or PatrolReadStatus(
+        mode="unknown", state="unknown"
+    )
+    interval = _parse_interval_hours(
+        _first_raw_text(snapshot.raw_json or {}, "Patrol Read Reoccurrence")
+    )
+    cards.append((2, _patrol_read_card(patrol_read, now=now, interval_hours=interval)))
     return [card for _, card in sorted(cards, key=lambda item: item[0])]
 
 
@@ -359,9 +365,13 @@ def _build_scheduled_tasks(
     snapshot: ControllerSnapshot | None, raw_json: Mapping[str, Any], *, now: datetime
 ) -> list[ScheduledTaskRow]:
     patrol_interval = _parse_interval_hours(_first_raw_text(raw_json, "Patrol Read Reoccurrence"))
-    patrol_last_run = _parse_timestamp(_first_raw_text(raw_json, "Patrol Read Last Run"))
     patrol_next = _parse_timestamp(_first_raw_text(raw_json, "Next Patrol Read launch"))
     status = None if snapshot is None else _load_patrol_read_state(snapshot)
+    if status is not None:
+        if status.interval_hours is not None and status.interval_hours > 0:
+            patrol_interval = status.interval_hours
+        if status.next_start_timestamp is not None:
+            patrol_next = _parse_timestamp(status.next_start_timestamp)
     mode = "unknown" if status is None else status.mode.strip().lower()
     # A recurrence alone can remain configured while automatic patrol is disabled.
     enabled = {"auto": True, "manual": False, "disabled": False}.get(mode)
@@ -371,7 +381,7 @@ def _build_scheduled_tasks(
             schedule_text=(
                 "Automatic scheduling disabled."
                 if enabled is False
-                else _schedule_text(patrol_interval, patrol_last_run, patrol_next, now=now)
+                else _schedule_text(patrol_interval, patrol_next)
             ),
             is_enabled=enabled,
             configure_url="/controller/patrol-read/mode",
@@ -425,7 +435,7 @@ def _build_buzzer_control_state(alarm_state: str | None) -> BuzzerControlState:
 
 
 def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigState:
-    foreign = raw_json.get("foreign_config")
+    foreign = raw_json.get("foreign_config_state", raw_json.get("foreign_config"))
     foreign_mapping = foreign if isinstance(foreign, Mapping) else {}
     parsed = None
     if "present" not in foreign_mapping and foreign_mapping:
@@ -433,7 +443,10 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
             parsed = parse_foreign_config(dict(foreign_mapping))
         except StorcliError:
             parsed = None
-    present = parsed.present if parsed is not None else _truthy(foreign_mapping.get("present"))
+    known = parsed is not None or isinstance(foreign_mapping.get("present"), bool)
+    present = known and (
+        parsed.present if parsed is not None else _truthy(foreign_mapping.get("present"))
+    )
     drive_count = (
         parsed.drive_count
         if parsed is not None
@@ -449,11 +462,12 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
         if parsed is not None
         else (_optional_text(foreign_mapping.get("digest")) or "")
     )
-    description = (
-        f"Foreign configuration detected on {drive_count} drive(s)."
-        if present
-        else "No foreign configuration detected."
-    )
+    if present:
+        description = f"Foreign configuration detected on {drive_count} drive(s)."
+    elif known:
+        description = "No foreign configuration detected."
+    else:
+        description = "Foreign configuration status unknown."
     return ForeignConfigState(
         present=present,
         drive_count=drive_count,
@@ -464,12 +478,15 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
         can_clear=present,
         import_url="/controller/foreign-config/import",
         clear_url="/controller/foreign-config/clear",
+        is_known=known,
     )
 
 
 def _page_subtitle(snapshot: ControllerSnapshot | None, *, now: datetime) -> str:
-    serial = "Unknown" if snapshot is None else snapshot.serial_number
-    return f"SN {serial}. Updated {now.strftime('%B %-d, %Y %H:%M %Z')}."
+    if snapshot is None:
+        return "Waiting for first controller snapshot."
+    captured_at = _require_aware_utc(snapshot.captured_at)
+    return f"SN {snapshot.serial_number}. Observed {captured_at.strftime('%B %-d, %Y %H:%M UTC')}."
 
 
 def _health_summary(snapshot: ControllerSnapshot, *, health: str) -> str:
@@ -530,7 +547,7 @@ def _patrol_read_card(
     return LiveOperationCard(
         name="Patrol Read",
         mode_text=_mode_text(status.mode, interval_hours=interval_hours),
-        status_text=_operation_status_text(status, now=now),
+        status_text=_operation_status_text(status),
         progress_percent=status.progress_percent if status.is_running else None,
         progress_eta_text=None if not status.is_running else "ETA unknown",
         can_start=patrol_read_can_start(status),
@@ -539,6 +556,7 @@ def _patrol_read_card(
         start_url="/controller/patrol-read/start",
         stop_url="/controller/patrol-read/stop",
         mode_url="/controller/patrol-read/mode",
+        detail_text=_operation_detail_text(status),
     )
 
 
@@ -546,7 +564,7 @@ def _consistency_check_card(status: ConsistencyCheckStatus, *, now: datetime) ->
     return LiveOperationCard(
         name="Consistency Check",
         mode_text=_mode_text(status.mode, interval_hours=None),
-        status_text=_operation_status_text(status, now=now),
+        status_text=_operation_status_text(status),
         progress_percent=status.progress_percent if status.is_running else None,
         progress_eta_text=None if not status.is_running else "ETA unknown",
         can_start=consistency_check_can_start(status),
@@ -555,19 +573,21 @@ def _consistency_check_card(status: ConsistencyCheckStatus, *, now: datetime) ->
         start_url="/controller/consistency-check/start",
         stop_url="/controller/consistency-check/stop",
         mode_url="/controller/consistency-check/mode",
+        detail_text=_operation_detail_text(status),
     )
 
 
-def _operation_status_text(status: _OperationState, *, now: datetime) -> str:
-    label = status.state.title()
-    completed_at = _parse_timestamp(status.last_run_timestamp)
-    if status.is_running:
-        progress = "" if status.progress_percent is None else f" {status.progress_percent}%."
-        return f"{label}.{progress}".strip()
-    if completed_at is None:
-        return f"{label}. Last completion unknown."
-    elapsed = _format_uptime(now - completed_at)
-    return f"{label}. Last completed {completed_at.strftime('%b %-d')} ({elapsed} ago)."
+def _operation_status_text(status: _OperationState) -> str:
+    state = status.state.strip().lower()
+    return "Running" if state in {"active", "running", "in progress"} else state.title()
+
+
+def _operation_detail_text(status: _OperationState) -> str:
+    reported_at = _parse_timestamp(status.last_run_timestamp)
+    if reported_at is None:
+        return "Last reported run unknown."
+    # The legacy probe can report last start, not completion. It has no timezone.
+    return f"Last reported run {reported_at.strftime('%d %b %Y, %H:%M')} (controller time)."
 
 
 def _mode_text(mode: str, *, interval_hours: int | None) -> str:
@@ -580,24 +600,21 @@ def _mode_text(mode: str, *, interval_hours: int | None) -> str:
 
 def _schedule_text(
     interval_hours: int | None,
-    last_run_at: datetime | None,
     next_run_at: datetime | None,
-    *,
-    now: datetime,
 ) -> str:
-    if interval_hours is None:
-        return "Next: unknown."
-    resolved_next = next_run_at
-    if resolved_next is None and last_run_at is not None:
-        resolved_next = last_run_at + timedelta(hours=interval_hours)
-    days = interval_hours // 24
-    prefix = f"Every {interval_hours}h"
-    if days:
-        prefix = f"{prefix} ({days} days)"
-    if resolved_next is None:
-        return f"{prefix}. Next: unknown."
-    del now
-    return f"{prefix}. Next {resolved_next.strftime('%b %-d, %H:%M')}."
+    if interval_hours is None and next_run_at is None:
+        return "Schedule unknown."
+    prefix = "Interval unknown"
+    if interval_hours is not None:
+        prefix = f"Every {interval_hours}h"
+        if interval_hours % 24 == 0:
+            days = interval_hours // 24
+            prefix = f"Every {days} day{'s' if days != 1 else ''}"
+    if next_run_at is None:
+        return f"{prefix} · Next start unknown."
+    # Broadcom specifies controller time; do not convert an unzoned wall clock to browser time,
+    # infer the next occurrence from a last-run time, or advance a past reported date.
+    return f"{prefix} · Next {next_run_at.strftime('%d %b %Y, %H:%M')} (controller time)."
 
 
 def _strip_size_text(raw_json: Mapping[str, Any], vd_id: int) -> str:
@@ -746,12 +763,15 @@ def _pending_images_count(raw_json: Mapping[str, Any]) -> int:
 def _parse_interval_hours(value: str | None) -> int | None:
     if value is None:
         return None
-    match = re.search(r"(\d+)", value)
+    match = re.fullmatch(
+        r"(?:every\s+)?([0-9]{1,8})\s*(h|hr|hrs|hours?|days?)?", value.strip(), re.IGNORECASE
+    )
     if match is None:
         return None
     amount = int(match.group(1))
-    lowered = value.lower()
-    if "day" in lowered:
+    if amount == 0:
+        return None
+    if (match[2] or "").lower().startswith("day"):
         return amount * 24
     return amount
 
