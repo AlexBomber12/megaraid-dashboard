@@ -33,6 +33,9 @@
         <details class="action-help" id="operation-help-{{ operation.name | lower | replace(' ', '-') }}">
           <summary aria-label="About {{ operation.name }}">ⓘ</summary>
           <p>{{ 'Checks virtual-drive consistency.' if operation.name == 'Consistency Check' else 'Scans physical drives for unreadable sectors.' }} {{ operation.detail_text }}</p>
+          {% if operation.name == 'Patrol Read' %}
+          <p>The schedule date is reported by the controller and may be in the past. It does not confirm the next actual start or when the current run began.</p>
+          {% endif %}
         </details>
         {% endif %}
       </div>

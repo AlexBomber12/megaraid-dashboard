@@ -28,12 +28,16 @@ remain subject to the [readiness limits](OPERATOR_ACTION_READINESS.md).
 Mark Bad is absent from the panel. Its retained API/wrapper refusal still rejects
 unsupported requests for pinned StorCLI 1.23.02; removing the row grants no command.
 
-Patrol's observed interval/next launch appear in its action row. Unzoned launch dates
+Patrol's observed interval and **Reported schedule** date appear in its action row.
+This is the literal controller-reported schedule marker, which may be in the past;
+it does not confirm the next actual start or when a running pass began. Unzoned dates
 are explicitly controller time. Missing schedule evidence stays unknown; Manual turns
 off automatic scheduling even if an old recurrence is still stored. Explanations and
 last-reported-run details are available under the row's accessible information disclosure.
 After a command, the row waits for a newer normal collector sample before presenting a
 changed state. Network/5xx uncertainty is visible and never triggers automatic retry.
+The header's Observed timestamp refreshes with the other live regions, both automatically
+and through Refresh now; it identifies the saved collector sample, not the page request time.
 See the [operator scenario review](ACTIONS_SCENARIOS.md) for the complete acceptance list.
 
 Semantics references: [classic StorCLI manual](https://docs.broadcom.com/doc/12352476)

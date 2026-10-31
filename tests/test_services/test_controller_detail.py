@@ -202,7 +202,7 @@ def test_scheduled_tasks_include_patrol_read_next_run(
     assert tasks == [
         controller_detail_module.ScheduledTaskRow(
             name="Patrol Read",
-            schedule_text="Every 7 days · Next 24 May 2026, 18:00 (controller time).",
+            schedule_text="Every 7 days · Reported schedule: 24 May 2026, 18:00 (controller time).",
             is_enabled=True,
             configure_url="/controller/patrol-read/mode",
         )
@@ -505,13 +505,13 @@ def test_operation_and_schedule_helper_fallbacks() -> None:
     assert cc_card.detail_text == "Last reported run 20 May 2026, 10:00 (controller time)."
     assert cc_card.progress_percent is None
     assert controller_detail_module._schedule_text(None, None) == "Schedule unknown."
-    assert controller_detail_module._schedule_text(5, None) == "Every 5h · Next start unknown."
+    assert controller_detail_module._schedule_text(5, None) == "Every 5h · Schedule time unknown."
     assert (
         controller_detail_module._schedule_text(
             168,
             datetime(2026, 5, 17, 12, 0, tzinfo=UTC),
         )
-        == "Every 7 days · Next 17 May 2026, 12:00 (controller time)."
+        == "Every 7 days · Reported schedule: 17 May 2026, 12:00 (controller time)."
     )
     assert controller_detail_module._mode_text("manual", interval_hours=None) == "Manual mode."
     assert controller_detail_module._strip_size_text({"VD1 Strip Size": "512"}, 1) == "512 KB"

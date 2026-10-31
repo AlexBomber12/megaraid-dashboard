@@ -14,7 +14,9 @@ Auto/Manual and Enabled/Disabled show the observed setting with the selected seg
 no duplicate mode sentence. Unknown selects neither segment. Silence does not turn off
 future alarms. The buzzer's Enabled setting does not prove it is physically sounding.
 
-Patrol's interval and next launch belong beside Patrol controls. Manual explicitly says
+Patrol's interval and controller-reported schedule date belong beside Patrol controls.
+The date is labelled Reported schedule, not Next: even a future reported date is not an
+independent prediction of when firmware will start. Manual explicitly says
 automatic scheduling is disabled; an Auto setting with missing schedule data explicitly
 says the schedule is unknown. There is no separate Scheduled Tasks panel containing the
 same operation. Last-run information and explanations are behind accessible keyboard
@@ -46,9 +48,44 @@ specifies controller time as the scheduling reference; delay is in hours. Unzone
 dates are labelled **controller time**, never falsely converted from UTC to browser time.
 The UI neither infers a next launch from the last reported run nor advances an old launch
 date by a guessed recurrence. Missing/malformed intervals and timestamps remain unknown.
-An observed next launch is retained even if its interval is unknown.
+A reported schedule date is retained even if its interval is unknown.
 
-Additional defects found during scenario review: missing/failed foreign evidence was
+### Follow-up: old firmware schedule date and stale Observed header
+
+Read-only diagnosis compares fresh `/c0 show all` and `/c0 show patrolread` responses,
+controller/system clocks, iteration counts and saved operation-state transitions. Detailed
+production telemetry stays in the private diagnostic report, outside repository artifacts.
+The observed old marker came from fresh controller responses; it was not caused by browser
+staleness or a clock difference large enough to explain the age. Unzoned controller output
+still provides no timezone contract that would justify conversion to browser time.
+
+An active Patrol state does not supply an actual start timestamp. A state-transition
+history also does not prove firmware preemption or whether later activation resumes or
+restarts work. [IBM's MegaRAID support note](https://www.ibm.com/support/pages/node/861188)
+documents that CC can prevent Patrol from starting; this is a possible interaction to
+investigate, not a sufficient explanation for every old schedule marker.
+
+The confirmed cause of the misleading Next claim is treating the firmware's retained
+schedule marker as a future prediction while a pass is active. The actual next launch is
+not established by that marker. When this
+firmware advances that marker after a normal completion remains unverified. No clock,
+schedule, CC or Patrol setting is changed to make the displayed date look current.
+
+The old UI labelled this marker Next, presenting it as a confirmed future start. It now
+uses Reported schedule and explains the limit inside the existing information disclosure.
+The header was also outside the live-refresh regions: operations could reflect a new saved
+sample while Observed still showed the initial page-load sample. Including the header in
+the existing refresh mechanism makes both follow the fetched sample without a full reload.
+
+Four Chromium cases cover past/future controller dates with manual/automatic refresh:
+`test_observed_header_and_operations_refresh_together_without_forecasting`. They update
+the saved sample and operation state, exercise the real Refresh now button or 30-second
+timer, and assert the new Observed timestamp, unchanged reported date and no invented Next
+claim. The UI-region inventory also includes the header. All controller calls are mocked.
+Follow-up validation on 2026-11-01 passed `scripts/ci.sh` (3151 default tests, one existing
+skip, 100% statement/branch coverage, 515 safety cases) and all 232 Chromium cases.
+
+The PR #140 scenario review also found that missing/failed foreign evidence was
 displayed as absent; compact storage did not retain its normalized result; Overview's
 Patrol/CC loaders were stubs returning None. These caused false reassurance and contradictory
 screens. Compact foreign evidence and real validated operation loaders fix these cases.
@@ -66,15 +103,15 @@ These are software passes; a fake test never proves a physical effect.
 | ID | User scenario | Required behavior | Executable coverage |
 | --- | --- | --- | --- |
 | A01 | Open Controller before the first collection | Waiting/Unknown; no invented healthy operation state | `test_controller_detail` empty DB; `test_controller_detail_page` |
-| A02 | Open Controller long after collection | Header shows sample time; footer shows collector age | `test_actions_schedule`; `test_observed_status` |
+| A02 | Open Controller long after collection | Header shows sample time and follows automatic/manual refresh; footer shows collector age | `test_actions_scenarios` live header; `test_observed_status` |
 | A03 | Read active CC while management is locked | Running remains visible; Start/Stop unavailable | `test_actions_scenarios`; `test_actions_panel` |
 | A04 | Inspect CC with one, multiple or missing VDs | Mode switch hidden only for exactly one VD; Start/Stop preserved | `test_actions_panel` unit/browser inventory transitions |
-| A05 | Read Patrol Auto schedule with compact storage | Real interval and next date survive collector → DAO → view → page | `test_actions_schedule`; `test_actions_scenarios` |
+| A05 | Read Patrol Auto schedule with compact storage | Real interval and reported schedule date survive collector → DAO → view → page | `test_actions_schedule`; `test_actions_scenarios` |
 | A06 | Auto but interval, next date or both missing | Show each known field; explicitly mark missing information | `test_actions_schedule`; `test_observed_status` |
 | A07 | Manual with an old stored recurrence | No claim that automatic scheduling is enabled | `test_actions_scenarios`; `test_controller_detail` |
 | A08 | Unknown/Disabled operation mode | No guessed selected button; keep explanatory state | `test_actions_panel`; `test_observed_status` |
 | A09 | Read malformed, zero, negative or wrong-unit delay | No false interval; collection remains available | `test_actions_schedule` validation matrix |
-| A10 | Read a past firmware next-start date | Report it as observed controller time; no invented future occurrence | `test_actions_schedule` |
+| A10 | Read a past firmware next-start date | Label Reported schedule in controller time; no invented future occurrence | `test_actions_schedule`; `test_actions_scenarios` past/future dates |
 | A11 | Compare active operations on Overview and Controller | Both consume the same saved validated CC/Patrol evidence | `test_actions_scenarios`; `test_main_page_view_model` |
 | A12 | No operation evidence on Overview | Unknown, rather than "No active operations" | `test_actions_scenarios`; `test_main_page_view_model` |
 | A13 | Start timed maintenance with reason | Persist actor/expiry; authorize only reviewed capabilities; no operation starts itself | `test_maintenance_flow`; `test_operator_chain_audit` |
