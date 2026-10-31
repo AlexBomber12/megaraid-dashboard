@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 import structlog
+from sqlalchemy.orm import Session
 
+from megaraid_dashboard.db.dao import insert_snapshot
+from megaraid_dashboard.db.models import CacheVaultSnapshot
 from megaraid_dashboard.services.collector import collect_storcli_snapshot
 from megaraid_dashboard.services.drive_actions import (
     parse_consistency_check_status,
@@ -89,25 +92,79 @@ def test_legacy_cc_and_new_patrol_failure() -> None:
         parse_patrol_read_status(load("737_patrol_unsupported.json"))
 
 
-def test_invalid_optional_learn_date_warns_and_preserves_input() -> None:
+def test_legacy_learn_date_recovers_from_documented_seconds_and_preserves_input() -> None:
     payload = load("123_cv_invalid_learn.json")
     original = copy.deepcopy(payload)
     with structlog.testing.capture_logs() as logs:
         cv = parse_cachevault(payload)
     assert cv is not None
-    assert cv.next_learn_cycle is None
+    assert cv.next_learn_cycle == datetime(2026, 11, 7, 17, 50, 43, tzinfo=UTC)
     assert (cv.state, cv.replacement_required, cv.temperature_celsius, cv.capacitance_percent) == (
         "Optimal",
         False,
         29,
         89,
     )
-    assert any(event["event"] == "cachevault_next_learn_time_invalid" for event in logs)
+    assert logs == [
+        {
+            "event": "cachevault_next_learn_time_recovered",
+            "value": "2026/13/07 17:50:43 (847389043 seconds)",
+            "recovered_at": "2026-11-07T17:50:43+00:00",
+            "source": "seconds_since_2000_utc",
+            "log_level": "info",
+        }
+    ]
     assert payload == original
     assert CacheVault.parse_next_learn_cycle("2026/11/07 17:50:43 (847389043 seconds)") == datetime(
         2026, 11, 7, 17, 50, 43
     )
     assert CacheVault.parse_next_learn_cycle({"invalid": "type"}) is None
+
+
+@pytest.mark.parametrize(
+    "value", ["2026/11/07 17:50:43 (847389043 seconds)", "11/07/2026, 17:50:43"]
+)
+def test_valid_learn_date_keeps_existing_calendar_path(value: str) -> None:
+    with structlog.testing.capture_logs() as logs:
+        assert CacheVault.parse_next_learn_cycle(value) == datetime(2026, 11, 7, 17, 50, 43)
+    assert logs == []
+
+
+@pytest.mark.parametrize("seconds", [1, 4294967294])
+def test_legacy_learn_seconds_valid_uint32_boundaries(seconds: int) -> None:
+    value = f"2026/13/07  17:50:43 ({seconds} seconds)"
+    assert CacheVault.parse_next_learn_cycle(value) == datetime(2000, 1, 1, tzinfo=UTC) + timedelta(
+        seconds=seconds
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026/13/07 17:50:43",
+        "2026/13/07 17:50:43 (0 seconds)",
+        "2026/13/07 17:50:43 (-1 seconds)",
+        "2026/13/07 17:50:43 (+847389043 seconds)",
+        "2026/13/07 17:50:43 (4294967295 seconds)",
+        "2026/13/07 17:50:43 (4294967296 seconds)",
+        "2026/13/07 17:50:43 (99999999999999999999999999999 seconds)",
+        "2026/13/07 17:50:43 (847389043.0 seconds)",
+        "2026/13/07 17:50:43 (847389043 milliseconds)",
+        "2026/13/07 17:50:43 (847389043 seconds) trailing junk",
+        "2026/13/07 17:50:43 (847389043 seconds) (847389044 seconds)",
+        "N/A (847389043 seconds)",
+        "garbage (847389043 seconds)",
+        "2026/13/07 17:50:43 (٨٤٧٣٨٩٠٤٣ seconds)",
+        False,
+        {"invalid": "type"},
+    ],
+)
+def test_unrecoverable_learn_date_still_warns_and_stays_unknown(value: Any) -> None:
+    with structlog.testing.capture_logs() as logs:
+        assert CacheVault.parse_next_learn_cycle(value) is None
+    assert logs == [
+        {"event": "cachevault_next_learn_time_invalid", "value": value, "log_level": "warning"}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -134,7 +191,10 @@ def test_bad_learn_date_does_not_mask_invalid_health(field: str, value: Any) -> 
         parse_cachevault(payload)
 
 
-async def test_collection_continues_with_raw_invalid_date(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("recoverable", [False, True])
+async def test_collection_persists_learn_date_and_preserves_raw_evidence(
+    monkeypatch: pytest.MonkeyPatch, session: Session, recoverable: bool
+) -> None:
     payloads = {
         "/c0 show all": load("c0_show_all.json"),
         "/c0/vall show all": load("vall_show_all.json"),
@@ -146,6 +206,10 @@ async def test_collection_continues_with_raw_invalid_date(monkeypatch: pytest.Mo
         "/c0 show cc": load("123_cc_show.json"),
         "/c0/vall show cc": load("123_cc_progress.json"),
     }
+    if not recoverable:
+        payloads["/c0/cv show all"]["Controllers"][0]["Response Data"]["Properties"][0]["Value"] = (
+            "2026/13/07 17:50:43 (unavailable seconds)"
+        )
     calls = []
 
     async def fake_run(args: list[str], **kwargs: Any) -> dict[str, Any]:
@@ -156,10 +220,19 @@ async def test_collection_continues_with_raw_invalid_date(monkeypatch: pytest.Mo
     snapshot, raw = await collect_storcli_snapshot(settings=_settings())
     assert len(calls) == 9
     assert snapshot.cachevault is not None
-    assert snapshot.cachevault.next_learn_cycle is None
+    expected = datetime(2026, 11, 7, 17, 50, 43, tzinfo=UTC) if recoverable else None
+    assert snapshot.cachevault.next_learn_cycle == expected
     assert raw["cachevault"] == payloads["/c0/cv show all"]
     assert raw["patrol_read"] is None
     assert raw["consistency_check"]["mode"] == "concurrent"
+    assert all("show" in call.split() for call in calls)
+    row = insert_snapshot(session, snapshot, store_raw=True, raw_payload=raw)
+    cachevault_id = row.cachevault.id
+    session.commit()
+    session.expire_all()
+    persisted = session.get(CacheVaultSnapshot, cachevault_id)
+    assert persisted is not None and persisted.next_learn_cycle == expected
+    assert row.raw_json["cachevault"] == payloads["/c0/cv show all"]
 
 
 def test_undocumented_and_mismatched_commands_cannot_reach_subprocess() -> None:

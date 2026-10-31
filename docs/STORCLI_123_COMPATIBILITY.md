@@ -43,11 +43,16 @@ insufficient evidence of completion; an explicit Complete/Completed state and va
 remains active; 100% without an affirmative completed state cannot create a
 completion audit. A missing progress value never becomes 0%.
 
-The invalid date `2026/13/07 17:50:43 (847389043 seconds)` becomes unknown.
-It is never corrected from the seconds suffix or inferred from the newer binary's
-`2026/11/07` value. A structured `cachevault_next_learn_time_invalid` warning
-includes the value. The collector retains the original CV JSON in snapshot raw
-payload storage. CV command failure, malformed health values and disagreements
+The invalid calendar text `2026/13/07 17:50:43 (847389043 seconds)` is recovered
+from the numeric next-learn timestamp as `2026-11-07T17:50:43+00:00`. IBM documents
+this value as seconds since 2000-01-01 UTC; the bounded fallback and its sources
+are described in [CACHEVAULT_LEARN_TIME.md](CACHEVAULT_LEARN_TIME.md). The newer
+binary's calendar text is not an input to recovery. An informational
+`cachevault_next_learn_time_recovered` event retains the original value and the
+decoded timestamp. Unrecoverable values still become unknown and emit
+`cachevault_next_learn_time_invalid`; valid calendar dates retain their existing
+parsing behavior. The collector retains the original CV JSON in snapshot raw
+payload storage when enabled. CV command failure, malformed health values and disagreements
 about CV presence continue to fail collection. Replacement flags must explicitly
 say Yes or No; the summary fallback no longer invents No when missing.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -339,6 +340,27 @@ class CacheVault(StorcliModel):
         try:
             return _parse_optional_datetime(value)
         except (ValueError, TypeError):
+            # Legacy StorCLI can print an impossible calendar month while keeping
+            # the firmware's uint32 seconds-since-2000 value intact. Recover only
+            # this complete, known response shape; never guess calendar fields.
+            match = (
+                re.fullmatch(
+                    r"\s*[0-9]{4}/[0-9]{2}/[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2}"
+                    r"\s+\(([0-9]{1,10}) seconds\)\s*",
+                    value,
+                )
+                if isinstance(value, str)
+                else None
+            )
+            if match is not None and 0 < int(match[1]) < 0xFFFFFFFF:
+                recovered = datetime(2000, 1, 1, tzinfo=UTC) + timedelta(seconds=int(match[1]))
+                LOGGER.info(
+                    "cachevault_next_learn_time_recovered",
+                    value=value,
+                    recovered_at=recovered.isoformat(),
+                    source="seconds_since_2000_utc",
+                )
+                return recovered
             LOGGER.warning("cachevault_next_learn_time_invalid", value=value)
             return None
 
