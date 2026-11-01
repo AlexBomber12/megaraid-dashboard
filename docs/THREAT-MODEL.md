@@ -1,6 +1,6 @@
 # MegaRAID Dashboard Threat Model
 
-> Current operational inventory: [CURRENT_STATE.md](CURRENT_STATE.md), 2026-10-31.
+> Current operational inventory: [CURRENT_STATE.md](CURRENT_STATE.md), 2026-11-01.
 > This model describes trust boundaries, not proof that the latest deployment has
 > undergone a new penetration test. SERVER-specific account/policy differs from
 > fresh-install defaults; this documentation update changes no security controls.

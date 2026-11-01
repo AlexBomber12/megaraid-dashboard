@@ -1,6 +1,21 @@
 # Changelog
 
-## [Unreleased] - Readable chart times and observed mode labels
+## [Unreleased] - Maintenance handoff and versioned deployment
+
+- Add a hash-pinned offline release tool, detached systemd worker, durable receipts,
+  explicit already-installed handling and guarded application rollback preserving live DB history.
+- Reject migration/profile changes; retain protected settings/policy checks and normal-collection acceptance.
+- Reconcile source/Obsidian documentation and event-driven maintenance handoff; no new automation.
+
+## Production checkpoint — 2026-11-01
+
+Installed application: `27af3da` (#141), including #139 readable times/control simplification,
+#140 compact scheduling/observed state and #141 Reported schedule/live Observed header.
+Fresh review and CI passed before activation. Production GET checks exercised manual and
+automatic refresh using normal samples; settings/grants preserved and no controller writes.
+Tooling above is separate from this already-installed application checkpoint.
+
+## Delivered in #139 - Readable chart times and observed mode labels
 
 - Show short browser-local dates/times on RoC, drive-temperature and error charts;
   full date/time and timezone remain in hover. Limit horizontal labels to eight
@@ -11,11 +26,11 @@
   Start/Stop and Patrol modes. Remove unsupported Mark Bad from rendered drive rows;
   retain existing API/wrapper refusal and safety gates.
 - Add an operator action reference. No controller, authorization or schema changes;
-  this follow-up is not part of the deployed `cfad744` checkpoint below.
+  this follow-up shipped after the historical `cfad744` checkpoint below.
 
 ## Production checkpoint — 2026-10-31
 
-This is a deployment record, not a new semver tag. SERVER runs `cfad744`.
+Historical deployment record, not a semver tag: SERVER ran `cfad744` at this checkpoint.
 See [current state](docs/CURRENT_STATE.md) for evidence and outstanding operational work.
 
 ### Delivered

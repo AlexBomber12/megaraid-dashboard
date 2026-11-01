@@ -1,7 +1,7 @@
 # MegaRAID Dashboard Troubleshooting
 
 > Fresh-install defaults below differ from existing SERVER: use account `megaraid`,
-> release `/opt/megaraid-dashboard-ui-cfad744` and the root HTTPS origin there.
+> release `/opt/megaraid-dashboard-ui-27af3da` and the root HTTPS origin there.
 > [Current inventory and evidence](docs/CURRENT_STATE.md) take precedence over old paths.
 
 ## Activation reports an approved-baseline mismatch
@@ -16,6 +16,14 @@ local `/healthz`, and the matching `/run/megaraid-ui-*/status.json` if still pre
 If the expected release is healthy and status is `verified`, do not repeat activation.
 Otherwise diagnose the actual mismatch; do not remove baseline guards or old releases.
 Status under `/run` does not survive reboot and its absence alone proves no failure.
+
+## Versioned deployment retry or interrupted worker
+
+Use [deployment status and recovery](docs/VERSIONED_DEPLOYMENT.md). A verified same-release
+request returns already_installed without restart. A nonterminal receipt with no running
+worker is interrupted_needs_operator, not proof of success. Inspect the private recovery
+log; explicit application rollback retains newer database/audit/delivery history.
+Never remove baseline/hash guards or restore the live DB to make a retry pass.
 
 ## CacheVault next-learn calendar contains month 13
 

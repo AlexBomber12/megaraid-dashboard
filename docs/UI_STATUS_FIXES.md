@@ -1,7 +1,7 @@
 # Observed status corrections — 2026-10-30
 
 Deployed through [PR #136](https://github.com/AlexBomber12/megaraid-dashboard/pull/136)
-as `8b166c6`; retained in current `cfad744`. Production GET-only checks confirmed
+as `8b166c6`; retained in current `27af3da`. Production GET-only checks confirmed
 eight observed rows, shared Collector ages and Auto/Enabled scheduling without an
 invented interval. Full evidence and physical verification limits:
 [CURRENT_STATE.md](CURRENT_STATE.md).
@@ -29,7 +29,10 @@ not change command policy, permissions or the database schema.
 
 ## Follow-up: mode duplication and readable chart times
 
-Prepared after the `cfad744` production checkpoint; not yet deployed.
+Deployed in #139 (`942805f`) and retained through #141 (`27af3da`).
+#140 retains compact Patrol scheduling and saved operation/foreign evidence; #141 uses
+Reported schedule and refreshes the Observed header with normal saved samples.
+See [the scenario ledger](ACTIONS_SCENARIOS.md).
 
 Known CC/Patrol mode descriptions no longer repeat the pressed mode button. The
 selection still comes from the latest saved controller state. Unknown/disabled

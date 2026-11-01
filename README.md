@@ -1,6 +1,6 @@
 # MegaRAID Dashboard
 
-Production checkpoint (2026-10-31): SERVER runs `cfad744` after review and green CI.
+Production checkpoint (2026-11-01): SERVER runs `27af3da` (#141) after review and green CI.
 Read [current state and verification limits](docs/CURRENT_STATE.md),
 [the operational runbook](docs/RUNBOOK.md) and [the remaining plan](docs/roadmap.md).
 Installer defaults and historical screenshots are not SERVER's current deployment inventory.
@@ -727,8 +727,9 @@ gates and supported action workflows are implemented. The compact UI, status cor
 and CacheVault learn-date recovery are deployed on SERVER. See the dated
 [production checkpoint](docs/CURRENT_STATE.md) for release and test evidence.
 
-Next: independent application/Collector monitoring, recurring backup/restore verification,
-and repeatable deployment tooling. [The roadmap](docs/roadmap.md) separates these from
+Next: independent application/Collector monitoring and recurring backup/restore verification.
+Versioned [deployment tooling](docs/VERSIONED_DEPLOYMENT.md) and the
+[maintenance handoff](docs/MAINTENANCE_HANDOFF.md) provide the update/recovery procedure. [The roadmap](docs/roadmap.md) separates these from
 delivered work and physical effects that have not been tested on the healthy array.
 
 Software tests and production reads do not certify every physical controller operation

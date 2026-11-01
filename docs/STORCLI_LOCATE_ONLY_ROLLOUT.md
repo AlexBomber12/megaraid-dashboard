@@ -1,4 +1,4 @@
-> **Historical procedure, not the installed release.** SERVER runs `cfad744` with
+> **Historical procedure, not the installed release.** SERVER runs `27af3da` with
 > the reviewed full-capability policy. See [CURRENT_STATE.md](CURRENT_STATE.md).
 > Old version/account/binary selections below are dated preparation evidence.
 

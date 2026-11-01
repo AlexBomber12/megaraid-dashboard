@@ -3,20 +3,21 @@
 This runbook is the operator reference for routine checks, common incidents, and recovery
 tasks. Generic command examples below use fresh-install defaults (`raid-monitor`,
 `/opt/megaraid-dashboard`, optional `/raid/` prefix). Existing SERVER instead uses
-`megaraid`, `/opt/megaraid-dashboard-ui-cfad744` and the root HTTPS origin.
+`megaraid`, `/opt/megaraid-dashboard-ui-27af3da` and the root HTTPS origin.
 Use [CURRENT_STATE.md](CURRENT_STATE.md) for the observed release, protected rollout
 configuration, test evidence and remaining work. Resolve the effective account and
 release before adapting generic commands; do not print secret environment values.
 
 ## Current production and safe verification
 
-Release `cfad744` is deployed. Compact Actions, drive DG/Span/Row, shared Collector
+Release `27af3da` (#141) is deployed. Compact Actions, drive DG/Span/Row, shared Collector
 ages, observed Patrol scheduling and CacheVault learn-date recovery are active.
 The Telegram transport test reached the owner; no real hardware failure was induced.
 
 After an SSH disconnect, check service WorkingDirectory/health and the matching
-rollout status before taking action. The cfad744 rollout finished `verified`;
-repeating its one-shot activation fails its old-baseline guard before changes.
+rollout status before taking action. The #141 one-shot rollout finished `verified`;
+future updates use [versioned deployment](VERSIONED_DEPLOYMENT.md), whose durable receipt
+survives reboot and whose repeated verified request returns already_installed.
 See [the exact recovery checks](CURRENT_STATE.md#recovery-after-ssh-disconnect-or-repeated-activation).
 Never bypass the guard or restore the database solely because the terminal disconnected.
 
@@ -25,6 +26,7 @@ numeric timestamp repaired invalid legacy calendar text. It is not a new hardwar
 fault. WARNING `cachevault_next_learn_time_invalid` still means unsupported/unrecoverable
 data; preserve redacted evidence and investigate rather than starting Learn Cycle.
 
+See [maintenance handoff](MAINTENANCE_HANDOFF.md) for triggers and scope.
 Independent outage detection and a recurring backup restore drill remain unverified.
 The routines below describe how to verify them, not proof that they are installed.
 
@@ -421,7 +423,7 @@ monitoring uncertainty as healthy hardware.
 
 ## Existing megaraid production service
 
-For the installed `cfad744` release, pinned StorCLI 1.23.02 and full-capability
+For the installed `27af3da` release, pinned StorCLI 1.23.02 and full-capability
 policy, follow [the current checkpoint](CURRENT_STATE.md) and the
 [full rollout contract](STORCLI_FULL_ROLLOUT.md). Production runs as `megaraid`;
 installer `raid-monitor` defaults must not replace its service configuration.

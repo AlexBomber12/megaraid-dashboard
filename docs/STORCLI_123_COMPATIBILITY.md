@@ -3,7 +3,7 @@
 Target: production LSI MegaRAID SAS 9270CV-8i, SAS 2208, firmware
 23.34.0-0019. **Current selection:** pinned 1.23.02 at
 `/usr/local/libexec/megaraid-dashboard/storcli-1.23.02/storcli64`, service account
-`megaraid`, with the protected exact-command policy. Application release is `cfad744`.
+`megaraid`, with the protected exact-command policy. Application release is `27af3da`.
 See [CURRENT_STATE.md](CURRENT_STATE.md) for verified deployment evidence.
 
 The following is the **historical pre-rollout inventory**, retained to explain why

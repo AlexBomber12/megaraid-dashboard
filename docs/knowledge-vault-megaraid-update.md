@@ -1,34 +1,34 @@
-# Obsidian documentation handoff — 2026-10-31
+# Obsidian maintenance handoff — 2026-11-01
 
-Canonical production evidence: [CURRENT_STATE.md](CURRENT_STATE.md).
-The installed release is `cfad744` (#137); #134 safety, #135 compact design and #136
-status corrections are included. The earlier proposal against the 2026-10-26
-knowledge-vault blob is superseded by this checkpoint.
+Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed application is
+`27af3da` (#141), including #139 chart/control simplification, #140 saved-operation
+and compact-schedule corrections, and #141 Reported schedule/live Observed refresh.
+The owner requested a handoff and plan, without recurring automatic checks.
 
-Related notes in `AlexBomber12/knowledge-vault` / Obsidian:
+Maintain these `AlexBomber12/knowledge-vault` notes together:
 
-- `10-projects/megaraid-dashboard/megaraid-dashboard-overview.md`: purpose, architecture,
-  delivered state, priorities, decisions and verification limits.
-- `20-homelab/notifications/megaraid.md`: current deployment, Telegram contract,
-  neutral-delivery evidence, safe diagnostics and rollback boundaries.
-- `20-homelab/notifications/README.md`: MegaRAID row reconciled without changing
-  other services' historical observations or notification policy.
-- `20-homelab/homelab-restore-map-20260504.md`: dated MegaRAID inventory addendum.
-- `20-homelab/infrastructure-inspector-maintenance-policy.md`: dated MegaRAID addendum;
-  older notifier plans are historical and independent host monitoring remains unproven.
+- `10-projects/megaraid-dashboard/megaraid-dashboard-overview.md`: current release,
+  verification boundaries, maintenance stage, remaining work and source links.
+- `20-homelab/notifications/megaraid.md`: incident contract, diagnosis, legacy versus
+  versioned rollout recovery and healthy-RAID restrictions.
+- `20-homelab/notifications/README.md`: only the MegaRAID row/date, preserving other
+  services' history and notification policy.
+- `20-homelab/homelab-restore-map-20260504.md`: update only the dated MegaRAID addendum.
+- `20-homelab/infrastructure-inspector-maintenance-policy.md`: update only its MegaRAID
+  addendum; unrelated local maintenance observations remain untouched.
 
-Maintain those notes together; use the documentation PRs as publication evidence.
-Editing a local note does not prove GitHub merge or synchronization to another machine.
-Preserve existing local frontmatter/sync metadata and unrelated edits. Do not edit
-the generated `mirror/` tree or copy credential notes into project documentation.
+Link [versioned deployment](VERSIONED_DEPLOYMENT.md) and
+[maintenance handoff](MAINTENANCE_HANDOFF.md). Root tool installation/adoption,
+managed application rollout and isolated acceptance are distinct evidence. Do not claim
+a production rollback drill merely because fake-service tests passed.
 
-Telegram's neutral test was API-accepted on 2026-10-30 22:11:08 UTC and the owner
-confirmed receipt. Exactly one message was sent. It did not create an incident or
-exercise real hardware failure. Current alerts use short plain Russian text without
-links/buttons; details remain in Events and independent `event_deliveries` state.
-Hardware incidents are not suppressed by maintenance; operator audit noise is ineligible.
+One neutral real Telegram delivery was accepted/confirmed on 2026-10-30. No repeated
+test is needed for documentation. Real hardware incidents remain eligible during
+maintenance, operator audit noise is ineligible, and alert text has no buttons/runbook links.
+Independent app/Collector monitoring and recurring backup/restore proof remain open.
 
-The #137 deployment completed `verified`; its subsequent baseline-mismatch refusal
-was a repeated one-shot invocation, not a failed initial deployment. Do not repeat
-activation or change RAID merely because SSH disconnected. Backup/restore verification,
-independent app/Collector monitoring and durable deployment tooling remain next work.
+Keep credentials and detailed production telemetry in private recovery material. Preserve
+local frontmatter/mirror sync fields, historical journals and unrelated edits; never edit
+the generated `mirror/` tree. Use a documentation PR for repository publication. A local
+edit does not prove merge or synchronization to another machine. Confirm local target
+hashes immediately before writing and retain private backups of the previous notes.
