@@ -34,6 +34,7 @@ _ALLOWED_COMMAND_PATTERNS = (
     re.compile(r"^/c0/vall stop cc J$"),
     re.compile(r"^/c0 set cc=(conc|seq) J$"),
     re.compile(r"^/c0 set alarm=(silence|off|on) J$"),
+    re.compile(r"^/c0 set activityforlocate=(on|off) J$"),
     re.compile(r"^/c0/fall show all J$"),
     re.compile(r"^/c0/fall import J$"),
     re.compile(r"^/c0/fall delete J$"),
@@ -167,6 +168,19 @@ async def check_storcli_prewrite(
         raise StorcliCommandFailed(
             "Buzzer state is unknown or conflicts. Refresh controller status."
         )
+    activity_states = {"activityforlocate=on": "off", "activityforlocate=off": "on"}
+    if command_args[2] in activity_states:
+        policies = identity["Controllers"][0]["Response Data"].get("Policies")
+        activity = (
+            policies.get("Use drive activity for locate") if isinstance(policies, dict) else None
+        )
+        if (
+            not isinstance(activity, str)
+            or activity.strip().casefold() != activity_states[command_args[2]]
+        ):
+            raise StorcliCommandFailed(
+                "Locate activity setting is unknown or conflicts; no write sent"
+            )
     from megaraid_dashboard.storcli.prewrite import check_action_topology, check_foreign_safety
 
     check_action_topology(command_args, identity, policy)

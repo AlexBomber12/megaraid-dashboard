@@ -9,8 +9,8 @@ python -m ruff check .
 echo "==> ruff format --check ."
 python -m ruff format --check .
 
-echo "==> mypy src scripts/deploy_release.py"
-python -m mypy src scripts/deploy_release.py
+echo "==> mypy src and operator tools"
+python -m mypy src scripts/deploy_release.py scripts/locate_activity.py
 
 echo "==> bash syntax"
 bash -n scripts/install.sh

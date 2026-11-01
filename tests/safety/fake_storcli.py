@@ -81,6 +81,10 @@ def main() -> None:
         else:
             raise AssertionError(f"Unconfigured read: {args}")
     elif fault == "success":
+        if args[1] == "set" and args[2] in {"activityforlocate=on", "activityforlocate=off"}:
+            config["controller"]["Policies"]["Use drive activity for locate"] = (
+                args[2].split("=")[1].title()
+            )
         if args[1:3] == ["set", "offline"]:
             config["drive_state"] = "Offln"
         if args[1:3] == ["set", "missing"]:
