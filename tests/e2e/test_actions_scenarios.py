@@ -43,7 +43,7 @@ def test_schedule_and_selected_mode_are_together_when_locked(
         expect(row.locator("[data-patrol-schedule]")).to_have_text("Automatic scheduling disabled.")
     else:
         expect(row.locator("[data-patrol-schedule]")).to_contain_text(
-            "Every 7 days · Next 07 Nov 2026, 09:00 (controller time)"
+            "Every 7 days · Reported schedule: 07 Nov 2026, 09:00 (controller time)"
         )
     selected = row.locator('button[aria-pressed="true"]')
     if mode == "unknown":
@@ -115,6 +115,71 @@ def test_overview_and_controller_agree_on_observed_operation(
         page.locator('[data-action-key="Consistency Check"] [data-operation-state]')
     ).to_have_text({"active": "Running", "stopped": "Stopped", "unknown": "Unknown"}[state])
     expect(page.locator(".page-header")).to_contain_text("Observed October 29, 2026 08:00 UTC")
+    assert fake_storcli.calls == []
+
+
+@pytest.mark.parametrize("automatic", [False, True], ids=["refresh-button", "automatic-timer"])
+@pytest.mark.parametrize(
+    "reported,displayed",
+    [("10/31/2026, 09:00:00", "31 Oct 2026"), ("11/07/2026, 09:00:00", "07 Nov 2026")],
+    ids=["past-controller-date", "future-controller-date"],
+)
+def test_observed_header_and_operations_refresh_together_without_forecasting(
+    authenticated_page,
+    live_server,
+    snapshot_with_drives,
+    _live_server_handle,
+    fake_storcli,
+    automatic,
+    reported,
+    displayed,
+):
+    app = _live_server_handle.app
+    with app.state.session_factory() as session, session.begin():
+        snapshot = session.scalar(select(ControllerSnapshot))
+        snapshot.captured_at = datetime(2026, 10, 31, 22, 35, tzinfo=UTC)
+        snapshot.raw_json = {
+            "patrol_read": {
+                "mode": "auto",
+                "state": "stopped",
+                "interval_hours": 168,
+                "next_start_timestamp": reported,
+            }
+        }
+    page = authenticated_page
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    page.clock.install(time=datetime(2026, 11, 1, 0, 0, tzinfo=UTC))
+    login_and_navigate(page, f"{live_server}/controller")
+    expect(page.locator(".page-header")).to_contain_text("Observed October 31, 2026 22:35 UTC")
+    with app.state.session_factory() as session, session.begin():
+        snapshot = session.scalar(select(ControllerSnapshot))
+        snapshot.captured_at = datetime(2026, 10, 31, 22, 42, 43, tzinfo=UTC)
+        snapshot.raw_json = {
+            **snapshot.raw_json,
+            "patrol_read": {**snapshot.raw_json["patrol_read"], "state": "active"},
+        }
+    if automatic:
+        page.clock.run_for(30_001)
+    else:
+        page.get_by_role("button", name="Refresh now", exact=True).click()
+    expect(page.locator(".page-header")).to_contain_text("Observed October 31, 2026 22:42 UTC")
+    row = page.locator('[data-action-key="Patrol Read"]')
+    expect(row).to_have_attribute("data-observed-at", "2026-10-31T22:42:43Z")
+    expect(row.locator("[data-operation-state]")).to_have_text("Running")
+    schedule = row.locator("[data-patrol-schedule]")
+    expect(schedule).to_contain_text("Every 7 days · Reported schedule: " + displayed)
+    expect(schedule).not_to_contain_text("Next")
+    expect(schedule).to_contain_text("(controller time)")
+    if folder := os.environ.get("UI_SCREENSHOT_DIR"):
+        target = Path(folder)
+        target.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(target / f"observed-{automatic}-{displayed}.png"), full_page=True)
+    page.get_by_label("About Patrol Read", exact=True).press("Enter")
+    expect(page.locator("#operation-help-patrol-read")).to_contain_text(
+        "It does not confirm the next actual start or when the current run began."
+    )
+    assert errors == []
     assert fake_storcli.calls == []
 
 

@@ -94,6 +94,7 @@ def fake_foreign_config(monkeypatch: pytest.MonkeyPatch) -> None:
         (
             "/controller",
             {
+                "controller-live-header",
                 "controller-live-status",
                 "controller-live-ops",
                 "controller-live-details",

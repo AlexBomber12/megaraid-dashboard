@@ -56,7 +56,7 @@ def test_legacy_schedule_interval_validation(value, expected):
 def test_next_start_is_reported_without_invented_interval():
     when = datetime(2026, 10, 31, 9, tzinfo=UTC)
     assert detail._schedule_text(None, when) == (
-        "Interval unknown · Next 31 Oct 2026, 09:00 (controller time)."
+        "Interval unknown · Reported schedule: 31 Oct 2026, 09:00 (controller time)."
     )
 
 
@@ -123,7 +123,7 @@ def test_compact_patrol_schedule_and_foreign_state_survive_collection(
     assert row.raw_json["foreign_config_state"]["present"] is False
     view = _load(session, tmp_path)
     assert view.scheduled_tasks[0].schedule_text == (
-        "Every 7 days · Next 31 Oct 2026, 09:00 (controller time)."
+        "Every 7 days · Reported schedule: 31 Oct 2026, 09:00 (controller time)."
     )
     assert view.scheduled_tasks[0].is_enabled is True
     assert view.foreign_config.is_known and not view.foreign_config.present
@@ -142,7 +142,7 @@ def test_schedule_uses_observed_probe_fields_without_stale_raw_fallback(
     )
     _insert(session, _optimal_snapshot(sample_snapshot), raw_json={"patrol_read": asdict(status)})
     text = _load(session, tmp_path).scheduled_tasks[0].schedule_text
-    assert ("Next start unknown" in text) is (next_start == "invalid")
+    assert ("Schedule time unknown" in text) is (next_start == "invalid")
     assert ("Interval unknown" in text) is (interval is None)
 
 

@@ -11,7 +11,7 @@
 
 {% block content %}
   <div class="controller-detail-page">
-    <header class="page-header">
+    <header class="page-header" id="controller-live-header" data-live-region>
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <a href="{{ request.url_for('overview').path }}">Overview</a>
         <span aria-hidden="true">/</span>

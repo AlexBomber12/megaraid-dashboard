@@ -600,9 +600,9 @@ def _mode_text(mode: str, *, interval_hours: int | None) -> str:
 
 def _schedule_text(
     interval_hours: int | None,
-    next_run_at: datetime | None,
+    reported_at: datetime | None,
 ) -> str:
-    if interval_hours is None and next_run_at is None:
+    if interval_hours is None and reported_at is None:
         return "Schedule unknown."
     prefix = "Interval unknown"
     if interval_hours is not None:
@@ -610,11 +610,14 @@ def _schedule_text(
         if interval_hours % 24 == 0:
             days = interval_hours // 24
             prefix = f"Every {days} day{'s' if days != 1 else ''}"
-    if next_run_at is None:
-        return f"{prefix} · Next start unknown."
+    if reported_at is None:
+        return f"{prefix} · Schedule time unknown."
     # Broadcom specifies controller time; do not convert an unzoned wall clock to browser time,
     # infer the next occurrence from a last-run time, or advance a past reported date.
-    return f"{prefix} · Next {next_run_at.strftime('%d %b %Y, %H:%M')} (controller time)."
+    return (
+        f"{prefix} · Reported schedule: {reported_at.strftime('%d %b %Y, %H:%M')}"
+        " (controller time)."
+    )
 
 
 def _strip_size_text(raw_json: Mapping[str, Any], vd_id: int) -> str:
