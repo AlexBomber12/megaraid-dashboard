@@ -38,6 +38,10 @@ spellings. In particular, a normal sample containing `Disable` must still allow 
 Unknown or conflicting state continues to refuse the write; command approval and all
 authorization/identity/maintenance checks remain required.
 
+Operator event text describes the request and its target, followed by the actual
+outcome. Failed or rejected entries must not start by claiming the setting changed
+or the physical buzzer was silenced. Existing historical events are not rewritten.
+
 When the wrapper proves that preflight stopped before write dispatch, the audited buzzer
 response is HTTP 409 with `execution: not_sent`. The UI says Command not sent, keeps the
 saved selection and restores button availability. Failures after dispatch, lost responses

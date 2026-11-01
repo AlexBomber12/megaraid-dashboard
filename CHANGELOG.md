@@ -10,6 +10,8 @@
 
 - Share buzzer Alarm aliases between UI and live prewrite checks so firmware `Disable`
   permits Enable; distinguish proven no-write refusals from uncertain command results.
+- Describe buzzer audit entries as requests followed by outcomes, so rejected or
+  failed commands do not claim that the buzzer setting was changed.
 - Fingerprint nested root-controlled rollout evidence directories during adoption and
   preservation checks; refuse nested drift/links without changing configuration.
 - Add a hash-pinned offline release tool, detached systemd worker, durable receipts,

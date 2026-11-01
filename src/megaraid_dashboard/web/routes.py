@@ -3264,12 +3264,12 @@ def _buzzer_audit_message(
     username = str(request.scope.get("user_username", "unknown"))
     if action == "silence":
         return (
-            f"Buzzer silenced by operator {username}; runtime alarm state changed without "
-            "changing persistent buzzer setting"
+            f"Buzzer silence requested by operator {username}; "
+            "target: silence current alarm without disabling future alarms; result:"
         )
     if action == "disable":
-        return f"Buzzer disabled by operator {username}; persistent buzzer setting changed to off"
-    return f"Buzzer enabled by operator {username}; persistent buzzer setting changed to on"
+        return f"Buzzer disable requested by operator {username}; target setting: off; result:"
+    return f"Buzzer enable requested by operator {username}; target setting: on; result:"
 
 
 def _record_controller_buzzer_operator_action_sync(
