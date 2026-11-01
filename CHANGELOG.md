@@ -2,6 +2,8 @@
 
 ## [Unreleased] - Maintenance handoff and versioned deployment
 
+- Fingerprint nested root-controlled rollout evidence directories during adoption and
+  preservation checks; refuse nested drift/links without changing configuration.
 - Add a hash-pinned offline release tool, detached systemd worker, durable receipts,
   explicit already-installed handling and guarded application rollback preserving live DB history.
 - Reject migration/profile changes; retain protected settings/policy checks and normal-collection acceptance.

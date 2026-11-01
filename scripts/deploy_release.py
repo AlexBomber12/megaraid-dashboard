@@ -314,6 +314,22 @@ class Host:
     def protect(self, path: Path) -> None:
         root_path(path)
 
+    def protected_digest(self, path: Path) -> str:
+        """Fingerprint protected files or nested directories without following links."""
+        self.protect(path)
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            return digest(read_file(path))
+        evidence = {
+            "uid": info.st_uid,
+            "gid": info.st_gid,
+            "mode": stat.S_IMODE(info.st_mode),
+            "entries": {
+                child.name: self.protected_digest(child) for child in sorted(path.iterdir())
+            },
+        }
+        return digest(json.dumps(evidence, sort_keys=True).encode())
+
     def write(self, path: Path, data: bytes, mode: int = 0o644, gid: int = 0) -> None:
         self.protect(path.parent)
         atomic_write(path, data, mode=mode, gid=gid)
@@ -606,8 +622,8 @@ class Deployment:
             raise DeployError("Legacy configuration changed")
         for name, expected in context["protected"].items():
             path = Path(name)
-            self.host.protect(path)
-            read_file(path, expected)
+            if self.host.protected_digest(path) != expected:
+                raise DeployError("Protected configuration changed: " + path.name)
 
     def _own_files(self, context: Mapping[str, Any]) -> None:
         for path, expected in (
@@ -648,8 +664,7 @@ class Deployment:
         files.discard(self.override)
         result = {}
         for path in sorted(files):
-            self.host.protect(path)
-            result[str(path)] = digest(read_file(path))
+            result[str(path)] = self.host.protected_digest(path)
         return result
 
     def _already_installed(self, properties: Mapping[str, str]) -> dict[str, Any] | None:
