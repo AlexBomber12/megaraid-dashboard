@@ -30,8 +30,8 @@ jobs:
       - name: ruff format --check .
         run: ruff format --check .
 
-      - name: mypy src and release deployment tool
-        run: mypy src scripts/deploy_release.py
+      - name: mypy src and operator tools
+        run: mypy src scripts/deploy_release.py scripts/locate_activity.py
 
       - name: pytest
         run: pytest

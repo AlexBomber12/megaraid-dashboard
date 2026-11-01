@@ -36,6 +36,7 @@ from megaraid_dashboard.services.overview import (
     temperature_severity,
 )
 from megaraid_dashboard.storcli import StorcliError, parse_foreign_config
+from megaraid_dashboard.storcli.states import normalize_alarm_state as _normalize_alarm_state
 
 _DEFAULT_AUTO_REFRESH_SECONDS = 30
 _BUZZER_EXPLAINER = (
@@ -812,17 +813,6 @@ def _snapshot_text(snapshot: ControllerSnapshot | None, attribute: str) -> str:
     if snapshot is None:
         return _UNKNOWN_HARDWARE_TEXT
     return str(getattr(snapshot, attribute) or _UNKNOWN_HARDWARE_TEXT)
-
-
-def _normalize_alarm_state(value: str | None) -> str:
-    normalized = (value or "").strip().lower()
-    if normalized in {"on", "enabled", "enable"}:
-        return "On"
-    if normalized in {"silenced", "silence", "mute", "muted"}:
-        return "Silenced"
-    if normalized in {"off", "disabled", "disable"}:
-        return "Off"
-    return "Unknown"
 
 
 def _truthy(value: Any) -> bool:
