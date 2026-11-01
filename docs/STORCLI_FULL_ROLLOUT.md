@@ -1,7 +1,7 @@
 # One-shot production rollout: all approved supported actions
 
 The combined rollout and later audit/UI/compatibility fixes have been deployed.
-SERVER now runs `cfad744`; see [the dated inventory and evidence](CURRENT_STATE.md).
+SERVER now runs `27af3da`; see [the dated inventory and evidence](CURRENT_STATE.md).
 The [button-chain audit](OPERATOR_ACTION_READINESS.md) documents software verification
 and physical limits. Its original deployment hold is historical and has been satisfied.
 
