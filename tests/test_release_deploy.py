@@ -703,6 +703,43 @@ def test_actual_install_method_uses_only_offline_pinned_inputs(
     assert (deployment.new / "migrations/env.py").read_bytes() == b"# unchanged\n"
 
 
+@pytest.mark.parametrize("fail", [False, True])
+def test_install_is_service_readable_and_restores_private_mask(
+    rollout: Any, monkeypatch: Any, fail: bool
+) -> None:
+    deployment, host, _directory, _manifest_hash = rollout
+    real_builder = deploy.venv.EnvBuilder
+
+    class Builder:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.builder = real_builder(with_pip=False)
+
+        def create(self, path: Path) -> None:
+            self.builder.create(path)
+            if fail:
+                raise deploy.DeployError("simulated installation failure")
+
+    monkeypatch.setattr(deploy.venv, "EnvBuilder", Builder)
+    previous = os.umask(0o077)
+    try:
+        if fail:
+            with pytest.raises(deploy.DeployError, match="simulated installation failure"):
+                deploy.Host.install(host, deployment.bundle, deployment.new)
+        else:
+            deploy.Host.install(host, deployment.bundle, deployment.new)
+        assert os.umask(0o077) == 0o077
+        for directory in (deployment.new, deployment.new / ".venv", deployment.new / ".venv/bin"):
+            assert directory.stat().st_mode & 0o777 == 0o755
+        assert (deployment.new / "migrations/env.py").stat().st_mode & 0o777 == 0o644
+        private = host.paths.backups / "private-mask-proof"
+        private.mkdir()
+        host.write(private / "recovery.json", b"private recovery evidence", mode=0o600)
+        assert private.stat().st_mode & 0o777 == 0o700
+        assert (private / "recovery.json").stat().st_mode & 0o777 == 0o600
+    finally:
+        os.umask(previous)
+
+
 @pytest.mark.parametrize(
     "lock",
     [
