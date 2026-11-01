@@ -12,10 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from megaraid_dashboard.storcli.exceptions import (
     StorcliCommandFailed,
+    StorcliError,
     StorcliNotAvailable,
     StorcliParseError,
     StorcliResponseFailed,
 )
+from megaraid_dashboard.storcli.states import normalize_alarm_state
 
 LOGGER = structlog.get_logger(__name__)
 _ALLOWED_COMMAND_PATTERNS = (
@@ -156,13 +158,13 @@ async def check_storcli_prewrite(
             "Controller identity changed. Stop and have the administrator verify inventory."
         )
     alarm_states = {
-        "alarm=on": {"off"},
-        "alarm=off": {"on", "silenced"},
-        "alarm=silence": {"on"},
+        "alarm=on": {"Off"},
+        "alarm=off": {"On", "Silenced"},
+        "alarm=silence": {"On"},
     }
     if (
         command_args[2] in alarm_states
-        and controller.alarm_state.lower() not in alarm_states[command_args[2]]
+        and normalize_alarm_state(controller.alarm_state) not in alarm_states[command_args[2]]
     ):
         raise StorcliCommandFailed(
             "Buzzer state is unknown or conflicts. Refresh controller status."
@@ -195,31 +197,40 @@ async def run_storcli(
 ) -> dict[str, Any]:
     command_args = _with_json_flag(args)
     _validate_command(command_args)
-    if authorization_path is not None and "show" not in command_args:
-        from megaraid_dashboard.storcli.policy import load_policy, verify_pinned_binary
+    try:
+        if authorization_path is not None and "show" not in command_args:
+            from megaraid_dashboard.storcli.policy import load_policy, verify_pinned_binary
 
-        try:
-            approved = load_policy(authorization_path)
-        except (OSError, ValueError) as exc:
-            raise StorcliNotAvailable("Authorization cannot be verified; no write sent") from exc
-        await check_storcli_prewrite(
-            command_args,
-            use_sudo=use_sudo,
-            binary_path=binary_path,
-            authorization_path=authorization_path,
-            expected_foreign_digest=expected_foreign_digest,
-            timeout_seconds=timeout_seconds,
-        )
-        try:
-            if load_policy(authorization_path) != approved:
-                raise ValueError("Command policy changed during preflight; reload and review again")
-            verify_pinned_binary(binary_path)
-        except (OSError, ValueError) as exc:
-            raise StorcliNotAvailable(
-                "Authorization changed before execution; no write sent"
-            ) from exc
-    if before_write is not None and "show" not in command_args:
-        before_write()
+            try:
+                approved = load_policy(authorization_path)
+            except (OSError, ValueError) as exc:
+                raise StorcliNotAvailable(
+                    "Authorization cannot be verified; no write sent"
+                ) from exc
+            await check_storcli_prewrite(
+                command_args,
+                use_sudo=use_sudo,
+                binary_path=binary_path,
+                authorization_path=authorization_path,
+                expected_foreign_digest=expected_foreign_digest,
+                timeout_seconds=timeout_seconds,
+            )
+            try:
+                if load_policy(authorization_path) != approved:
+                    raise ValueError(
+                        "Command policy changed during preflight; reload and review again"
+                    )
+                verify_pinned_binary(binary_path)
+            except (OSError, ValueError) as exc:
+                raise StorcliNotAvailable(
+                    "Authorization changed before execution; no write sent"
+                ) from exc
+        if before_write is not None and "show" not in command_args:
+            before_write()
+    except StorcliError as exc:
+        # All failures in this block precede write dispatch, including failed safety reads.
+        exc.write_sent = False
+        raise
     argv = [binary_path, *command_args]
     if use_sudo:
         argv = ["sudo", "-n", *argv]

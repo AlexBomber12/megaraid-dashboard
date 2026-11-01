@@ -2,6 +2,8 @@
 
 ## [Unreleased] - Maintenance handoff and versioned deployment
 
+- Share buzzer Alarm aliases between UI and live prewrite checks so firmware `Disable`
+  permits Enable; distinguish proven no-write refusals from uncertain command results.
 - Fingerprint nested root-controlled rollout evidence directories during adoption and
   preservation checks; refuse nested drift/links without changing configuration.
 - Add a hash-pinned offline release tool, detached systemd worker, durable receipts,

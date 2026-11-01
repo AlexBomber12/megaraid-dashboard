@@ -3182,7 +3182,8 @@ async def _run_controller_buzzer_action(
         outcome = "succeeded"
     except StorcliError as exc:
         storcli_error = exc
-        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+        phase = "failed before execution" if exc.write_sent is False else "failed"
+        outcome = f"{phase}: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
 
     try:
         await run_in_threadpool(
@@ -3201,6 +3202,17 @@ async def _run_controller_buzzer_action(
         return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
+        if storcli_error.write_sent is False:
+            return JSONResponse(
+                {
+                    "error": "storcli preflight failed",
+                    "action": action,
+                    "argv": argv,
+                    "detail": str(storcli_error),
+                    "execution": "not_sent",
+                },
+                status_code=409,
+            )
         return JSONResponse(
             {
                 "error": "storcli command failed",
