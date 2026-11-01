@@ -30,6 +30,23 @@ sample; it does not optimistically change state/mode. HTTP 5xx/network failures 
 uncertainty, retain the observed state and block immediate resubmission until a new sample.
 Explicit client-side refusals preserve the original button availability. No automatic retry.
 
+## Buzzer firmware spellings and command certainty
+
+The observed `Alarm` value is stored verbatim. UI selection and live prewrite checks use
+the same explicit aliases: On/Enable/Enabled, Off/Disable/Disabled, and the known silenced
+spellings. In particular, a normal sample containing `Disable` must still allow Enable.
+Unknown or conflicting state continues to refuse the write; command approval and all
+authorization/identity/maintenance checks remain required.
+
+When the wrapper proves that preflight stopped before write dispatch, the audited buzzer
+response is HTTP 409 with `execution: not_sent`. The UI says Command not sent, keeps the
+saved selection and restores button availability. Failures after dispatch, lost responses
+and audit persistence failures retain the uncertain-result path; no retry is automatic.
+
+The fake-hardware regression follows Disable -> Collector/parse/persist `Disable` ->
+Enable -> Collector/parse/persist `On`, then checks the observed segments and audit.
+This software test does not claim another physical buzzer test on SERVER.
+
 ## Schedule root cause and time semantics
 
 The preserved SERVER inspection from 2026-10-29 reports `PR Execution Delay: 168 hours`,

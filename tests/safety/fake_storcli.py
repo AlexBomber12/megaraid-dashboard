@@ -85,6 +85,10 @@ def main() -> None:
             config["controller"]["Policies"]["Use drive activity for locate"] = (
                 args[2].split("=")[1].title()
             )
+        if args[1:3] == ["set", "alarm=off"]:
+            config["controller"]["HwCfg"]["Alarm"] = "Disable"
+        if args[1:3] == ["set", "alarm=on"]:
+            config["controller"]["HwCfg"]["Alarm"] = "On"
         if args[1:3] == ["set", "offline"]:
             config["drive_state"] = "Offln"
         if args[1:3] == ["set", "missing"]:
