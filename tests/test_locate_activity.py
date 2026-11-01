@@ -465,6 +465,7 @@ def test_root_audit_identity_is_restored_even_after_error(monkeypatch: pytest.Mo
 def test_cli_is_explicit_root_only_and_never_leaks_errors(
     operation: FakeHost, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    logging_configuration = led.structlog.get_config()
     monkeypatch.setattr(led.os, "geteuid", lambda: 1234)
     assert led.main(["apply"]) == 1
     assert "sudo" in capsys.readouterr().err
@@ -478,7 +479,9 @@ def test_cli_is_explicit_root_only_and_never_leaks_errors(
 
     monkeypatch.setattr(led, "deployment_lock", lock)
     assert led.main(["prepare"]) == 0
+    assert led.structlog.get_config() == logging_configuration
     assert json.loads(capsys.readouterr().out)["state"] == "approval_prepared"
     assert operation.fake.mutations == []
     assert led.main(["plan"]) == 0
+    assert led.structlog.get_config() == logging_configuration
     assert json.loads(capsys.readouterr().out)["state"] == "plan_verified"

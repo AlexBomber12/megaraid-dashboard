@@ -428,11 +428,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     host = None
     previous_mask = None
+    previous_logging: dict[str, Any] | None = None
     try:
         if os.geteuid() != 0:
             raise RefusedError("An explicit operator sudo session is required")
         root_path(Path(__file__).absolute())
         previous_mask = os.umask(0o077)
+        previous_logging = structlog.get_config()
         structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
         host = Host()
         with deployment_lock(host.deployment):
@@ -464,6 +466,8 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             if previous_mask is not None:
                 os.umask(previous_mask)
+            if previous_logging is not None:
+                structlog.configure(**previous_logging)
 
 
 if __name__ == "__main__":
