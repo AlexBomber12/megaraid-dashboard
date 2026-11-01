@@ -35,6 +35,11 @@ The test counts below belong to the audit revision, not the current release.
 
 ## Readiness table
 
+**2026-11-01 correction:** the owner subsequently reported a physical Locate
+failure and a buzzer live-preflight alias defect on SERVER. Historical fake-test
+results below do not override those failures. Use the updated
+[hardware acceptance ledger](LOCATE_ACTIVITY_VERIFICATION.md) for release decisions.
+
 “Software verified” below means browser/API/command/audit behavior against isolated
 fake StorCLI, including relevant refusal and failure paths. It never certifies a
 physical action on the target controller. Controller writes remain conditional on

@@ -2,6 +2,12 @@
 
 ## [Unreleased] - Maintenance handoff and versioned deployment
 
+- Add an explicit, audited root-only Locate activity configuration procedure with
+  pinned help/binary, UI maintenance, readback and preserved array/settings checks;
+  physical LED acceptance remains pending and application grants stay unchanged.
+- Correct release readiness records after physical Locate failure; distinguish
+  fake software tests, observed controller state and physical acceptance.
+
 - Share buzzer Alarm aliases between UI and live prewrite checks so firmware `Disable`
   permits Enable; distinguish proven no-write refusals from uncertain command results.
 - Fingerprint nested root-controlled rollout evidence directories during adoption and

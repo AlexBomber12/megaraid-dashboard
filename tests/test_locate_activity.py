@@ -288,6 +288,54 @@ async def test_no_restore_without_a_managed_change(operation: FakeHost) -> None:
     assert operation.fake.mutations == []
 
 
+async def test_application_policy_does_not_gain_the_new_property(operation: FakeHost) -> None:
+    from megaraid_dashboard.storcli import StorcliNotAvailable
+
+    with pytest.raises(StorcliNotAvailable, match="lacks reviewed"):
+        await led.run_storcli(
+            ["/c0", "set", "activityforlocate=on"],
+            use_sudo=False,
+            binary_path=str(operation.fake.path),
+            authorization_path=str(led.POLICY),
+        )
+    assert operation.fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "problem",
+    ["identity", "model", "mode", "rows", "count", "slot", "pd_state", "vd", "settings"],
+)
+async def test_live_inventory_must_be_complete_and_optimal_before_write(
+    operation: FakeHost, problem: str
+) -> None:
+    state = json.loads((operation.fake.path.parent / "state.json").read_text())
+    data = state["controller"]
+    if problem == "identity":
+        data["Basics"]["Serial Number"] = "OTHER-CONTROLLER"
+    elif problem == "model":
+        data["Basics"]["Model"] = "Other Controller"
+    elif problem == "mode":
+        data["Policies"]["Use drive activity for locate"] = None
+    elif problem == "rows":
+        data["TOPOLOGY"] = [None]
+    elif problem == "count":
+        data["Physical Drives"] = 7
+    elif problem == "slot":
+        data["PD LIST"][0]["EID:Slt"] = "253:0"
+    elif problem == "pd_state":
+        data["PD LIST"][0]["State"] = "UBad"
+    elif problem == "vd":
+        data["VD LIST"][0]["State"] = "Dgrd"
+    else:
+        data["Defaults"] = None
+    operation.fake.configure(controller=data)
+    with pytest.raises(led.RefusedError):
+        await led.operate(operation, "apply")
+    assert operation.fake.mutations == []
+    with operation.sessions() as session:
+        assert list(session.scalars(select(AuditLog))) == []
+
+
 @pytest.mark.parametrize(
     "mode,value,allowed",
     [
