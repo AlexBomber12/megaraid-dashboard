@@ -578,6 +578,48 @@ def test_adoption_refuses_unproven_or_changed_installation(rollout: Any, problem
     assert host.commands == []
 
 
+@pytest.mark.parametrize("change", ["content", "added", "removed", "mode", "symlink"])
+def test_adoption_preserves_nested_protected_directories(rollout: Any, change: str) -> None:
+    deployment, host, _directory, _manifest_hash = rollout
+    legacy_install(deployment, host)
+    nested = host.paths.config / "evidence" / "read-only"
+    nested.mkdir(parents=True, mode=0o750)
+    evidence = nested / "approved.json"
+    evidence.write_bytes(b"protected controller evidence")
+    empty = nested / "empty"
+    empty.mkdir()
+    before_db = host.paths.database.read_bytes()
+    assert deployment.adopt()["state"] == "verified_external"
+    assert deployment.adopt()["state"] == "already_installed"
+    assert evidence.read_bytes() == b"protected controller evidence"
+    if change == "content":
+        evidence.write_bytes(b"separate actor changed the evidence")
+    elif change == "added":
+        (nested / "extra.json").write_bytes(b"added")
+    elif change == "removed":
+        empty.rmdir()
+    elif change == "mode":
+        empty.chmod(0o700)
+    else:
+        evidence.unlink()
+        evidence.symlink_to(host.paths.sudoers)
+    with pytest.raises(deploy.DeployError):
+        deployment.adopt()
+    assert host.commands == []
+    assert host.paths.database.read_bytes() == before_db
+
+
+def test_managed_rollout_preserves_nested_configuration_on_rollback(rollout: Any) -> None:
+    deployment, host, _directory, _manifest_hash = rollout
+    nested = host.paths.config / "evidence"
+    nested.mkdir()
+    evidence = nested / "approved.json"
+    evidence.write_bytes(b"protected evidence")
+    assert deployment.apply()["state"] == "verified"
+    assert deployment.rollback()["state"] == "rolled_back"
+    assert evidence.read_bytes() == b"protected evidence"
+
+
 def test_unrecorded_active_candidate_needs_explicit_adoption(rollout: Any) -> None:
     deployment, host, directory, manifest_hash = rollout
     legacy_install(deployment, host)
