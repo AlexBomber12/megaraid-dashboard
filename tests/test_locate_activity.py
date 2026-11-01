@@ -388,6 +388,39 @@ async def test_proven_no_write_attempt_can_be_explicitly_retried(operation: Fake
     assert len(audits) == 2 and not audits[0].success and audits[1].success
 
 
+async def test_restore_can_retry_only_a_proven_unsent_attempt(operation: FakeHost) -> None:
+    assert (await led.operate(operation, "apply"))["state"] == "verified"
+    original = json.loads(operation.receipt.read_text())
+    operation.failure = "expired"
+    with pytest.raises(led.RefusedError):
+        await led.operate(operation, "restore")
+    refused = json.loads(operation.receipt.read_text())
+    assert refused["state"] == "not_sent" and refused["write_dispatched"] is False
+    assert refused["restore_of"] == original
+    assert len(operation.fake.mutations) == 1
+    operation.failure = ""
+    operation.window(True)
+    assert (await led.operate(operation, "restore"))["state"] == "restored"
+    assert len(operation.fake.mutations) == 2
+    assert json.loads(operation.receipt.read_text())["restore_of"] == original
+    with operation.sessions() as session:
+        audits = list(session.scalars(select(AuditLog).order_by(AuditLog.id)))
+    assert [row.success for row in audits] == [True, False, True]
+
+
+async def test_restore_cannot_retry_uncertain_dispatch(operation: FakeHost) -> None:
+    await led.operate(operation, "apply")
+    operation.fake.configure(fault="failure")
+    with pytest.raises(led.RefusedError):
+        await led.operate(operation, "restore")
+    receipt = json.loads(operation.receipt.read_text())
+    assert receipt["state"] == "uncertain" and receipt["write_dispatched"] is True
+    operation.fake.configure(fault="success")
+    with pytest.raises(led.RefusedError, match="Earlier attempt"):
+        await led.operate(operation, "restore")
+    assert len(operation.fake.mutations) == 2
+
+
 @pytest.mark.parametrize(
     "problem", ["help_hash", "help_syntax", "approval", "directory", "symlink"]
 )

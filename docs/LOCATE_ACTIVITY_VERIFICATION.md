@@ -55,6 +55,9 @@ The CLI actions are `prepare`, `plan`, `apply`, `status` and `restore`:
    or trigger an automatic retry. `status` reads without rewriting that history.
 6. `restore` can undo a matching, verified Off -> On change during maintenance;
    it cannot blindly disable an unmanaged setting. No automatic rollback writes.
+   Each restoration attempt retains the original verified-change receipt. If
+   preflight proves that restoration was not sent, reopening maintenance permits
+   an explicit retry. An uncertain dispatched restoration still requires inspection.
 
 This tool never starts/stops Locate, Patrol, CC or rebuild, changes array
 membership, restarts the application, changes schedules/clocks or migrates the DB.

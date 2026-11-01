@@ -346,19 +346,26 @@ async def operate(host: Host, action: str) -> dict[str, Any]:
         receipt is not None
         and receipt["state"] not in {"verified", "restored"}
         and not (
-            action == "apply"
+            action in {"apply", "restore"}
             and receipt["state"] == "not_sent"
             and receipt.get("write_dispatched") is False
         )
     ):
         raise RefusedError("Earlier attempt needs inspection; no automatic retry")
-    if action == "restore" and (
-        receipt is None
-        or receipt["state"] != "verified"
-        or receipt["before"] != "off"
-        or receipt["target"] != "on"
-    ):
-        raise RefusedError("No matching verified change to restore")
+    original = receipt
+    if action == "restore":
+        if receipt is not None and receipt["state"] == "not_sent":
+            original = receipt.get("restore_of")
+        if (
+            not isinstance(original, dict)
+            or original.get("state") != "verified"
+            or original.get("before") != "off"
+            or original.get("target") != "on"
+            or original.get("command_confirmed") is not True
+            or original.get("controller_sha256") != digest(approval.controller_serial.encode())
+            or original.get("binary_sha256") != PINNED_SHA256
+        ):
+            raise RefusedError("No matching verified change to restore")
     host.guard(maintenance=True)
     argv = ["/c0", "set", "activityforlocate=" + target, "J"]
     intent = {
@@ -371,6 +378,8 @@ async def operate(host: Host, action: str) -> dict[str, Any]:
         "write_dispatched": False,
         "command_confirmed": False,
     }
+    if action == "restore":
+        intent["restore_of"] = original
     audit_id = host.audit(argv, None, "prepared; command not sent")
     intent["audit_id"] = audit_id
     host.phase(intent, "prepared")
