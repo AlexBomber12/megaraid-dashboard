@@ -8,13 +8,13 @@ only against FakeStorcli, through the real application, database, HTTP and brows
 ## Information hierarchy
 
 On SERVER, S0-S7 identify physical cage positions, not controller slot numbers.
-Front view: S0-S3 on the left map to 252:4-7, and S4-S7 on the right to 252:0-3.
+Front view is one horizontal row S0-S7: S0-S3 map to 252:4-7, S4-S7 to 252:0-3.
 Overview, the position diagram and drive titles show physical labels alongside
 unchanged controller addresses. Missing members leave physical gaps; keyboard
 order and Previous/Next follow physical order. The scenario
 `test_physical_cages_keep_controller_targets_and_missing_positions` in
-`tests/e2e/test_drive_detail_page.py` verifies real rendered positions at desktop
-and narrower widths, S0 -> /drives/252:4 -> fake Locate commands for /c0/e252/s4,
+`tests/e2e/test_drive_detail_page.py` verifies one row at desktop and narrow widths
+(horizontal scrolling, without whole-page overflow), S0 -> /drives/252:4 -> fake Locate commands for /c0/e252/s4,
 and no positional shift when S1 is absent. All hardware boundaries are mocked.
 
 Each row answers: what operation/setting, what has been observed, what can I do?

@@ -2,8 +2,8 @@
 
 ## [Unreleased] - Maintenance handoff and versioned deployment
 
-- Label SERVER cages by physical position: S0-S3 on the left map to 252:4-7,
-  S4-S7 on the right map to 252:0-3. Show controller addresses alongside labels;
+- Label SERVER cages in one horizontal row S0-S7: S0-S3 map to 252:4-7,
+  S4-S7 map to 252:0-3. Show controller addresses alongside labels;
   retain real addresses for all commands and leave gaps for missing drives.
 
 - Add an explicit, audited root-only Locate activity configuration procedure with

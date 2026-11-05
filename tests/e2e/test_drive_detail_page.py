@@ -16,7 +16,7 @@ from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
 
 
-@pytest.mark.parametrize("width", [1440, 1024])
+@pytest.mark.parametrize("width", [1440, 1024, 390])
 def test_physical_cages_keep_controller_targets_and_missing_positions(
     authenticated_page: Page,
     live_server: str,
@@ -38,10 +38,11 @@ def test_physical_cages_keep_controller_targets_and_missing_positions(
         box = tile.bounding_box()
         assert box is not None
         boxes.append(box)
-    for row in range(4):
-        assert boxes[row]["x"] < boxes[row + 4]["x"]
-        assert abs(boxes[row]["y"] - boxes[row + 4]["y"]) < 1
-    assert all(boxes[row]["y"] < boxes[row + 1]["y"] for row in range(3))
+    assert all(boxes[index]["x"] < boxes[index + 1]["x"] for index in range(7))
+    assert all(abs(box["y"] - boxes[0]["y"]) < 1 for box in boxes)
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    if width == 390:
+        assert grid.evaluate("element => element.scrollWidth > element.clientWidth")
     previews = os.environ.get("MEGARAID_SCREENSHOT_DIR")
     if previews:
         directory = Path(previews)
@@ -56,6 +57,14 @@ def test_physical_cages_keep_controller_targets_and_missing_positions(
     selected = page.locator('.backplane-slot[data-physical-slot="S0"]')
     expect(selected).to_have_attribute("aria-current", "page")
     expect(selected.locator(".drive-address")).to_have_text("252:4")
+    diagram_boxes = page.locator(".backplane-slot").evaluate_all(
+        "elements => elements.map(element => {const box = element.getBoundingClientRect(); "
+        "return {x: box.x, y: box.y};})"
+    )
+    assert len(diagram_boxes) == 8
+    assert all(diagram_boxes[i]["x"] < diagram_boxes[i + 1]["x"] for i in range(7))
+    assert all(abs(box["y"] - diagram_boxes[0]["y"]) < 1 for box in diagram_boxes)
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
     if previews:
         page.locator(".position-card").screenshot(
             path=Path(previews) / f"physical-position-{width}.png"
@@ -81,6 +90,7 @@ def test_physical_cages_keep_controller_targets_and_missing_positions(
     expect(grid.locator('[data-physical-slot="S1"]')).to_have_count(0)
     remaining = grid.locator('[data-physical-slot="S2"]').bounding_box()
     assert remaining is not None
+    assert abs(remaining["x"] - boxes[2]["x"]) < 1
     assert abs(remaining["y"] - boxes[2]["y"]) < 1
 
 

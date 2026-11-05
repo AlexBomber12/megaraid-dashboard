@@ -15,8 +15,8 @@ from command acceptance; it does not certify unrelated hardware actions.
 
 ## Physical cage labels
 
-The owner defines S0-S7 as physical front-facing cage positions. Left column,
-top to bottom: S0-S3; right column: S4-S7. Controller addresses are preserved:
+The owner defines S0-S7 as physical front-facing cage positions in one horizontal
+row, left to right. Controller addresses are preserved:
 
 | Physical cage | Controller address |
 | --- | --- |
@@ -29,7 +29,9 @@ top to bottom: S0-S3; right column: S4-S7. Controller addresses are preserved:
 | S6 | 252:2 |
 | S7 | 252:3 |
 
-Display labels and front-view placement use this mapping. URLs, action targets,
+Display labels and the single-row front view use this mapping. Narrow viewports
+scroll the diagram horizontally instead of wrapping cages into additional rows.
+URLs, action targets,
 stored controller slot IDs, serial identity and command approvals continue to
 use controller addresses. Missing drives must leave their physical positions
 empty instead of shifting neighboring cages. Previous/Next follows physical order.
