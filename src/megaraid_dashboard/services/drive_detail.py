@@ -15,6 +15,11 @@ from megaraid_dashboard.services.drive_history import (
     DriveTemperatureSeries,
     load_drive_temperature_series,
 )
+from megaraid_dashboard.services.drive_position import (
+    CONTROLLER_SLOTS_IN_PHYSICAL_ORDER,
+    physical_slot_label,
+    physical_slot_number,
+)
 from megaraid_dashboard.services.event_detector import physical_drive_state_severity
 from megaraid_dashboard.services.overview import (
     SystemHealthViewModel,
@@ -27,7 +32,6 @@ from megaraid_dashboard.services.overview import (
 )
 
 _DEFAULT_REFRESH_SECONDS = 30
-_BACKPLANE_SLOT_COUNT = 8
 _REPLACE_WARNING_TEXT = (
     "Replacing a drive changes RAID array state. Confirm the affected slot and serial number "
     "before continuing."
@@ -91,6 +95,7 @@ class PhysicalPosition:
     dg_span_row_text: str
     port_text: str
     backplane_layout: list[BackplaneSlot]
+    physical_slot_label: str
 
 
 @dataclass(frozen=True)
@@ -195,7 +200,9 @@ def load_drive_detail_view_model(
 
     now = _require_aware_utc(snapshot.captured_at)
     return DriveDetailViewModel(
-        page_title=f"Slot {drive.enclosure_id}:{drive.slot_id} (S{drive.slot_id})",
+        page_title=(
+            f"{physical_slot_label(drive.slot_id)} · Slot {drive.enclosure_id}:{drive.slot_id}"
+        ),
         page_subtitle=f"{drive.model} / {drive.serial_number}",
         prev_drive_url=_neighbor_drive_url(snapshot.physical_drives, drive, offset=-1),
         next_drive_url=_neighbor_drive_url(snapshot.physical_drives, drive, offset=1),
@@ -206,6 +213,7 @@ def load_drive_detail_view_model(
             days=range_days,
         ),
         position=PhysicalPosition(
+            physical_slot_label=physical_slot_label(drive.slot_id),
             enclosure=drive.enclosure_id,
             slot=drive.slot_id,
             disk_group_id=drive.disk_group_id,
@@ -347,7 +355,7 @@ def _load_backplane_layout(
     }
     return [
         BackplaneSlot(
-            slot_label=f"S{slot_id}",
+            slot_label=physical_slot_label(slot_id),
             enclosure_id=this_enclosure,
             slot_id=slot_id,
             is_this=slot_id == this_slot,
@@ -357,7 +365,7 @@ def _load_backplane_layout(
             ),
             detail_url=f"/drives/{this_enclosure}:{slot_id}",
         )
-        for slot_id in range(_BACKPLANE_SLOT_COUNT)
+        for slot_id in CONTROLLER_SLOTS_IN_PHYSICAL_ORDER
     ]
 
 
@@ -575,7 +583,9 @@ def _neighbor_drive_url(
     *,
     offset: int,
 ) -> str | None:
-    sorted_drives = sorted(drives, key=lambda drive: (drive.enclosure_id, drive.slot_id))
+    sorted_drives = sorted(
+        drives, key=lambda drive: (drive.enclosure_id, physical_slot_number(drive.slot_id))
+    )
     current_index = next(
         (
             index

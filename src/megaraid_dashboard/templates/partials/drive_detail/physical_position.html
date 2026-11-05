@@ -8,7 +8,8 @@
     {% endwith %}
     <dl class="kv-grid">
       <div><dt>Enclosure</dt><dd>{{ view_model.position.enclosure }}</dd></div>
-      <div><dt>Slot</dt><dd>{{ view_model.position.slot }}</dd></div>
+      <div><dt>Physical slot</dt><dd>{{ view_model.position.physical_slot_label }}</dd></div>
+      <div><dt>Controller slot</dt><dd>{{ view_model.position.slot }}</dd></div>
       <div><dt>DG / Span / Row</dt><dd>{{ view_model.position.dg_span_row_text }}</dd></div>
       <div><dt>Port</dt><dd>{{ view_model.position.port_text }}</dd></div>
     </dl>

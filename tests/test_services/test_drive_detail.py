@@ -60,7 +60,8 @@ def test_drive_detail_view_model_smoke_healthy_drive(session: Session) -> None:
         app_version="1.2.3",
     )
 
-    assert view_model.page_title == "Slot 252:4 (S4)"
+    assert view_model.page_title == "S0 · Slot 252:4"
+    assert view_model.position.physical_slot_label == "S0"
     assert view_model.page_subtitle == "ST1000-4 / SN0004"
     assert view_model.health.state == "ONLN"
     assert view_model.health.state_severity == "optimal"
@@ -70,7 +71,7 @@ def test_drive_detail_view_model_smoke_healthy_drive(session: Session) -> None:
     assert view_model.identity.raw_size_text == "1.0 TB"
     assert view_model.connection.sas_address == "5000c5000004"
     assert view_model.position.dg_span_row_text == "N/A"
-    assert view_model.position.backplane_layout[4].is_this is True
+    assert view_model.position.backplane_layout[0].is_this is True
     assert view_model.system_health.app_version == "1.2.3"
     assert view_model.auto_refresh_seconds == 30
 
@@ -144,7 +145,10 @@ def test_position_diagram_has_eight_entries_and_one_current_slot(session: Sessio
 
     assert len(layout) == 8
     assert sum(slot.is_this for slot in layout) == 1
-    assert layout[4].detail_url == "/drives/252:4"
+    assert [(item.slot_label, item.detail_url) for item in layout] == [
+        (f"S{physical}", f"/drives/252:{controller}")
+        for physical, controller in enumerate((4, 5, 6, 7, 0, 1, 2, 3))
+    ]
 
 
 def test_position_diagram_severity_reflects_drive_tile_severity(session: Session) -> None:
@@ -157,10 +161,11 @@ def test_position_diagram_severity_reflects_drive_tile_severity(session: Session
         settings=get_settings(),
     )
 
-    assert layout[0].severity == "optimal"
-    assert layout[1].severity == "warning"
-    assert layout[2].severity == "critical"
-    assert layout[3].severity == "critical"
+    by_controller_slot = {item.slot_id: item for item in layout}
+    assert by_controller_slot[0].severity == "optimal"
+    assert by_controller_slot[1].severity == "warning"
+    assert by_controller_slot[2].severity == "critical"
+    assert by_controller_slot[3].severity == "critical"
 
 
 def test_advanced_actions_mark_ubad_unavailable_for_legacy_cli(session: Session) -> None:
@@ -226,15 +231,15 @@ def test_replace_wizard_step_is_loaded_from_latest_mid_flow_event(session: Sessi
 def test_prev_next_drive_urls_do_not_wrap(session: Session) -> None:
     _seed_snapshot(session)
 
-    middle = _load_slot(session, 4)
-    first = _load_slot(session, 0)
-    last = _load_slot(session, 7)
+    middle = _load_slot(session, 6)
+    first = _load_slot(session, 4)
+    last = _load_slot(session, 3)
 
-    assert middle.prev_drive_url == "/drives/252:3"
-    assert middle.next_drive_url == "/drives/252:5"
+    assert middle.prev_drive_url == "/drives/252:5"
+    assert middle.next_drive_url == "/drives/252:7"
     assert first.prev_drive_url is None
-    assert first.next_drive_url == "/drives/252:1"
-    assert last.prev_drive_url == "/drives/252:6"
+    assert first.next_drive_url == "/drives/252:5"
+    assert last.prev_drive_url == "/drives/252:2"
     assert last.next_drive_url is None
 
 
@@ -302,7 +307,7 @@ def test_backplane_layout_defaults_without_snapshot_or_settings(session: Session
     layout = _load_backplane_layout(session, this_enclosure=252, this_slot=7)
 
     assert len(layout) == 8
-    assert layout[7].is_this is True
+    assert layout[3].is_this is True
     assert {slot.severity for slot in layout} == {"neutral"}
 
 

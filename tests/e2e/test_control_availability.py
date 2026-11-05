@@ -127,12 +127,12 @@ def test_read_only_controls_never_post_or_mutate(
         expect(button.locator("..")).to_have_attribute(
             "aria-sort", "ascending" if next_direction == "descending" else "descending"
         )
-    page.goto(f"{live_server}/drives/252:0")
+    page.goto(f"{live_server}/drives/252:4")
     expect(page.get_by_label("Previous drive")).to_have_attribute("aria-disabled", "true")
     page.get_by_label("Next drive").click()
-    page.wait_for_url("**/drives/252:1", wait_until="load")
+    page.wait_for_url("**/drives/252:5", wait_until="load")
     page.get_by_label("Previous drive").click()
-    page.wait_for_url("**/drives/252:0", wait_until="load")
+    page.wait_for_url("**/drives/252:4", wait_until="load")
     for days in (7, 30, 365):
         with page.expect_response("**/charts?*") as response:
             page.get_by_role("tab", name=f"{days}d", exact=True).click()

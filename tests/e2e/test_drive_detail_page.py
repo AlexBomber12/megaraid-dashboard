@@ -3,15 +3,85 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, Route, expect
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from megaraid_dashboard.db import Event, PhysicalDriveSnapshot, get_engine, get_sessionmaker
 from tests.e2e.conftest import _LiveServerHandle, assert_chart_height_within, login_and_navigate
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
+
+
+@pytest.mark.parametrize("width", [1440, 1024])
+def test_physical_cages_keep_controller_targets_and_missing_positions(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
+    maintenance_mode: None,
+    width: int,
+) -> None:
+    page = authenticated_page
+    page.set_viewport_size({"width": width, "height": 1000})
+    login_and_navigate(page, f"{live_server}/")
+    grid = page.locator(".drive-grid-v2")
+    controllers = (4, 5, 6, 7, 0, 1, 2, 3)
+    boxes = []
+    for physical, controller in enumerate(controllers):
+        tile = grid.locator(f'[data-physical-slot="S{physical}"]')
+        expect(tile).to_have_attribute("href", f"/drives/252:{controller}")
+        expect(tile.locator(".drive-address")).to_have_text(f"252:{controller}")
+        box = tile.bounding_box()
+        assert box is not None
+        boxes.append(box)
+    for row in range(4):
+        assert boxes[row]["x"] < boxes[row + 4]["x"]
+        assert abs(boxes[row]["y"] - boxes[row + 4]["y"]) < 1
+    assert all(boxes[row]["y"] < boxes[row + 1]["y"] for row in range(3))
+    previews = os.environ.get("MEGARAID_SCREENSHOT_DIR")
+    if previews:
+        directory = Path(previews)
+        directory.mkdir(parents=True, exist_ok=True)
+        page.locator(".drive-grid-section-v2").screenshot(
+            path=directory / f"physical-cages-{width}.png"
+        )
+
+    grid.locator('[data-physical-slot="S0"]').click()
+    page.wait_for_url("**/drives/252:4")
+    expect(page.get_by_role("heading", level=1)).to_have_text("S0 · Slot 252:4")
+    selected = page.locator('.backplane-slot[data-physical-slot="S0"]')
+    expect(selected).to_have_attribute("aria-current", "page")
+    expect(selected.locator(".drive-address")).to_have_text("252:4")
+    if previews:
+        page.locator(".position-card").screenshot(
+            path=Path(previews) / f"physical-position-{width}.png"
+        )
+    page.get_by_role("button", name="Start Locate LED").click()
+    expect(page.locator("[data-action-feedback]")).to_contain_text("Controller accepted start")
+    page.get_by_role("button", name="Stop Locate LED").click()
+    expect(page.locator("[data-action-feedback]")).to_contain_text("Controller accepted stop")
+    assert fake_storcli.mutations == [
+        ["/c0/e252/s4", "start", "locate", "J"],
+        ["/c0/e252/s4", "stop", "locate", "J"],
+    ]
+
+    engine = get_engine(snapshot_with_drives)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                delete(PhysicalDriveSnapshot).where(PhysicalDriveSnapshot.slot_id == 5)
+            )
+    finally:
+        engine.dispose()
+    page.goto(f"{live_server}/")
+    expect(grid.locator('[data-physical-slot="S1"]')).to_have_count(0)
+    remaining = grid.locator('[data-physical-slot="S2"]').bounding_box()
+    assert remaining is not None
+    assert abs(remaining["y"] - boxes[2]["y"]) < 1
 
 
 def test_drive_detail_navigation_charts_actions_and_replace(
@@ -37,7 +107,7 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     expect(authenticated_page.locator("svg.error-sparkline")).to_be_visible()
     backplane_slots = authenticated_page.locator(".backplane-diagram .backplane-slot")
     expect(backplane_slots).to_have_count(8)
-    expect(backplane_slots.filter(has_text="S0")).to_have_attribute("aria-current", "page")
+    expect(backplane_slots.filter(has_text="S4")).to_have_attribute("aria-current", "page")
 
     assert_chart_height_within(authenticated_page, "#temperature-history-chart", 280)
 

@@ -19,9 +19,11 @@
     {% for tile in tiles %}
       <a
         class="drive-tile-v2 drive-tile-v2--{{ tile.tile_severity }}"
+        data-physical-slot="{{ tile.slot_label }}"
         href="{{ root_path }}{{ tile.detail_url }}"
       >
         <span class="drive-tile-v2__slot"><span class="visually-hidden">Slot </span>{{ tile.slot_label }}</span>
+        <span class="drive-address">{{ tile.enclosure_id }}:{{ tile.slot_id }}</span>
         <span class="drive-tile-v2__state status-text--{{ tile.state_severity }}">{{ tile.state_text }}</span>
         <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
           {% if tile.temperature_celsius is not none %}{{ tile.temperature_celsius | celsius }}{% else %}Temp unknown{% endif %}

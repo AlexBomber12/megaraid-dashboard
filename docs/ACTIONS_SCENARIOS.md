@@ -7,6 +7,16 @@ only against FakeStorcli, through the real application, database, HTTP and brows
 
 ## Information hierarchy
 
+On SERVER, S0-S7 identify physical cage positions, not controller slot numbers.
+Front view: S0-S3 on the left map to 252:4-7, and S4-S7 on the right to 252:0-3.
+Overview, the position diagram and drive titles show physical labels alongside
+unchanged controller addresses. Missing members leave physical gaps; keyboard
+order and Previous/Next follow physical order. The scenario
+`test_physical_cages_keep_controller_targets_and_missing_positions` in
+`tests/e2e/test_drive_detail_page.py` verifies real rendered positions at desktop
+and narrower widths, S0 -> /drives/252:4 -> fake Locate commands for /c0/e252/s4,
+and no positional shift when S1 is absent. All hardware boundaries are mocked.
+
 Each row answers: what operation/setting, what has been observed, what can I do?
 Running/Stopped/Paused/Unknown are compact state badges. Start/Stop are commands, not
 state indicators: maintenance can disable both while an operation is still running.

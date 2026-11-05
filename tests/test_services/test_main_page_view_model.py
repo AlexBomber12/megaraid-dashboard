@@ -55,8 +55,14 @@ def test_main_page_with_warning_drive_temperature(
     )
 
     assert view_model.controller.state == "OPTIMAL"
-    assert view_model.drive_grid.tiles[0].temperature_state == "warning"
-    assert view_model.drive_grid.tiles[0].tile_severity == "warning"
+    assert (
+        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).temperature_state
+        == "warning"
+    )
+    assert (
+        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).tile_severity
+        == "warning"
+    )
     assert view_model.drive_grid.worst_severity == "warning"
 
 
@@ -76,8 +82,14 @@ def test_main_page_with_failed_drive(
     )
 
     assert view_model.controller.state == "CRITICAL"
-    assert view_model.drive_grid.tiles[0].state_severity == "critical"
-    assert view_model.drive_grid.tiles[0].tile_severity == "critical"
+    assert (
+        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).state_severity
+        == "critical"
+    )
+    assert (
+        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).tile_severity
+        == "critical"
+    )
 
 
 def test_main_page_with_active_patrol_read(
@@ -166,7 +178,10 @@ def test_main_page_error_badge_aggregation(
         app_version="0.1.0",
     )
 
-    assert view_model.drive_grid.tiles[0].error_badge_count == 6
+    assert (
+        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).error_badge_count
+        == 6
+    )
 
 
 def test_main_page_error_badge_hidden_when_all_zero(
@@ -184,7 +199,10 @@ def test_main_page_error_badge_hidden_when_all_zero(
         app_version="0.1.0",
     )
 
-    assert view_model.drive_grid.tiles[0].error_badge_count is None
+    assert (
+        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).error_badge_count
+        is None
+    )
 
 
 def test_main_page_drive_grid_sort_order(
@@ -204,9 +222,10 @@ def test_main_page_drive_grid_sort_order(
         app_version="0.1.0",
     )
 
-    assert [(tile.enclosure_id, tile.slot_id) for tile in view_model.drive_grid.tiles] == sorted(
-        (drive.enclosure_id, drive.slot_id) for drive in drives
-    )
+    assert [(tile.enclosure_id, tile.slot_id) for tile in view_model.drive_grid.tiles] == [
+        (252, controller) for controller in (4, 5, 6, 7, 0, 1, 2, 3)
+    ]
+    assert [tile.slot_label for tile in view_model.drive_grid.tiles] == [f"S{i}" for i in range(8)]
 
 
 def test_main_page_recent_activity_limit_10(

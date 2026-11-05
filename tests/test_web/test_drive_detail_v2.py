@@ -126,9 +126,9 @@ def test_drive_footer_uses_shared_collector_state(
 
 
 def test_drive_detail_v2_prev_next_nav_states(sample_snapshot: StorcliSnapshot) -> None:
-    first = _parse(_drive_detail_response(sample_snapshot, slot_id=0).text)
-    middle = _parse(_drive_detail_response(sample_snapshot, slot_id=4).text)
-    last = _parse(_drive_detail_response(sample_snapshot, slot_id=7).text)
+    first = _parse(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    middle = _parse(_drive_detail_response(sample_snapshot, slot_id=6).text)
+    last = _parse(_drive_detail_response(sample_snapshot, slot_id=3).text)
 
     assert _nav_labels(first) == ["Next drive"]
     assert _nav_labels(middle) == ["Previous drive", "Next drive"]
