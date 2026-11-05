@@ -133,7 +133,10 @@ def test_overview_drive_summary_promotes_rebuilding_non_optimal_state_to_warning
     )
 
     assert view_model.drive_summary.warning == 1
-    assert view_model.physical_drives[0].row_state == "warning"
+    assert (
+        next(row for row in view_model.physical_drives if row.slot == "252:0").row_state
+        == "warning"
+    )
 
 
 # --- Line 736: _empty_next_run_text with naive scheduler run time --------------

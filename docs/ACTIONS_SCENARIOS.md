@@ -16,6 +16,8 @@ order and Previous/Next follow physical order. The scenario
 `tests/e2e/test_drive_detail_page.py` verifies one row at desktop and narrow widths
 (horizontal scrolling, without whole-page overflow), S0 -> /drives/252:4 -> fake Locate commands for /c0/e252/s4,
 and no positional shift when S1 is absent. All hardware boundaries are mocked.
+Drives initially sorts by physical S number, and the Slot column toggles S0-S7
+ascending/descending. Live refresh preserves the chosen order and real-address links.
 
 Each row answers: what operation/setting, what has been observed, what can I do?
 Running/Stopped/Paused/Unknown are compact state badges. Start/Stop are commands, not

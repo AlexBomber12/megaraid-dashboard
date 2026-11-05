@@ -25,7 +25,7 @@
     <tbody>
       {% for drive in drives %}
         <tr data-row-state="{{ drive.row_state }}">
-          <td class="mono" data-label="Slot" data-sort-value="{{ drive.slot }}">
+          <td class="mono" data-label="Slot" data-sort-value="{{ drive.physical_slot_label }}">
             <span class="physical-slot-label">{{ drive.physical_slot_label }}</span>
             {% if drive.slot_url %}<a href="{{ drive.slot_url }}">{{ drive.slot }}</a>{% else %}{{ drive.slot }}{% endif %}
           </td>

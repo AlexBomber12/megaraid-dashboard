@@ -5,6 +5,8 @@
 - Label SERVER cages in one horizontal row S0-S7: S0-S3 map to 252:4-7,
   S4-S7 map to 252:0-3. Show controller addresses alongside labels;
   retain real addresses for all commands and leave gaps for missing drives.
+- Sort the Drives list by physical S number by default and on Slot header clicks;
+  preserve the chosen direction through live refresh and retain real-address links.
 
 - Add an explicit, audited root-only Locate activity configuration procedure with
   pinned help/binary, UI maintenance, readback and preserved array/settings checks;

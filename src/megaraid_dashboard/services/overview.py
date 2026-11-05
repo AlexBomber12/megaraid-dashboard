@@ -613,7 +613,10 @@ def load_drive_list_view_model(
         )
 
     sorted_drives = tuple(
-        sorted(snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id))
+        sorted(
+            snapshot.physical_drives,
+            key=lambda drive: (drive.enclosure_id, physical_slot_number(drive.slot_id)),
+        )
     )
     temp_warning = settings.temp_warning_celsius
     temp_critical = settings.temp_critical_celsius

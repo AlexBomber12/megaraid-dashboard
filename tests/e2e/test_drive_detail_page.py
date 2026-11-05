@@ -78,6 +78,34 @@ def test_physical_cages_keep_controller_targets_and_missing_positions(
         ["/c0/e252/s4", "stop", "locate", "J"],
     ]
 
+    page.goto(f"{live_server}/drives")
+    table = page.locator("#physical-drives-table")
+    labels = table.locator(".physical-slot-label")
+    ascending = [f"S{number}" for number in range(8)]
+    expect(labels).to_have_text(ascending)
+    rows = table.locator("tbody tr")
+    for index, controller in enumerate(controllers):
+        expect(rows.nth(index).locator('td[data-label="Slot"] a')).to_have_attribute(
+            "href", f"/drives/252:{controller}"
+        )
+    sort_slot = table.locator('th[data-sort-key="slot"] button')
+    sort_slot.click()
+    expect(labels).to_have_text(list(reversed(ascending)))
+    table.evaluate("element => { element.dataset.sortProbe = 'before-refresh'; }")
+    with page.expect_response(
+        lambda response: response.url == f"{live_server}/drives" and response.status == 200
+    ):
+        page.get_by_role("button", name="Refresh now").click()
+    expect(table).not_to_have_attribute("data-sort-probe", "before-refresh")
+    expect(labels).to_have_text(list(reversed(ascending)))
+    expect(rows.first.locator('td[data-label="Slot"] a')).to_have_attribute("href", "/drives/252:3")
+    sort_slot.click()
+    expect(labels).to_have_text(ascending)
+    if previews:
+        page.locator("#drives-live").screenshot(
+            path=Path(previews) / f"drives-by-physical-slot-{width}.png"
+        )
+
     engine = get_engine(snapshot_with_drives)
     try:
         with engine.begin() as connection:
