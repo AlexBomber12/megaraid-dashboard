@@ -2,8 +2,10 @@
 
 Scope: Controller Actions, its Overview summary, maintenance, drive Actions and their
 confirmation/recovery paths. This is a software acceptance checklist, not permission to
-exercise a healthy RAID. Production checks are GET-only. Controller mutations below run
-only against FakeStorcli, through the real application, database, HTTP and browser gates.
+exercise a healthy RAID. Deployment UI checks are GET-only. Automated controller mutations
+below run only against FakeStorcli, through the real application/database/browser gates.
+Separately authorized physical LED and buzzer-setting acceptance is recorded in
+[the hardware ledger](LOCATE_ACTIVITY_VERIFICATION.md).
 
 ## Information hierarchy
 
@@ -61,7 +63,12 @@ and audit persistence failures retain the uncertain-result path; no retry is aut
 
 The fake-hardware regression follows Disable -> Collector/parse/persist `Disable` ->
 Enable -> Collector/parse/persist `On`, then checks the observed segments and audit.
-This software test does not claim another physical buzzer test on SERVER.
+That software test is separate from the supervised 2026-11-06 SERVER acceptance:
+initial Disable -> Enable -> normal sample On at 14:03 UTC -> Disable -> normal
+sample Disable at 14:08 UTC. Success audit and observed-change events match; no
+uncertainty remained. Initial Disabled was restored and maintenance closed. The
+check changed only the alarm setting twice, with no array job, induced fault or
+physical sound/Silence acceptance.
 
 ## Schedule root cause and time semantics
 
@@ -168,6 +175,9 @@ These are software passes; a fake test never proves a physical effect.
 | A31 | Switch chart ranges and inspect dates | All chart initializers retain readable local ticks and full tooltips | `test_chart_time_labels` |
 | A32 | Maintenance while a real hardware incident occurs | Incident eligibility preserved; operator audit noise not sent | notifier/Telegram unit suite; existing one-message production receipt evidence |
 
-No scenario above initiates CC, Patrol, a learn cycle, LED action, disk state change,
-replacement, degraded array or rebuild on SERVER. Physical buzzer/LED behavior, disk removal,
-replacement and media recovery remain untested on healthy production hardware.
+The automated scenarios above use fake hardware and initiate no real CC, Patrol,
+learn cycle, disk state change, replacement or rebuild. Separately, the owner confirmed
+all eight physical Locate LEDs on 2026-11-06. #146 production UI checks verified the
+one-row mapping and Drives sort/refresh; buzzer setting acceptance is a separate
+supervised check that passed on 2026-11-06. Acoustic effects, disk removal, replacement and media recovery remain
+unverified on production hardware.

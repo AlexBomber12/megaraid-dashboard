@@ -1,6 +1,6 @@
 # MegaRAID Dashboard — maintenance roadmap
 
-Updated: **2026-11-01**. Installed application: `27af3da` (#141) on SERVER.
+Updated: **2026-11-06**. Installed application: `8b60b72` (#146) on SERVER.
 [CURRENT_STATE.md](CURRENT_STATE.md) records the production verification boundary.
 This plan grants no controller mutation, notification, deployment or recurring automation.
 
@@ -18,7 +18,12 @@ This plan grants no controller mutation, notification, deployment or recurring a
 - Numeric CacheVault Learn Cycle recovery (#137); no clock/firmware/schedule change.
 - Versioned application-only rollout with detached execution, durable status,
   repeat-request handling and guarded rollback; see [the procedure](VERSIONED_DEPLOYMENT.md).
-  Isolated tooling tests are not proof that a managed production update occurred.
+  Managed production update #146 reached verified on 2026-11-06; actual rollback
+  remains untested on SERVER. Application rollback preserves live DB history.
+- One-row physical S0-S7 labels and Drives sort/refresh/navigation verified after
+  installation; owner confirmed all eight physical Locate LEDs. Buzzer setting
+  Disable -> On -> Disable acceptance passed with normal samples and audit on
+  2026-11-06; initial Disabled restored, maintenance closed. Acoustic/Silence unverified.
 - Reconciled source/Obsidian documentation and [maintenance handoff](MAINTENANCE_HANDOFF.md).
 
 ## Remaining work

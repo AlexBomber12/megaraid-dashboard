@@ -1,6 +1,15 @@
 # Changelog
 
-## [Unreleased] - Maintenance handoff and versioned deployment
+## Production checkpoint — 2026-11-06 (#146)
+
+Installed `8b60b7242c0b908ff4fc86a8f07a8aa983288109` after fresh +1 and all green CI.
+Managed activation reached verified with a newer normal Collector sample and preserved
+settings/policy/configuration. Production UI verified all cage labels, eight detail pages,
+physical navigation and Drives sort/refresh. Owner confirmed all eight physical Locate LEDs.
+Real Buzzer Disable -> On -> Disable setting/audit acceptance passed with normal samples;
+initial Disabled restored, maintenance closed. Silence/acoustic alarm and real rollback unverified.
+
+### Delivered through #146
 
 - Label SERVER cages in one horizontal row S0-S7: S0-S3 map to 252:4-7,
   S4-S7 map to 252:0-3. Show controller addresses alongside labels;
@@ -10,7 +19,7 @@
 
 - Add an explicit, audited root-only Locate activity configuration procedure with
   pinned help/binary, UI maintenance, readback and preserved array/settings checks;
-  physical LED acceptance remains pending and application grants stay unchanged.
+  all eight physical Locate LEDs are now owner-confirmed; application grants stay unchanged.
 - Correct release readiness records after physical Locate failure; distinguish
   fake software tests, observed controller state and physical acceptance.
 
@@ -27,11 +36,11 @@
 
 ## Production checkpoint — 2026-11-01
 
-Installed application: `27af3da` (#141), including #139 readable times/control simplification,
+Historical installed application: `27af3da` (#141), including #139 readable times/control simplification,
 #140 compact scheduling/observed state and #141 Reported schedule/live Observed header.
 Fresh review and CI passed before activation. Production GET checks exercised manual and
 automatic refresh using normal samples; settings/grants preserved and no controller writes.
-Tooling above is separate from this already-installed application checkpoint.
+This historical checkpoint was superseded by the managed #146 activation on 2026-11-06.
 
 ## Delivered in #139 - Readable chart times and observed mode labels
 
