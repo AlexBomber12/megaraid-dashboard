@@ -163,7 +163,7 @@ def test_position_diagram_severity_reflects_drive_tile_severity(session: Session
 
     by_controller_slot = {item.slot_id: item for item in layout}
     assert by_controller_slot[0].severity == "optimal"
-    assert by_controller_slot[1].severity == "warning"
+    assert by_controller_slot[1].severity == "critical"
     assert by_controller_slot[2].severity == "critical"
     assert by_controller_slot[3].severity == "critical"
 
@@ -381,7 +381,7 @@ def test_smart_errors_and_unconfigured_sas_drive_populate_detail_text(session: S
         app_version="test",
     )
 
-    assert view_model.health.state_severity == "warning"
+    assert view_model.health.state_severity == "critical"
     assert view_model.health.smart_status == "ALERT"
     assert view_model.health.smart_severity == "critical"
     assert "1 historical media error" in view_model.health.summary_text

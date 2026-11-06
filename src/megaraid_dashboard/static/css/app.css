@@ -740,6 +740,9 @@ select.input { padding-right: var(--space-8); }
 .backplane-slot--this { background: var(--color-accent-soft); color: var(--color-accent); outline: 1px solid var(--color-accent-line); }
 .backplane-diagram--compact .backplane-slot { width: 80px; min-height: 44px; font-size: var(--fs-xs); }
 .drive-address { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--color-muted-strong); }
+.drive-health-label { font-size: var(--fs-sm); line-height: 1.25; }
+.drive-health-raw { color: var(--color-muted-strong); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.drive-health-reason { display: block; font-size: var(--fs-xs); line-height: 1.35; overflow-wrap: anywhere; }
 .physical-slot-label { margin-right: var(--space-2); font-weight: var(--fw-strong); }
 .drive-grid-v2 > [data-physical-slot="S0"], .backplane-diagram > [data-physical-slot="S0"] { grid-column: 1; grid-row: 1; }
 .drive-grid-v2 > [data-physical-slot="S1"], .backplane-diagram > [data-physical-slot="S1"] { grid-column: 2; grid-row: 1; }

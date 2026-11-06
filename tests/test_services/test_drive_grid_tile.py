@@ -30,7 +30,7 @@ def test_state_severity_mapping_for_all_states() -> None:
     )
     assert (
         _drive_grid_tile(_drive(state="UBad"), temp_warning=55, temp_critical=60).state_severity
-        == "warning"
+        == "critical"
     )
     assert (
         _drive_grid_tile(_drive(state="Rebld"), temp_warning=55, temp_critical=60).state_severity
@@ -59,13 +59,13 @@ def test_tile_severity_takes_worst_of_temp_and_state() -> None:
     )
 
     assert hot_online.tile_severity == "critical"
-    assert cool_unconfigured_bad.tile_severity == "warning"
+    assert cool_unconfigured_bad.tile_severity == "critical"
 
 
 def test_missing_temperature_is_optimal_for_grid_tint() -> None:
     tile = _drive_grid_tile(_drive(temperature=None), temp_warning=55, temp_critical=60)
 
-    assert tile.temperature_state == "optimal"
+    assert tile.temperature_state == "unknown"
     assert tile.tile_severity == "optimal"
 
 

@@ -76,9 +76,10 @@ def test_main_page_renders_new_overview(
     assert "Updated:" not in response.text
     assert response.text.count("LSI MegaRAID SAS 9270CV-8i") == 1
     assert (
-        '<a href="/controller" class="controller-card controller-card--optimal">' in response.text
+        '<a href="/controller" class="controller-card controller-card--warning">' in response.text
     )
-    assert '<div class="controller-state">OPTIMAL</div>' in response.text
+    assert '<div class="controller-state">WARNING</div>' in response.text
+    assert "1 historical media error." in response.text
     assert 'status-badge--optimal">OPTIMAL' not in response.text
     assert '<div class="controller-card-row2">' in response.text
     assert response.text.count('<div class="metric-item">') == 4
@@ -87,7 +88,7 @@ def test_main_page_renders_new_overview(
     assert '<span class="metric-label">BBU</span>' in response.text
     assert '<span class="metric-label">Errors (24h)</span>' in response.text
     assert "110&deg;C" in response.text
-    assert "OPTIMAL" in response.text
+    assert "WARNING" in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert '<span class="drive-error-badge-v2" title="1 drive errors">' in response.text
     assert '1<span class="visually-hidden"> errors</span>' in response.text
