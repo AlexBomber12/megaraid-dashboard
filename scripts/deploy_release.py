@@ -448,6 +448,15 @@ class Host:
         return value
 
     def install(self, bundle: Bundle, target: Path) -> None:
+        # The unprivileged service must traverse/read application and venv files.
+        # Private rollout records keep their surrounding restrictive mask.
+        previous_mask = os.umask(0o022)
+        try:
+            self._install_application(bundle, target)
+        finally:
+            os.umask(previous_mask)
+
+    def _install_application(self, bundle: Bundle, target: Path) -> None:
         target.mkdir(mode=0o755)
         for name, content in bundle.files.items():
             destination = target / (

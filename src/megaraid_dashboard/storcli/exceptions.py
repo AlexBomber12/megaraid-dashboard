@@ -6,6 +6,9 @@ from typing import Any
 class StorcliError(Exception):
     """Base exception for storcli wrapper failures."""
 
+    # False is proof that preflight refused before dispatch; None remains uncertain.
+    write_sent: bool | None = None
+
 
 class StorcliCommandFailed(StorcliError):  # noqa: N818
     """Raised when storcli exits non-zero or returns a failure command status."""

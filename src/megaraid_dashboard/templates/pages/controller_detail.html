@@ -132,6 +132,7 @@
           const detail = payload.detail;
           const message = payload.message || (detail && detail.message) ||
             (typeof detail === "string" ? detail : "") || payload.error || fallback;
+          if (payload.execution === "not_sent") return "Command not sent. " + message;
           return message + " Inspect controller status and the audit log before retrying.";
         }
         if (typeof payload === "string" && payload.trim()) return payload.trim();

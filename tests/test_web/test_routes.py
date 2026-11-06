@@ -440,7 +440,7 @@ def test_drive_detail_slot_ref_route_renders_detail(sample_snapshot: StorcliSnap
         response = client.get("/drives/252:4")
 
     assert response.status_code == 200
-    assert '<span aria-current="page">Slot 252:4</span>' in response.text
+    assert '<span aria-current="page">S0 · Slot 252:4</span>' in response.text
 
 
 def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapshot) -> None:
@@ -500,7 +500,7 @@ def test_drive_detail_renders_attributes_and_chart_area(
         overview_response = client.get("/")
 
     assert response.status_code == 200
-    assert '<span aria-current="page">Slot 252:4</span>' in response.text
+    assert '<span aria-current="page">S0 · Slot 252:4</span>' in response.text
     assert '<span class="mono">WDC WD30EFRX-68EUZN0</span>' in response.text
     assert "WD-WM00000005" in response.text
     assert 'id="chart-area"' in response.text

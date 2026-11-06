@@ -25,6 +25,7 @@ from megaraid_dashboard.db.models import (
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
+from megaraid_dashboard.services.drive_position import physical_slot_label, physical_slot_number
 from megaraid_dashboard.services.event_detector import (
     physical_drive_state_severity,
     virtual_drive_state_severity,
@@ -61,6 +62,7 @@ class PhysicalDriveRow:
     predictive_failures: int
     smart_label: str
     smart_severity: str
+    physical_slot_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -288,7 +290,8 @@ def _load_drive_grid(
             temp_critical=settings.temp_critical_celsius,
         )
         for drive in sorted(
-            snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id)
+            snapshot.physical_drives,
+            key=lambda drive: (drive.enclosure_id, physical_slot_number(drive.slot_id)),
         )
     ]
     worst_severity = "optimal"
@@ -359,7 +362,7 @@ def _drive_grid_tile(
         + drive.predictive_failures
     )
     return DriveGridTileViewModel(
-        slot_label=f"S{drive.slot_id}",
+        slot_label=physical_slot_label(drive.slot_id),
         enclosure_id=drive.enclosure_id,
         slot_id=drive.slot_id,
         temperature_celsius=drive.temperature_celsius,
@@ -610,7 +613,10 @@ def load_drive_list_view_model(
         )
 
     sorted_drives = tuple(
-        sorted(snapshot.physical_drives, key=lambda drive: (drive.enclosure_id, drive.slot_id))
+        sorted(
+            snapshot.physical_drives,
+            key=lambda drive: (drive.enclosure_id, physical_slot_number(drive.slot_id)),
+        )
     )
     temp_warning = settings.temp_warning_celsius
     temp_critical = settings.temp_critical_celsius
@@ -781,6 +787,7 @@ def _physical_drive_row(
     )
     return PhysicalDriveRow(
         slot=f"{drive.enclosure_id}:{drive.slot_id}",
+        physical_slot_label=physical_slot_label(drive.slot_id),
         slot_url=slot_url,
         model=drive.model,
         serial_number=drive.serial_number,

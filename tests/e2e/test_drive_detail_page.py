@@ -3,15 +3,123 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, Route, expect
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from megaraid_dashboard.db import Event, PhysicalDriveSnapshot, get_engine, get_sessionmaker
 from tests.e2e.conftest import _LiveServerHandle, assert_chart_height_within, login_and_navigate
 from tests.safety.harness import FakeStorcli, database_observation, prepare
 from tests.safety.scenarios import ACTIONS, Action
+
+
+@pytest.mark.parametrize("width", [1440, 1024, 390])
+def test_physical_cages_keep_controller_targets_and_missing_positions(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
+    maintenance_mode: None,
+    width: int,
+) -> None:
+    page = authenticated_page
+    page.set_viewport_size({"width": width, "height": 1000})
+    login_and_navigate(page, f"{live_server}/")
+    grid = page.locator(".drive-grid-v2")
+    controllers = (4, 5, 6, 7, 0, 1, 2, 3)
+    boxes = []
+    for physical, controller in enumerate(controllers):
+        tile = grid.locator(f'[data-physical-slot="S{physical}"]')
+        expect(tile).to_have_attribute("href", f"/drives/252:{controller}")
+        expect(tile.locator(".drive-address")).to_have_text(f"252:{controller}")
+        box = tile.bounding_box()
+        assert box is not None
+        boxes.append(box)
+    assert all(boxes[index]["x"] < boxes[index + 1]["x"] for index in range(7))
+    assert all(abs(box["y"] - boxes[0]["y"]) < 1 for box in boxes)
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    if width == 390:
+        assert grid.evaluate("element => element.scrollWidth > element.clientWidth")
+    previews = os.environ.get("MEGARAID_SCREENSHOT_DIR")
+    if previews:
+        directory = Path(previews)
+        directory.mkdir(parents=True, exist_ok=True)
+        page.locator(".drive-grid-section-v2").screenshot(
+            path=directory / f"physical-cages-{width}.png"
+        )
+
+    grid.locator('[data-physical-slot="S0"]').click()
+    page.wait_for_url("**/drives/252:4")
+    expect(page.get_by_role("heading", level=1)).to_have_text("S0 · Slot 252:4")
+    selected = page.locator('.backplane-slot[data-physical-slot="S0"]')
+    expect(selected).to_have_attribute("aria-current", "page")
+    expect(selected.locator(".drive-address")).to_have_text("252:4")
+    diagram_boxes = page.locator(".backplane-slot").evaluate_all(
+        "elements => elements.map(element => {const box = element.getBoundingClientRect(); "
+        "return {x: box.x, y: box.y};})"
+    )
+    assert len(diagram_boxes) == 8
+    assert all(diagram_boxes[i]["x"] < diagram_boxes[i + 1]["x"] for i in range(7))
+    assert all(abs(box["y"] - diagram_boxes[0]["y"]) < 1 for box in diagram_boxes)
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    if previews:
+        page.locator(".position-card").screenshot(
+            path=Path(previews) / f"physical-position-{width}.png"
+        )
+    page.get_by_role("button", name="Start Locate LED").click()
+    expect(page.locator("[data-action-feedback]")).to_contain_text("Controller accepted start")
+    page.get_by_role("button", name="Stop Locate LED").click()
+    expect(page.locator("[data-action-feedback]")).to_contain_text("Controller accepted stop")
+    assert fake_storcli.mutations == [
+        ["/c0/e252/s4", "start", "locate", "J"],
+        ["/c0/e252/s4", "stop", "locate", "J"],
+    ]
+
+    page.goto(f"{live_server}/drives")
+    table = page.locator("#physical-drives-table")
+    labels = table.locator(".physical-slot-label")
+    ascending = [f"S{number}" for number in range(8)]
+    expect(labels).to_have_text(ascending)
+    rows = table.locator("tbody tr")
+    for index, controller in enumerate(controllers):
+        expect(rows.nth(index).locator('td[data-label="Slot"] a')).to_have_attribute(
+            "href", f"/drives/252:{controller}"
+        )
+    sort_slot = table.locator('th[data-sort-key="slot"] button')
+    sort_slot.click()
+    expect(labels).to_have_text(list(reversed(ascending)))
+    table.evaluate("element => { element.dataset.sortProbe = 'before-refresh'; }")
+    with page.expect_response(
+        lambda response: response.url == f"{live_server}/drives" and response.status == 200
+    ):
+        page.get_by_role("button", name="Refresh now").click()
+    expect(table).not_to_have_attribute("data-sort-probe", "before-refresh")
+    expect(labels).to_have_text(list(reversed(ascending)))
+    expect(rows.first.locator('td[data-label="Slot"] a')).to_have_attribute("href", "/drives/252:3")
+    sort_slot.click()
+    expect(labels).to_have_text(ascending)
+    if previews:
+        page.locator("#drives-live").screenshot(
+            path=Path(previews) / f"drives-by-physical-slot-{width}.png"
+        )
+
+    engine = get_engine(snapshot_with_drives)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                delete(PhysicalDriveSnapshot).where(PhysicalDriveSnapshot.slot_id == 5)
+            )
+    finally:
+        engine.dispose()
+    page.goto(f"{live_server}/")
+    expect(grid.locator('[data-physical-slot="S1"]')).to_have_count(0)
+    remaining = grid.locator('[data-physical-slot="S2"]').bounding_box()
+    assert remaining is not None
+    assert abs(remaining["x"] - boxes[2]["x"]) < 1
+    assert abs(remaining["y"] - boxes[2]["y"]) < 1
 
 
 def test_drive_detail_navigation_charts_actions_and_replace(
@@ -37,7 +145,7 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     expect(authenticated_page.locator("svg.error-sparkline")).to_be_visible()
     backplane_slots = authenticated_page.locator(".backplane-diagram .backplane-slot")
     expect(backplane_slots).to_have_count(8)
-    expect(backplane_slots.filter(has_text="S0")).to_have_attribute("aria-current", "page")
+    expect(backplane_slots.filter(has_text="S4")).to_have_attribute("aria-current", "page")
 
     assert_chart_height_within(authenticated_page, "#temperature-history-chart", 280)
 

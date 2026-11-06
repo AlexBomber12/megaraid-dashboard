@@ -99,6 +99,8 @@ def test_mutation_result_matrix(
     expected = (
         500
         if fault == "audit"
+        else 409
+        if action.family == "buzzer" and fault == "unavailable"
         else 502
         if action.name == "mark-ubad"
         else (303 if action.family in {"advanced", "buzzer"} else 200)

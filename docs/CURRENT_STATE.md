@@ -6,6 +6,15 @@ in ignored recovery material. Do not publish credentials, serials or raw logs.
 
 ## Installed release
 
+**2026-11-01 acceptance update:** physical Locate identification failed despite an
+accepted command. Buzzer Enable also exposed a firmware `Disable` alias mismatch
+in the live prewrite guard. A combined correction is under review, not installed.
+The owner authorized one supervised Locate activity setting change. Readback On,
+unchanged array/other settings and live buzzer Enable preflight were confirmed on
+2026-11-01; on 2026-11-05 the owner reported that physical LED identification works.
+The application changes remain unreleased. See
+[hardware acceptance and current readiness](LOCATE_ACTIVITY_VERIFICATION.md).
+
 | Item | Verified state |
 | --- | --- |
 | Application | `27af3da95318ce3f902eaa9bf6a86dad89710da2`, merged [PR #141](https://github.com/AlexBomber12/megaraid-dashboard/pull/141) |

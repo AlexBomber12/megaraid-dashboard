@@ -3182,7 +3182,8 @@ async def _run_controller_buzzer_action(
         outcome = "succeeded"
     except StorcliError as exc:
         storcli_error = exc
-        outcome = f"failed: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
+        phase = "failed before execution" if exc.write_sent is False else "failed"
+        outcome = f"{phase}: {type(exc).__name__}: {_truncate_audit_detail(str(exc))}"
 
     try:
         await run_in_threadpool(
@@ -3201,6 +3202,17 @@ async def _run_controller_buzzer_action(
         return _audit_persistence_failure_response(**extras)
 
     if storcli_error is not None:
+        if storcli_error.write_sent is False:
+            return JSONResponse(
+                {
+                    "error": "storcli preflight failed",
+                    "action": action,
+                    "argv": argv,
+                    "detail": str(storcli_error),
+                    "execution": "not_sent",
+                },
+                status_code=409,
+            )
         return JSONResponse(
             {
                 "error": "storcli command failed",
@@ -3252,12 +3264,12 @@ def _buzzer_audit_message(
     username = str(request.scope.get("user_username", "unknown"))
     if action == "silence":
         return (
-            f"Buzzer silenced by operator {username}; runtime alarm state changed without "
-            "changing persistent buzzer setting"
+            f"Buzzer silence requested by operator {username}; "
+            "target: silence current alarm without disabling future alarms; result:"
         )
     if action == "disable":
-        return f"Buzzer disabled by operator {username}; persistent buzzer setting changed to off"
-    return f"Buzzer enabled by operator {username}; persistent buzzer setting changed to on"
+        return f"Buzzer disable requested by operator {username}; target setting: off; result:"
+    return f"Buzzer enable requested by operator {username}; target setting: on; result:"
 
 
 def _record_controller_buzzer_operator_action_sync(

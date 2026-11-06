@@ -47,19 +47,19 @@ def app_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
             "/controller/buzzer/silence",
             ["/c0", "set", "alarm=silence"],
             "controller_buzzer_silence",
-            "Buzzer silenced by operator admin",
+            "Buzzer silence requested by operator admin",
         ),
         (
             "/controller/buzzer/disable",
             ["/c0", "set", "alarm=off"],
             "controller_buzzer_disable",
-            "Buzzer disabled by operator admin",
+            "Buzzer disable requested by operator admin",
         ),
         (
             "/controller/buzzer/enable",
             ["/c0", "set", "alarm=on"],
             "controller_buzzer_enable",
-            "Buzzer enabled by operator admin",
+            "Buzzer enable requested by operator admin",
         ),
     ],
 )
@@ -166,8 +166,10 @@ def test_silence_storcli_failure_returns_502(
         }
         event = _single_event(test_app)
         assert event.category == "controller_buzzer_silence"
-        assert event.summary.startswith("Buzzer silenced by operator admin")
+        assert event.summary.startswith("Buzzer silence requested by operator admin")
         assert "failed: StorcliCommandFailed" in event.summary
+        assert "state changed" not in event.summary
+        assert "Buzzer silenced" not in event.summary
 
 
 def test_silence_without_maintenance_mode_returns_403_and_skips_storcli(
@@ -200,8 +202,10 @@ def test_silence_without_maintenance_mode_returns_403_and_skips_storcli(
         assert calls == []
         event = _single_event(test_app)
         assert event.category == "controller_buzzer_silence"
-        assert event.summary.startswith("Buzzer silenced by operator admin")
+        assert event.summary.startswith("Buzzer silence requested by operator admin")
         assert event.summary.endswith("rejected: maintenance_mode required")
+        assert "state changed" not in event.summary
+        assert "Buzzer silenced" not in event.summary
 
 
 def test_silence_without_maintenance_mode_audit_failure_returns_500(

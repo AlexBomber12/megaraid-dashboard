@@ -31,6 +31,11 @@ root:root, mode 0755. Do not run a worker from a service- or user-writable tool 
 Do not extend passwordless sudo to this program. The operator's existing sudo password
 authorization remains necessary.
 
+Only non-secret application/venv creation temporarily uses a 022 file mask so the
+unprivileged service can read/traverse its new release. The previous private mask is
+restored even after installation failure; recovery/configuration records retain their
+explicit private modes. Existing deployment/configuration permissions are not rewritten.
+
 The manifest SHA-256 is an approval anchor, not a digital signature. Capture it from
 the reviewed preparation and put that exact value in the activation command. Never
 recalculate and accept a new digest from mutable staging just to make a refusal pass.

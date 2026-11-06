@@ -7,6 +7,18 @@ only against FakeStorcli, through the real application, database, HTTP and brows
 
 ## Information hierarchy
 
+On SERVER, S0-S7 identify physical cage positions, not controller slot numbers.
+Front view is one horizontal row S0-S7: S0-S3 map to 252:4-7, S4-S7 to 252:0-3.
+Overview, the position diagram and drive titles show physical labels alongside
+unchanged controller addresses. Missing members leave physical gaps; keyboard
+order and Previous/Next follow physical order. The scenario
+`test_physical_cages_keep_controller_targets_and_missing_positions` in
+`tests/e2e/test_drive_detail_page.py` verifies one row at desktop and narrow widths
+(horizontal scrolling, without whole-page overflow), S0 -> /drives/252:4 -> fake Locate commands for /c0/e252/s4,
+and no positional shift when S1 is absent. All hardware boundaries are mocked.
+Drives initially sorts by physical S number, and the Slot column toggles S0-S7
+ascending/descending. Live refresh preserves the chosen order and real-address links.
+
 Each row answers: what operation/setting, what has been observed, what can I do?
 Running/Stopped/Paused/Unknown are compact state badges. Start/Stop are commands, not
 state indicators: maintenance can disable both while an operation is still running.
@@ -29,6 +41,27 @@ replacement during the request. Success announces acceptance and waits for a new
 sample; it does not optimistically change state/mode. HTTP 5xx/network failures announce
 uncertainty, retain the observed state and block immediate resubmission until a new sample.
 Explicit client-side refusals preserve the original button availability. No automatic retry.
+
+## Buzzer firmware spellings and command certainty
+
+The observed `Alarm` value is stored verbatim. UI selection and live prewrite checks use
+the same explicit aliases: On/Enable/Enabled, Off/Disable/Disabled, and the known silenced
+spellings. In particular, a normal sample containing `Disable` must still allow Enable.
+Unknown or conflicting state continues to refuse the write; command approval and all
+authorization/identity/maintenance checks remain required.
+
+Operator event text describes the request and its target, followed by the actual
+outcome. Failed or rejected entries must not start by claiming the setting changed
+or the physical buzzer was silenced. Existing historical events are not rewritten.
+
+When the wrapper proves that preflight stopped before write dispatch, the audited buzzer
+response is HTTP 409 with `execution: not_sent`. The UI says Command not sent, keeps the
+saved selection and restores button availability. Failures after dispatch, lost responses
+and audit persistence failures retain the uncertain-result path; no retry is automatic.
+
+The fake-hardware regression follows Disable -> Collector/parse/persist `Disable` ->
+Enable -> Collector/parse/persist `On`, then checks the observed segments and audit.
+This software test does not claim another physical buzzer test on SERVER.
 
 ## Schedule root cause and time semantics
 

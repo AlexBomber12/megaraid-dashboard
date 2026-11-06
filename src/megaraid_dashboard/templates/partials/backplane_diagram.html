@@ -7,9 +7,13 @@
     {% set severity_class = {"critical": "critical", "crit": "critical", "warning": "warning", "warn": "warning", "degraded": "warning", "optimal": "optimal", "ok": "optimal"}.get(slot.severity, "unknown") %}
     <a
       class="backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}"
+      data-physical-slot="{{ slot.slot_label }}"
       href="{{ slot.detail_url }}"
       title="Slot {{ slot.slot_label }} · {{ severity_class | title }}"
       {% if slot.is_this %}aria-current="page"{% endif %}
-    >{{ slot.slot_label }}</a>
+    >
+      <span>{{ slot.slot_label }}</span>
+      <span class="drive-address">{{ slot.enclosure_id }}:{{ slot.slot_id }}</span>
+    </a>
   {% endfor %}
 </div>

@@ -54,7 +54,7 @@ def test_drive_row_with_warning_temperature_and_degraded_state_emits_one_badge(
 ) -> None:
     _insert(session, _snapshot(sample_snapshot, pd_state="Degraded", temperatures=(56,)))
 
-    drive = _first_drive_row(session)
+    drive = _controller_zero_row(session)
 
     assert _warning_or_critical_badges(drive.row_state, drive.temperature_severity) == ("warning",)
 
@@ -65,7 +65,7 @@ def test_drive_row_with_warning_temperature_and_optimal_state_emits_one_warning_
 ) -> None:
     _insert(session, _snapshot(sample_snapshot, pd_state="Onln", temperatures=(56,)))
 
-    drive = _first_drive_row(session)
+    drive = _controller_zero_row(session)
 
     assert _warning_or_critical_badges(drive.row_state, drive.temperature_severity) == ("warning",)
 
@@ -76,17 +76,17 @@ def test_drive_row_with_failed_state_and_optimal_temperature_emits_one_critical_
 ) -> None:
     _insert(session, _snapshot(sample_snapshot, pd_state="Failed", temperatures=(50,)))
 
-    drive = _first_drive_row(session)
+    drive = _controller_zero_row(session)
 
     assert _warning_or_critical_badges(drive.row_state, drive.temperature_severity) == ("critical",)
 
 
-def _first_drive_row(session: Session):
+def _controller_zero_row(session: Session):
     view_model = load_drive_list_view_model(
         session,
         slot_url_factory=lambda enclosure_id, slot_id: f"/drives/{enclosure_id}/{slot_id}",
     )
-    return view_model.physical_drives[0]
+    return next(row for row in view_model.physical_drives if row.slot == "252:0")
 
 
 def _warning_or_critical_badges(*severities: str) -> tuple[str, ...]:

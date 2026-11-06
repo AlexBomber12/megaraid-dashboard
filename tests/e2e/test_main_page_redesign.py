@@ -29,7 +29,7 @@ def test_main_page_redesign_navigation_and_live_refresh(
     drive_tiles = authenticated_page.locator(".drive-tile-v2")
     expect(drive_tiles).to_have_count(8)
     drive_tiles.first.click()
-    authenticated_page.wait_for_url("**/drives/252:0")
+    authenticated_page.wait_for_url("**/drives/252:4")
 
     authenticated_page.goto(f"{live_server}/")
     authenticated_page.locator("nav[aria-label='Primary navigation']").get_by_text(

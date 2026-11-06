@@ -2,6 +2,7 @@
 
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +18,61 @@ from tests.safety.scenarios import ACTIONS
 from tests.test_storcli.test_policy import policy_data
 from tests.test_web.test_drive_actions_routes import app_settings  # noqa: F401
 from tests.test_web.test_drive_detail_actions import _insert_app_snapshot
+
+
+@pytest.mark.parametrize(
+    "state,name,allowed",
+    [
+        ("Disable", "enable", True),
+        ("Disabled", "enable", True),
+        (" Off ", "enable", True),
+        ("Enable", "disable", True),
+        ("Enabled", "silence", True),
+        ("Silenced", "disable", True),
+        ("Unknown", "enable", False),
+        ("Disable", "disable", False),
+        ("On", "enable", False),
+        ("NotEnabled", "disable", False),
+    ],
+)
+def test_buzzer_firmware_aliases_and_prewrite_proof(
+    full_app: Any, state: str, name: str, allowed: bool
+) -> None:
+    client, app, fake, _contract = full_app
+    action = next(a for a in ACTIONS if a.name == f"buzzer-{name}")
+    prepare(action, SimpleNamespace(app=app), fake)
+    configuration = json.loads((fake.path.parent / "state.json").read_text())
+    configuration["controller"]["HwCfg"]["Alarm"] = state
+    fake.configure(controller=configuration["controller"])
+    response = client.post(action.path, follow_redirects=False)
+    assert response.status_code == (303 if allowed else 409), response.text
+    assert fake.mutations == ([list(action.command)] if allowed else [])
+    if not allowed:
+        assert response.json()["execution"] == "not_sent"
+        assert "Buzzer state" in response.json()["detail"]
+        assert "failed before execution" in client.get("/events").text
+
+
+def test_prewrite_buzzer_audit_failure_still_requires_attention(
+    full_app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy.exc import SQLAlchemyError
+
+    client, app, fake, _contract = full_app
+    action = next(a for a in ACTIONS if a.name == "buzzer-disable")
+    prepare(action, SimpleNamespace(app=app), fake)
+    configuration = json.loads((fake.path.parent / "state.json").read_text())
+    configuration["controller"]["HwCfg"]["Alarm"] = "Unknown"
+    fake.configure(controller=configuration["controller"])
+
+    def fail_audit(*_args: Any, **_kwargs: Any) -> None:
+        raise SQLAlchemyError("isolated audit storage failure")
+
+    monkeypatch.setattr(routes, "record_operator_action", fail_audit)
+    response = client.post(action.path, follow_redirects=False)
+    assert response.status_code == 500
+    assert "audit" in response.text.lower()
+    assert fake.mutations == []
 
 
 @pytest.fixture

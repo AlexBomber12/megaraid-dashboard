@@ -46,13 +46,29 @@ def test_drive_list_marks_non_online_info_state_as_warning(
         slot_url_factory=lambda enclosure_id, slot_id: f"/drives/{enclosure_id}:{slot_id}",
     )
 
-    rebuilding_drive = view_model.physical_drives[0]
+    rebuilding_drive = next(row for row in view_model.physical_drives if row.slot == "252:0")
     assert rebuilding_drive.state == "Rbld"
     assert rebuilding_drive.row_state == "warning"
     assert rebuilding_drive.status_icon == "alert-triangle"
     assert view_model.drive_summary.optimal == 7
     assert view_model.drive_summary.warning == 1
     assert view_model.drive_summary.critical == 0
+
+
+def test_drive_list_defaults_to_physical_slot_order(
+    session: Session, sample_snapshot: StorcliSnapshot
+) -> None:
+    _insert(session, sample_snapshot)
+    view_model = load_drive_list_view_model(
+        session,
+        slot_url_factory=lambda enclosure, slot: f"/drives/{enclosure}:{slot}",
+    )
+    assert [row.physical_slot_label for row in view_model.physical_drives] == [
+        f"S{number}" for number in range(8)
+    ]
+    assert [(row.slot, row.slot_url) for row in view_model.physical_drives] == [
+        (f"252:{slot}", f"/drives/252:{slot}") for slot in (4, 5, 6, 7, 0, 1, 2, 3)
+    ]
 
 
 def _insert(session: Session, snapshot: StorcliSnapshot) -> None:
