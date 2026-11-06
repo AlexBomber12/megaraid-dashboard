@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.services.controller_detail import load_controller_detail_view_model
 from megaraid_dashboard.services.drive_detail import load_drive_detail_view_model
 from megaraid_dashboard.services.drive_health import assess_drive_health
 from megaraid_dashboard.services.overview import (
@@ -148,5 +150,15 @@ def test_saved_drive_has_one_assessment_on_all_surfaces(
     assert tile.detail_url == row.slot_url == "/drives/252:4"
     selected_slot = next(slot for slot in detail.position.backplane_layout if slot.is_this)
     assert selected_slot.severity == severity
-    if smart or predictive:
-        assert overview.controller.state == "CRITICAL"
+    expected_summary = "OPTIMAL" if severity == "optimal" else severity.upper()
+    assert overview.controller.state == expected_summary
+    controller = load_controller_detail_view_model(
+        session,
+        settings=settings,
+        scheduler=None,
+        collector_enabled=False,
+        app_start_time=datetime(2026, 1, 1, tzinfo=UTC),
+        app_version="test",
+        roc_history_chart_url="/charts/roc",
+    )
+    assert controller.health.state == expected_summary

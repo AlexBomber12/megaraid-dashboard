@@ -16,9 +16,9 @@ addresses and all command/action eligibility checks remain unchanged.
 | Online without reported issues | Healthy | Raw controller state remains visible |
 
 Critical signals take precedence over warnings; all reported reasons stay visible.
-Onln does not override SMART/predictive alerts. Controller-level aggregation also
-includes these drive faults/counters; it retains its separate existing temperature
-indicators. Missing temperature stays explicitly unknown and does not invent a
+Onln does not override SMART/predictive alerts. Both Overview and Controller summary
+aggregation include these drive faults, counters and configured drive temperature
+grades. Missing temperature stays explicitly unknown and does not invent a
 physical failure. Unrecognized state spellings are warnings.
 
 This changes presentation only: event severity, Telegram delivery, persistence,

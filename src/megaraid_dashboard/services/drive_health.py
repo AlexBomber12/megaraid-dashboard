@@ -25,8 +25,8 @@ def assess_drive_health(
 ) -> DriveHealthAssessment:
     """Combine reported faults without treating historical counters as drive failure.
 
-    Temperature is optional for controller-level aggregation, where it has its own
-    indicators. Every drive surface supplies the same configured temperature grade.
+    Every live view supplies the same configured temperature grade. The default
+    also supports state/counter-only callers without inventing a temperature.
     Raw firmware states and counters remain unchanged and visible in the UI.
     """
     state = normalized_state(drive.state)

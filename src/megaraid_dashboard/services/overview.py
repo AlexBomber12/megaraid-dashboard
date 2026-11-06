@@ -224,7 +224,6 @@ def _load_controller_summary(
     snapshot: ControllerSnapshot | None,
     now: datetime,
 ) -> ControllerSummaryViewModel:
-    del settings
     if snapshot is None:
         return ControllerSummaryViewModel(
             state="UNKNOWN",
@@ -255,6 +254,9 @@ def _load_controller_summary(
             snapshot,
             snapshot.physical_drives,
             snapshot.virtual_drives,
+            physical_drive_severity=_physical_drive_aggregate_status(
+                snapshot.physical_drives, settings=settings
+            ),
         ).upper(),
         model=snapshot.model_name,
         serial=snapshot.serial_number,
@@ -891,10 +893,23 @@ def _virtual_drive_controller_health_status(
 
 def _physical_drive_aggregate_status(
     physical_drives: Sequence[PhysicalDriveSnapshot],
+    *,
+    settings: Settings | None = None,
 ) -> Literal["optimal", "warning", "critical"]:
     severity: Literal["optimal", "warning", "critical"] = "optimal"
     for physical_drive in physical_drives:
-        severity = _worst_controller_health(severity, assess_drive_health(physical_drive).severity)
+        temperature = (
+            "unknown"
+            if settings is None
+            else temperature_severity(
+                physical_drive.temperature_celsius,
+                temp_warning=settings.temp_warning_celsius,
+                temp_critical=settings.temp_critical_celsius,
+            )
+        )
+        severity = _worst_controller_health(
+            severity, assess_drive_health(physical_drive, temperature=temperature).severity
+        )
     return severity
 
 

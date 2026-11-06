@@ -15,13 +15,25 @@ from tests.safety.harness import FakeStorcli
 
 @pytest.mark.parametrize("width", [1440, 1024, 390])
 @pytest.mark.parametrize(
-    ("state", "smart", "predictive", "media", "severity", "label", "reason"),
+    ("state", "smart", "predictive", "media", "temperature", "severity", "label", "reason"),
     [
-        ("Onln", True, 0, 0, "critical", "Critical", "S.M.A.R.T. alert is active."),
-        ("Onln", False, 1, 0, "critical", "Critical", "1 predictive failure."),
-        ("UBad", False, 0, 0, "critical", "Critical", "Controller marks drive unusable (UBad)."),
-        ("Onln", False, 0, 1, "warning", "Attention", "1 historical media error."),
-        ("UGood", False, 0, 0, "optimal", "Ready", ""),
+        ("Onln", True, 0, 0, 35, "critical", "Critical", "S.M.A.R.T. alert is active."),
+        ("Onln", False, 1, 0, 35, "critical", "Critical", "1 predictive failure."),
+        (
+            "UBad",
+            False,
+            0,
+            0,
+            35,
+            "critical",
+            "Critical",
+            "Controller marks drive unusable (UBad).",
+        ),
+        ("Onln", False, 0, 1, 35, "warning", "Attention", "1 historical media error."),
+        ("UGood", False, 0, 0, 35, "optimal", "Ready", ""),
+        ("Onln", False, 0, 0, 56, "warning", "Attention", "Drive temperature is elevated."),
+        ("Onln", False, 0, 0, 61, "critical", "Critical", "Drive temperature is critical."),
+        ("Mystery", False, 0, 0, 35, "warning", "Attention", "Unrecognized drive state: Mystery."),
     ],
 )
 def test_fault_health_and_recovery_across_all_views(
@@ -34,6 +46,7 @@ def test_fault_health_and_recovery_across_all_views(
     smart: bool,
     predictive: int,
     media: int,
+    temperature: int,
     severity: str,
     label: str,
     reason: str,
@@ -52,6 +65,7 @@ def test_fault_health_and_recovery_across_all_views(
                     smart_alert=False if recovered else smart,
                     predictive_failures=0 if recovered else predictive,
                     media_errors=0 if recovered else media,
+                    temperature_celsius=35 if recovered else temperature,
                 )
             )
 
@@ -62,6 +76,8 @@ def test_fault_health_and_recovery_across_all_views(
         expect(tile).to_have_class(f"drive-tile-v2 drive-tile-v2--{severity}")
         expect(tile.locator(".drive-health-label")).to_have_text(label)
         expect(tile.locator(".drive-health-raw")).to_have_text(state)
+        expected_summary = "OPTIMAL" if severity == "optimal" else severity.upper()
+        expect(page.locator(".controller-state")).to_have_text(expected_summary)
         if reason:
             expect(tile.locator(".drive-health-reason")).to_have_text(reason)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
@@ -104,6 +120,7 @@ def test_fault_health_and_recovery_across_all_views(
         expect(row.locator(".status-badge")).to_contain_text("Healthy")
         expect(row.locator(".drive-health-reason")).to_have_count(0)
         page.goto(f"{live_server}/")
+        expect(page.locator(".controller-state")).to_have_text("OPTIMAL")
         expect(tile).to_have_class("drive-tile-v2 drive-tile-v2--optimal")
         expect(tile.locator(".drive-health-label")).to_have_text("Healthy")
         page.goto(f"{live_server}/drives/252:4")
