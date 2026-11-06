@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
 
+from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.models import (
     ControllerSnapshot,
     PhysicalDriveSnapshot,
@@ -57,8 +58,11 @@ _RUNTIME_METRICS = (
 
 
 class MegaraidCollector:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self, session_factory: sessionmaker[Session], *, settings: Settings | None = None
+    ) -> None:
         self._session_factory = session_factory
+        self._settings = settings
         self._cache: tuple[int | None, list[GaugeMetricFamily]] = (None, [])
 
     def collect(self) -> Iterable[GaugeMetricFamily]:
@@ -122,7 +126,11 @@ class MegaraidCollector:
         controller_labels = [snap.model_name, snap.serial_number]
         controller_health.add_metric(
             controller_labels,
-            float(_encode_controller_health(snap, physical_drives, virtual_drives)),
+            float(
+                _encode_controller_health(
+                    snap, physical_drives, virtual_drives, settings=self._settings
+                )
+            ),
         )
         controller_families = [controller_health]
         if snap.roc_temperature_celsius is not None:
@@ -163,10 +171,12 @@ def _encode_controller_health(
     snap: ControllerSnapshot,
     pds: list[PhysicalDriveSnapshot],
     vds: list[VirtualDriveSnapshot],
+    *,
+    settings: Settings | None = None,
 ) -> int:
     from megaraid_dashboard.services.overview import derive_controller_health
 
-    health = derive_controller_health(snap, pds, vds)
+    health = derive_controller_health(snap, pds, vds, settings=settings)
     return {
         "optimal": 0,
         "warning": 1,
@@ -192,7 +202,9 @@ def _encode_vd_state(state: str) -> int:
     return 2
 
 
-def build_registry(session_factory: sessionmaker[Session] | None = None) -> CollectorRegistry:
+def build_registry(
+    session_factory: sessionmaker[Session] | None = None, *, settings: Settings | None = None
+) -> CollectorRegistry:
     registry = CollectorRegistry(auto_describe=True)
     for metric in _RUNTIME_METRICS:
         registry.register(metric)
@@ -203,7 +215,7 @@ def build_registry(session_factory: sessionmaker[Session] | None = None) -> Coll
     )
     up.set(1)
     if session_factory is not None:
-        registry.register(MegaraidCollector(session_factory))
+        registry.register(MegaraidCollector(session_factory, settings=settings))
     return registry
 
 
@@ -213,9 +225,11 @@ async def metrics_endpoint(request: Request) -> Response:
     return Response(body, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
-def create_metrics_app(session_factory: sessionmaker[Session] | None = None) -> Starlette:
+def create_metrics_app(
+    session_factory: sessionmaker[Session] | None = None, *, settings: Settings | None = None
+) -> Starlette:
     app = Starlette(routes=[Route("/metrics", endpoint=metrics_endpoint)])
-    app.state.registry = build_registry(session_factory)
+    app.state.registry = build_registry(session_factory, settings=settings)
     return app
 
 

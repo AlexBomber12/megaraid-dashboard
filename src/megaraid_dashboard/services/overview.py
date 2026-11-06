@@ -24,6 +24,7 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
 )
+from megaraid_dashboard.services.controller_health import assess_controller_components
 from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
 from megaraid_dashboard.services.drive_health import assess_drive_health
 from megaraid_dashboard.services.drive_position import physical_slot_label, physical_slot_number
@@ -257,6 +258,7 @@ def _load_controller_summary(
             physical_drive_severity=_physical_drive_aggregate_status(
                 snapshot.physical_drives, settings=settings
             ),
+            settings=settings,
         ).upper(),
         model=snapshot.model_name,
         serial=snapshot.serial_number,
@@ -744,20 +746,25 @@ def derive_controller_health(
     virtual_drives: Sequence[VirtualDriveSnapshot],
     *,
     physical_drive_severity: str | None = None,
+    settings: Settings | None = None,
 ) -> Literal["optimal", "warning", "critical"]:
     # ``snapshot.alarm_state`` reflects the HwCfg buzzer-enabled flag, not an
     # active alarm condition, so it must not influence controller health.
-    del snapshot
-    severity: Literal["optimal", "warning", "critical"] = "optimal"
+    severity = assess_controller_components(snapshot, settings=settings).severity
     resolved_physical_drive_severity = physical_drive_severity
     if resolved_physical_drive_severity is None:
-        resolved_physical_drive_severity = _physical_drive_aggregate_status(physical_drives)
+        resolved_physical_drive_severity = _physical_drive_aggregate_status(
+            physical_drives, settings=settings
+        )
     severity = _worst_controller_health(severity, resolved_physical_drive_severity)
 
     severity = _worst_controller_health(
         severity,
         _virtual_drive_controller_health_status(virtual_drives),
     )
+
+    if not physical_drives or not virtual_drives:
+        severity = "critical"
 
     return severity
 

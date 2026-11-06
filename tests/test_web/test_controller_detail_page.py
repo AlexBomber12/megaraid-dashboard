@@ -65,9 +65,12 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert '<span aria-current="page">Controller</span>' in html
     assert "MegaRAID SAS 9270CV-8i" in html
     assert "SN SV00000001." in html
-    assert '<div class="health-card health-card--optimal">' in html
-    assert '<strong class="health-card__state status-text--optimal">OPTIMAL</strong>' in html
-    health_summary = "All systems nominal. 0/0 drives online. RAID unknown healthy."
+    assert '<div class="health-card health-card--critical">' in html
+    assert '<strong class="health-card__state status-text--critical">CRITICAL</strong>' in html
+    health_summary = (
+        "Controller requires attention. CacheVault is not detected. 0/0 drives online. "
+        "RAID unknown virtual-drive state: No virtual drives reported."
+    )
     assert f'<span class="health-card__detail">{health_summary}</span>' in html
     assert ">Health Snapshot</h2>" in html
     for label in ("RoC Temp", "CacheVault", "BBU", "Mem ECC Errors", "Errors (24h)", "Uptime"):

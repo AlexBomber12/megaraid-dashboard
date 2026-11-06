@@ -39,6 +39,17 @@
     <div class="app-shell">
       <main class="page-content">
         <div class="form-error" role="alert" data-request-error hidden></div>
+        <div id="observation-warning-slot" data-live-region>
+          {% if observation_warning %}
+            <div class="alert alert--warning" role="alert" data-observation-warning>
+              <svg class="alert__icon" aria-hidden="true">
+                <use href="{{ request.url_for('static', path='icons.svg').path }}#icon-alert-triangle"/>
+              </svg>
+              <strong>Monitoring needs attention</strong>
+              <p>{{ observation_warning }}</p>
+            </div>
+          {% endif %}
+        </div>
         {% block content %}{% endblock %}
       </main>
 

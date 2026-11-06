@@ -22,6 +22,13 @@ CATALOG = [
     ("vd_state", "critical", {"state": "OfLn"}, "массив недоступен.", True),
     ("vd_state", "critical", {"state": "Failed"}, "массив недоступен.", True),
     ("pd_state", "critical", {"state": "Failed"}, "отказ диска.", True),
+    (
+        "pd_state",
+        "critical",
+        {"state": "UBad"},
+        "контроллер пометил диск непригодным (UBad).",
+        True,
+    ),
     ("pd_state", "critical", {"state": "Missing"}, "диск не обнаружен.", True),
     ("pd_state", "critical", {"state": "Offline"}, "диск в состоянии «офлайн».", True),
     ("media_errors", "critical", {"media_errors": 2}, "ошибки носителя диска.", True),

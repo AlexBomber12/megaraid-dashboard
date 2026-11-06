@@ -1,0 +1,110 @@
+# Critical alerts and operator scenarios
+
+Audit date: 2026-11-07. Production baseline: #148 / `510ce9b`. This audit uses
+isolated saved snapshots, fake StorCLI and mocked Telegram/SMTP. SERVER inspection
+was limited to release status and health. No controller operation or real message
+was used to manufacture a fault. Candidate corrections require their own review,
+green CI and explicit deployment authorization.
+
+## Corrections found by following the user journey
+
+| Trigger | Previous behavior | Candidate behavior |
+| --- | --- | --- |
+| UBad on the first poll or after a state change | Critical in the UI, warning event excluded from Telegram | Critical event, explicit UBad Telegram wording, normal relevance/dedup gates |
+| First reliable poll confirms CacheVault absence | No baseline absence event | Critical absence event; unknown or failed probes still do not prove absence |
+| CacheVault fails, requires replacement or disappears | Overall summary could remain Optimal | Both summaries and controller-health metric include the explicit fault |
+| RoC crosses configured warning/critical threshold | Controller and Overview could disagree; exporter lacked configured grades | The same configured grade reaches both pages and the production exporter |
+| Only a disk/sensor/cache component needs attention | Controller text claimed RAID was degraded | Component reason and actual VD state; no invented degradation |
+| No physical or virtual inventory is reported | Could say Optimal, including “0/0 drives … healthy” | Critical summary; explicit lack of virtual drives |
+| Assigned spare is observed as DHS/GHS | Unknown-state warning | Hot spare, with unchanged raw state; SMART/predictive/temperature faults still win |
+| Collector fails or saved data gets old | Healthy last-known sample lacked a prominent monitoring warning | Shared live warning distinguishes last-known health from current reliable observation |
+
+Existing events are not rewritten and old warning rows are not retrospectively
+promoted. Transport, channel configuration, the migration cutoff, authentication,
+CSRF, command policy and destructive/maintenance gates are unchanged.
+
+## Scenario ledger
+
+The 16-case chain runs each observation on a first poll, a transition from a healthy
+baseline and during active maintenance: 48 cases. It uses the real detector, event
+store, freshness/relevance logic, formatter and delivery bookkeeping with a fake
+sender. It also compares Overview, Controller and the configured controller-health
+metric, then proves a second cycle does not send the incident again.
+
+| Scenario | Expected outcome | Executable evidence |
+| --- | --- | --- |
+| VD degraded / offline | Critical summary and appropriate immediate Telegram text | `test_critical_user_scenarios`; `test_telegram_messages` |
+| PD Failed / Missing / UBad | Critical event; current matching identity required for delivery | Same chain; `test_telegram_relevance` |
+| Online drive raises SMART / predictive flag | Critical despite raw Onln; reason retained | Same chain; `test_drive_health`; browser drive-health cases |
+| Historical media counter exists/increases | UI Attention, actionable media event; no automatic failed-drive verdict | Same chain; counter/identity/dedup suites |
+| Disk critical temperature | Critical immediately; persisted identity and hysteresis respected | Same chain; relevance and detector temperature suites |
+| Controller warning / critical temperature | Matching page/exporter grade; warning waits for confirmation | Same chain; controller episode/relevance suites |
+| CacheVault failed / replacement required / absent | Critical while volume may remain Optl; appropriate message | Same chain; component browser cases |
+| CacheVault capacitance below configured threshold | Warning in summaries; does not broaden Telegram policy | Same chain; configured component tests |
+| Healthy DHS / GHS after Hot Spare | Hot spare; no false unknown-state alarm | Shared drive-health and browser drive-health tests |
+| Explicitly empty complete inventory | No healthy-volume claim; ambiguous/partial inventory is rejected separately | `test_overview_controller_health`; empty-inventory browser case |
+| Unknown/contradictory legacy CV presence | Unverified/conflicting warning; never fabricate absence | `test_controller_health`; existing collector/relevance tests |
+| Custom RoC/capacitance thresholds | Effective configuration wins over defaults | Component, metrics HTTP and browser cases |
+| No reliable sample, stale sample or failed poll | Visible notice on Overview/Controller/Drives/detail; clears after a reliable sample | `test_observation_health` service/browser suites |
+| Failed/incomplete inventory or optional CV probe | Whole poll rejected; no false disappearance or recovery | Collector/parser/scheduler regression suites |
+| Monitoring repeatedly fails | Confirmed outage only after count/time gates; later success ends it | Scheduler and Telegram relevance suites |
+| Hardware incident during maintenance | Normal delivery/retry/confirmation/dedup remain active | Chain maintenance phase; notifier maintenance regressions |
+| Operator audit warning/critical noise | No Telegram incident | Notifier policy and operator-noise regressions |
+| Warning clears/escalates before confirmation | Original warning is not sent | `test_telegram_relevance`; controller episode suite |
+| Same incident repeats / recurs / worsens | Dedup repeats; recovery or worsening permits a new incident | Notifier/relevance/controller episode suites |
+| Disk replaced at same controller slot | Old queued incident becomes obsolete; new identity is independent | Replacement identity and retained-serial regressions |
+| Stale data or missing sensor/identity | Wait without spending a send attempt | Telegram relevance suite |
+| Telegram timeout/network/API/429 | Durable bounded retry/cooldown; no automatic controller action | Transport/notifier/cooldown suites |
+| Telegram fails while SMTP works, or inverse | Independent channel progress and markers | Notifier concurrency and channel-isolation suites |
+| Interrupted delivery, future event, backlog | Revalidate/requeue; bounded batches; no starvation by ineligible warnings | Notifier/relevance/concurrency suites |
+| Read-only / capability none / absent exact policy | Block write before controller execution | Operator safety integration and policy tests |
+| Missing authentication / CSRF / expired maintenance | Deny with no mutation; only Locate Stop retains its documented exception | Full action safety matrix |
+| Wrong serial / changed drive/controller identity | Refuse stale target; raw 252:X remains authoritative despite S mapping | Operator chain and policy/identity regressions |
+| Maintenance/policy changes during preflight | Recheck at dispatch and cancel write | `test_operator_chain_audit` |
+| Locate Start/Stop | Gate Start; recovery Stop allowed only under its exact exception; physical state unverified | Safety matrix; Locate browser cases |
+| Buzzer Enable/Disable/Silence | Explicit Success/audit; aliases agree; no claim of audible sound | Buzzer unit, safety and browser cases |
+| CC and Patrol Start/Stop/mode | Live state checked, selected mode reflects observation, unknown schedule stays unknown | Safety matrix; action scenario browser cases |
+| Mark Good / Spin Down / Assign Hot Spare | Appropriate unconfigured state, identity and exact authorization required | Advanced-action unit/browser/safety cases |
+| Mark Bad | Removed/unavailable; crafted request cannot issue an unapproved command | Control inventory and safety matrix |
+| Replace Offline/Missing/Insert | Destructive gate, typed serial, explicit topology and confirmed preceding step | Replacement unit, operator chain and browser cases |
+| Foreign Import/Clear | Confirm current digest/membership; prove no rebuild; repeat evidence before dispatch | Foreign prewrite, operator chain and safety suites |
+| Firmware Failure/unknown/malformed/wrong-controller/timeout | Never report successful mutation or fabricate a saved hardware state | Full fault/result matrix |
+| Audit fails after dispatch or response is lost | Uncertain result; do not authorize next step or automatically retry | Safety matrix; operator chain/browser uncertainty cases |
+| Double submit and live refresh during action | One dispatch; preserve row/identity; wait for a newer saved observation | `test_actions_scenarios`; operator chain browser suite |
+
+Test references without paths live in `tests/test_services/`; browser suites live
+in `tests/e2e/`. Operator integration is `tests/integration/test_operator_safety.py`.
+The action catalog in `tests/safety/scenarios.py` and UI control inventory prevent
+silently omitting an exposed action from the safety matrix.
+
+## Verification and limits
+
+Required commands (results belong to the final reviewed commit):
+
+```bash
+PYTEST_ADDOPTS='-n 4' bash scripts/ci.sh
+pytest -o addopts= tests/e2e/ --browser chromium --no-cov -q
+```
+
+Keep 100% statement/branch coverage, strict mypy and Ruff gates. Ignored audit logs
+and screenshots are under `artifacts/critical-*`. Screenshots are synthetic faults,
+not SERVER incidents. This ledger is software evidence, not physical RAID recovery
+certification or proof of Telegram receipt during a genuine hardware incident.
+
+Local acceptance completed: 3390 default tests passed, one existing skip, 100%
+statement/branch coverage; 515 isolated operator-safety integration cases and 289
+Chromium cases passed. Ruff, formatting, strict mypy and shell checks passed.
+The catalog contains all 20 action types, including the unavailable Mark Bad path.
+Fresh GitHub CI/review are separate merge gates; these local results do not authorize
+deployment.
+
+The owner already confirmed physical identification for all eight LEDs. Buzzer's
+Enabled setting is verified separately from audible output. No array degradation,
+drive removal, media failure, spin-down, foreign recovery or rebuild is induced on
+the healthy production array. Those physical paths require a disposable testbed or
+genuine authorized maintenance. A stopped application cannot send its own outage
+alert; independent availability monitoring remains a separate operational item.
+
+`/healthz` reports application/database/collector ownership, not snapshot freshness.
+The page notice and Telegram relevance explicitly check saved evidence. No recurring
+automation or new monitoring service is introduced by this audit.

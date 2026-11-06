@@ -160,8 +160,8 @@ def test_state_severity_falls_through_to_info_for_unknown_states() -> None:
     assert physical_drive_state_severity("Rbld", "Cpybck") == "info"
 
 
-@pytest.mark.parametrize("current_state", ["JBOD", "UGood", "UBad"])
-def test_state_severity_warning_for_jbod_ugood_ubad(current_state: str) -> None:
+@pytest.mark.parametrize("current_state", ["JBOD", "UGood"])
+def test_state_severity_warning_for_jbod_ugood(current_state: str) -> None:
     assert physical_drive_state_severity("Rbld", current_state) == "warning"
 
 

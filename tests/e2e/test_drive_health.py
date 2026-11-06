@@ -31,6 +31,8 @@ from tests.safety.harness import FakeStorcli
         ),
         ("Onln", False, 0, 1, 35, "warning", "Attention", "1 historical media error."),
         ("UGood", False, 0, 0, 35, "optimal", "Ready", ""),
+        ("DHS", False, 0, 0, 35, "optimal", "Hot spare", ""),
+        ("GHS", False, 0, 0, 35, "optimal", "Hot spare", ""),
         ("Onln", False, 0, 0, 56, "warning", "Attention", "Drive temperature is elevated."),
         ("Onln", False, 0, 0, 61, "critical", "Critical", "Drive temperature is critical."),
         ("Mystery", False, 0, 0, 35, "warning", "Attention", "Unrecognized drive state: Mystery."),

@@ -407,7 +407,7 @@ def test_empty_controller_detail_when_no_snapshot(session: Session, tmp_path: Pa
     assert view_model.hardware.model == "N/A"
 
 
-def test_warning_health_summary_and_missing_bbu_status(
+def test_missing_cachevault_escalates_controller_temperature_warning(
     session: Session,
     sample_snapshot: StorcliSnapshot,
     tmp_path: Path,
@@ -421,8 +421,9 @@ def test_warning_health_summary_and_missing_bbu_status(
 
     health = _load(session, tmp_path).health
 
-    assert health.state == "WARNING"
+    assert health.state == "CRITICAL"
     assert health.summary_text.startswith("Controller requires attention.")
+    assert "CacheVault is not detected." in health.summary_text
     assert health.bbu_status == "N/A"
 
 
