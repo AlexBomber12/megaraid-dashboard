@@ -23,7 +23,9 @@ This plan grants no controller mutation, notification, deployment or recurring a
 - One-row physical S0-S7 labels and Drives sort/refresh/navigation verified after
   installation; owner confirmed all eight physical Locate LEDs. Buzzer setting
   Disable -> On -> Disable acceptance passed with normal samples and audit on
-  2026-11-06; initial Disabled restored, maintenance closed. Acoustic/Silence unverified.
+  2026-11-06; initial Disabled restored after the test. The later owner-selected
+  Enabled setting was confirmed by the 18:13 UTC normal sample with maintenance
+  closed and no additional follow-up write. Acoustic/Silence unverified.
 - Reconciled source/Obsidian documentation and [maintenance handoff](MAINTENANCE_HANDOFF.md).
 
 ## Remaining work

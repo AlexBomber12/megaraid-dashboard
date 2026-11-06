@@ -25,6 +25,7 @@ Enable/Disable setting round trip and audit also passed; acoustic alarm is not c
 | Binary SHA-256 | `642fff8a3976dbc85406d9f7e8f5f5ce4ceab2753ac68cab5245888b281c8547` |
 | Capability | `full-supported-actions`; `CONTROLLER_READ_ONLY=false` |
 | Maintenance / destructive mode | Both false after deployment acceptance and after the supervised buzzer check; maintenance closed |
+| Alarm Buzzer | Enabled, confirmed by the normal sample at 2026-11-06 18:13 UTC after the owner selected Enabled; maintenance closed |
 | Approval policy | 79 exact writes, 25 reads and 8 explicit replacement topologies; preserved |
 
 Capability is an authorization ceiling, not permission to exercise a healthy array.
@@ -84,7 +85,10 @@ accepted -> normal Collector confirmed `On` at 14:03 UTC -> Disable accepted ->
 normal Collector confirmed `Disable` at 14:08 UTC. Both request/outcome events say
 succeeded, and separate observed-change events match. No uncertainty remained or
 automatic retry occurred. Initial Disabled was restored and maintenance closed.
-This used two alarm-setting writes and no array operations; no acoustic fault was
+Afterward the owner selected Enabled as the desired persistent setting. A fresh
+normal sample at **2026-11-06 18:13 UTC** already confirmed Enabled, with maintenance
+closed; this follow-up required no additional controller command. The round-trip
+test above used two alarm-setting writes and no array operations; no acoustic fault was
 induced and Silence was not exercised. Spin-down, replacement, foreign recovery
 and rebuild effects remain unverified. Never induce a healthy-RAID fault for a checklist.
 

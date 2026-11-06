@@ -44,7 +44,9 @@ results below do not override those failures. Use the updated
 eight physical Locate LEDs. The buzzer alias/result correction is installed; its
 real Disable -> On -> Disable round trip and success/observed-change events passed
 with normal samples on 2026-11-06. Initial Disabled restored, maintenance closed;
-Silence and acoustic alarm behavior remain unverified.
+Silence and acoustic alarm behavior remain unverified. The owner later selected
+Enabled; the 2026-11-06 18:13 UTC normal sample confirmed it with maintenance closed,
+so no additional controller write was necessary for that follow-up.
 
 “Software verified” below means browser/API/command/audit behavior against isolated
 fake StorCLI, including relevant refusal and failure paths. It never certifies a

@@ -68,7 +68,9 @@ initial Disable -> Enable -> normal sample On at 14:03 UTC -> Disable -> normal
 sample Disable at 14:08 UTC. Success audit and observed-change events match; no
 uncertainty remained. Initial Disabled was restored and maintenance closed. The
 check changed only the alarm setting twice, with no array job, induced fault or
-physical sound/Silence acceptance.
+physical sound/Silence acceptance. The owner later chose Enabled as the final
+setting; it was already confirmed by the 2026-11-06 18:13 UTC normal sample with
+maintenance closed. No extra controller write was needed for that follow-up.
 
 ## Schedule root cause and time semantics
 

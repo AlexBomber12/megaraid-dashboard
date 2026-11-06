@@ -7,7 +7,9 @@ Managed activation reached verified with a newer normal Collector sample and pre
 settings/policy/configuration. Production UI verified all cage labels, eight detail pages,
 physical navigation and Drives sort/refresh. Owner confirmed all eight physical Locate LEDs.
 Real Buzzer Disable -> On -> Disable setting/audit acceptance passed with normal samples;
-initial Disabled restored, maintenance closed. Silence/acoustic alarm and real rollback unverified.
+initial Disabled restored after the test. The later owner-selected Enabled setting
+was confirmed by the 2026-11-06 18:13 UTC normal sample, maintenance closed; no extra
+follow-up write needed. Silence/acoustic alarm and real rollback unverified.
 
 ### Delivered through #146
 
