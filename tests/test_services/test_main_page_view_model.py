@@ -54,7 +54,7 @@ def test_main_page_with_warning_drive_temperature(
         app_version="0.1.0",
     )
 
-    assert view_model.controller.state == "OPTIMAL"
+    assert view_model.controller.state == "WARNING"
     assert (
         next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).temperature_state
         == "warning"

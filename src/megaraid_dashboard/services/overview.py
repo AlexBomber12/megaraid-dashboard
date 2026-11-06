@@ -25,18 +25,15 @@ from megaraid_dashboard.db.models import (
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
+from megaraid_dashboard.services.drive_health import assess_drive_health
 from megaraid_dashboard.services.drive_position import physical_slot_label, physical_slot_number
 from megaraid_dashboard.services.event_detector import (
-    physical_drive_state_severity,
     virtual_drive_state_severity,
 )
 from megaraid_dashboard.services.events import list_recent_events
 from megaraid_dashboard.services.notifier import get_notifier_health
 
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
-_PD_OPTIMAL_STATES = {"Onln"}
-_PD_WARNING_STATES = {"UBad", "Rbld", "Rebld", "Rebuild", "Rebuilding"}
-_PD_CRITICAL_STATES = {"Failed", "Missing"}
 _SEVERITY_RANK = ("critical", "warning", "info", "optimal", "neutral", "unknown")
 _MAIN_PAGE_RECENT_ACTIVITY_LIMIT = 10
 _DEFAULT_MAIN_PAGE_REFRESH_SECONDS = 30
@@ -63,6 +60,8 @@ class PhysicalDriveRow:
     smart_label: str
     smart_severity: str
     physical_slot_label: str = ""
+    health_label: str = ""
+    health_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -132,6 +131,8 @@ class DriveGridTileViewModel:
     tile_severity: str
     error_badge_count: int | None
     detail_url: str
+    health_label: str = ""
+    health_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -223,7 +224,6 @@ def _load_controller_summary(
     snapshot: ControllerSnapshot | None,
     now: datetime,
 ) -> ControllerSummaryViewModel:
-    del settings
     if snapshot is None:
         return ControllerSummaryViewModel(
             state="UNKNOWN",
@@ -254,6 +254,9 @@ def _load_controller_summary(
             snapshot,
             snapshot.physical_drives,
             snapshot.virtual_drives,
+            physical_drive_severity=_physical_drive_aggregate_status(
+                snapshot.physical_drives, settings=settings
+            ),
         ).upper(),
         model=snapshot.model_name,
         serial=snapshot.serial_number,
@@ -352,9 +355,7 @@ def _drive_grid_tile(
         temp_warning=temp_warning,
         temp_critical=temp_critical,
     )
-    if temperature_state == "unknown":
-        temperature_state = "optimal"
-    state_severity = _drive_grid_state_severity(drive.state)
+    health = assess_drive_health(drive, temperature=temperature_state)
     error_count = (
         drive.media_errors
         + drive.other_errors
@@ -368,7 +369,7 @@ def _drive_grid_tile(
         temperature_celsius=drive.temperature_celsius,
         temperature_state=temperature_state,
         state_text=drive.state,
-        state_severity=state_severity,
+        state_severity=health.severity,
         tile_severity=compute_drive_tile_severity(
             drive,
             temp_warning=temp_warning,
@@ -376,6 +377,8 @@ def _drive_grid_tile(
         ),
         error_badge_count=None if error_count == 0 else error_count,
         detail_url=f"/drives/{drive.enclosure_id}:{drive.slot_id}",
+        health_label=health.label,
+        health_reason=health.summary if health.reasons else "",
     )
 
 
@@ -385,25 +388,12 @@ def compute_drive_tile_severity(
     temp_warning: int,
     temp_critical: int,
 ) -> str:
-    temperature_state = temperature_severity(
-        drive.temperature_celsius,
-        temp_warning=temp_warning,
-        temp_critical=temp_critical,
-    )
-    if temperature_state == "unknown":
-        temperature_state = "optimal"
-    return _worst_severity(temperature_state, _drive_grid_state_severity(drive.state))
-
-
-def _drive_grid_state_severity(state: str) -> str:
-    if state in _PD_OPTIMAL_STATES or state == "UGood":
-        return "optimal"
-    if state in _PD_CRITICAL_STATES:
-        return "critical"
-    if state in _PD_WARNING_STATES:
-        return "warning"
-    severity = _event_severity_to_status(physical_drive_state_severity("Onln", state))
-    return "warning" if severity in {"unknown", "optimal"} else severity
+    return assess_drive_health(
+        drive,
+        temperature=temperature_severity(
+            drive.temperature_celsius, temp_warning=temp_warning, temp_critical=temp_critical
+        ),
+    ).severity
 
 
 def _load_active_operations(snapshot: ControllerSnapshot) -> list[ActiveOperation]:
@@ -780,6 +770,12 @@ def _physical_drive_row(
     slot_url: str = "",
 ) -> PhysicalDriveRow:
     smart_alert = drive.smart_alert
+    health = assess_drive_health(
+        drive,
+        temperature=temperature_severity(
+            drive.temperature_celsius, temp_warning=temp_warning, temp_critical=temp_critical
+        ),
+    )
     row_state = _drive_row_state(
         drive,
         temp_warning=temp_warning,
@@ -816,6 +812,8 @@ def _physical_drive_row(
         predictive_failures=drive.predictive_failures,
         smart_label="Yes" if smart_alert else "No",
         smart_severity="critical" if smart_alert else "neutral",
+        health_label=health.label,
+        health_reason=health.summary if health.reasons else "",
     )
 
 
@@ -848,24 +846,10 @@ def _drive_state_badge(
     temp_warning: int,
     temp_critical: int,
 ) -> str:
-    """Return the single row badge; state and temperature are mutually exclusive.
-
-    Critical wins over warning, both win over optimal, and unknown drive states
-    are treated as warning so a non-online state is never hidden by temperature.
-    """
-    state_status = _event_severity_to_status(physical_drive_state_severity("Onln", drive.state))
-    if drive.state not in _PD_OPTIMAL_STATES and state_status == "optimal":
-        state_status = "warning"
-    if state_status == "unknown":
-        state_status = "warning"
-    temp_status = temperature_severity(
-        drive.temperature_celsius,
-        temp_warning=temp_warning,
-        temp_critical=temp_critical,
+    """Return the shared assessment grade, independent of the raw firmware label."""
+    return compute_drive_tile_severity(
+        drive, temp_warning=temp_warning, temp_critical=temp_critical
     )
-    if temp_status == "unknown":
-        temp_status = "optimal"
-    return _higher_severity(state_status, temp_status)
 
 
 def _drive_temperature_badge(
@@ -909,15 +893,23 @@ def _virtual_drive_controller_health_status(
 
 def _physical_drive_aggregate_status(
     physical_drives: Sequence[PhysicalDriveSnapshot],
+    *,
+    settings: Settings | None = None,
 ) -> Literal["optimal", "warning", "critical"]:
     severity: Literal["optimal", "warning", "critical"] = "optimal"
     for physical_drive in physical_drives:
-        state_status = _event_severity_to_status(
-            physical_drive_state_severity("Onln", physical_drive.state)
+        temperature = (
+            "unknown"
+            if settings is None
+            else temperature_severity(
+                physical_drive.temperature_celsius,
+                temp_warning=settings.temp_warning_celsius,
+                temp_critical=settings.temp_critical_celsius,
+            )
         )
-        if physical_drive.state not in _PD_OPTIMAL_STATES and state_status == "optimal":
-            state_status = "warning"
-        severity = _worst_controller_health(severity, state_status)
+        severity = _worst_controller_health(
+            severity, assess_drive_health(physical_drive, temperature=temperature).severity
+        )
     return severity
 
 

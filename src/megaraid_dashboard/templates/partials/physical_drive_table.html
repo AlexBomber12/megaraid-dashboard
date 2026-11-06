@@ -36,8 +36,10 @@
               <svg class="status-badge__icon" aria-hidden="true">
                 <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ drive.status_icon }}"/>
               </svg>
-              {{ drive.state }}
+              {{ drive.health_label or drive.state }}
             </span>
+            {% if drive.health_label %}<span class="drive-health-raw">{{ drive.state }}</span>{% endif %}
+            {% if drive.health_reason %}<span class="drive-health-reason">{{ drive.health_reason }}</span>{% endif %}
           </td>
           <td
             class="numeric status-text--{{ drive.temperature_severity }}"

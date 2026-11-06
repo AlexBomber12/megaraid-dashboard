@@ -32,6 +32,7 @@ from megaraid_dashboard.services.event_detector import virtual_drive_state_sever
 from megaraid_dashboard.services.overview import (
     SystemHealthViewModel,
     _load_system_health,
+    _physical_drive_aggregate_status,
     derive_controller_health,
     temperature_severity,
 )
@@ -271,6 +272,9 @@ def _build_health_snapshot(
         snapshot,
         snapshot.physical_drives,
         snapshot.virtual_drives,
+        physical_drive_severity=_physical_drive_aggregate_status(
+            snapshot.physical_drives, settings=settings
+        ),
     )
     roc_severity = temperature_severity(
         snapshot.roc_temperature_celsius,

@@ -3,6 +3,9 @@
 These definitions explain the Actions panel. They do not authorize a hardware test.
 Exact commands and gates remain in [the full rollout contract](STORCLI_FULL_ROLLOUT.md).
 
+Drive health labels and reported reasons follow [the shared assessment](DRIVE_HEALTH.md).
+They do not change the original controller state or authorize a hardware action.
+
 | Control | Effect |
 | --- | --- |
 | Start Maintenance | Opens a timed authorization window for supported controller writes. It does not start CC, Patrol Read or replacement. Hardware Telegram incidents remain eligible. |
