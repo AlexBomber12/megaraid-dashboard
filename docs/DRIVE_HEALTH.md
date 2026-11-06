@@ -32,8 +32,9 @@ Healthy/Ready describes reported evidence, not guaranteed absence of defects.
   precedence, historical counters, temperature, mixed faults and identical saved
   assessments across Overview, Drives, detail and the selected backplane slot.
 - `tests/e2e/test_drive_health.py`: isolated persisted samples for Onln with SMART
-  or predictive alert, UBad, historical media errors and UGood at 1440/1024/390 pixels.
-  Refresh/navigation recovery returns all surfaces to Healthy. S0 retains the actual
-  252:4 target; fake StorCLI receives no calls.
+  or predictive alert, UBad, historical media errors, UGood, elevated/critical
+  temperature and unknown firmware state at 1440/1024/390 pixels. Refresh/navigation
+  recovery returns all surfaces to Healthy. S0 retains the actual 252:4 target;
+  fake StorCLI receives no calls.
 - Existing safety suites remain required. No production fault or hardware mutation
   is used for acceptance. Deployment requires separate authorization.

@@ -131,14 +131,15 @@ def test_overview_navigation_and_assets_are_prefix_aware(
 
     assert response.status_code == 200
     assert "<h1>Overview</h1>" in response.text
-    assert 'class="controller-card controller-card--optimal"' in response.text
+    assert 'class="controller-card controller-card--critical"' in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     for label in ("Controller", "Drive Backplane", "Recent Activity", "RoC", "CacheVault"):
         assert label in response.text
     assert "drive-tile-v2--optimal" in response.text
     assert 'class="status-bar-v2"' in response.text
     assert "Notifier" in response.text
-    assert '<div class="controller-state">OPTIMAL</div>' in response.text
+    assert '<div class="controller-state">CRITICAL</div>' in response.text
+    assert "Drive temperature is critical." in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
     assert "/raid/static/js/csrf.js" in response.text

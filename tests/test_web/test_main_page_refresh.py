@@ -52,9 +52,10 @@ def test_main_page_refresh_returns_swap_safe_partial(sample_snapshot: StorcliSna
     assert "<html" not in html
     assert "<head" not in html
     assert (
-        '<a href="/controller" class="controller-card controller-card--optimal">' in response.text
+        '<a href="/controller" class="controller-card controller-card--critical">' in response.text
     )
-    assert "OPTIMAL" in response.text
+    assert '<div class="controller-state">CRITICAL</div>' in response.text
+    assert "Drive temperature is critical." in response.text
     assert "Updated:" not in response.text
     assert "data-local-time hidden" not in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
