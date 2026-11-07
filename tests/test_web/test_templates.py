@@ -9,6 +9,25 @@ import pytest
 from megaraid_dashboard.web import templates
 
 
+@pytest.mark.parametrize(
+    ("severity", "expected"),
+    [
+        ("optimal", "Healthy"),
+        ("OPTIMAL", "Healthy"),
+        ("warning", "Attention"),
+        ("degraded", "Attention"),
+        ("critical", "Critical"),
+        ("unknown", "Unknown"),
+        ("unrecognized", "Unknown"),
+    ],
+)
+def test_common_health_vocabulary(severity: str, expected: str, tmp_path: Path) -> None:
+    (tmp_path / "health.html").write_text("{{ grade | health_label }}", encoding="utf-8")
+    environment = templates.create_templates(tmp_path).env
+
+    assert environment.get_template("health.html").render(grade=severity) == expected
+
+
 def test_iso_utc_returns_empty_string_for_none() -> None:
     assert templates.iso_utc(None) == ""
 

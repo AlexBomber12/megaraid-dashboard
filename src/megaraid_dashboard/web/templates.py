@@ -51,10 +51,21 @@ def create_templates(
     environment.filters["slot_link"] = _slot_link_filter
     environment.filters["celsius"] = celsius
     environment.filters["bytes_iec"] = bytes_iec
+    environment.filters["health_label"] = health_label
     processors: list[_ContextProcessor] = [_maintenance_context_processor]
     if context_processors is not None:
         processors.extend(context_processors)
     return Jinja2Templates(env=environment, context_processors=processors)
+
+
+def health_label(severity: str) -> str:
+    """Render assessment grades consistently without changing stored or action states."""
+    return {
+        "optimal": "Healthy",
+        "warning": "Attention",
+        "degraded": "Attention",
+        "critical": "Critical",
+    }.get(severity.lower(), "Unknown")
 
 
 def _maintenance_context_processor(request: Request) -> dict[str, Any]:

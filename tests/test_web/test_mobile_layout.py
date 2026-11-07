@@ -51,13 +51,13 @@ def test_drives_page_renders_mobile_data_labels(sample_snapshot: StorcliSnapshot
         "Slot",
         "Model",
         "Serial",
-        "State",
+        "Health",
         "Temp",
         "Size",
         "Media Errors",
         "Other Errors",
         "Predictive",
-        "SMART",
+        "SMART alert",
     ):
         assert f'data-label="{label}"' in response.text
 

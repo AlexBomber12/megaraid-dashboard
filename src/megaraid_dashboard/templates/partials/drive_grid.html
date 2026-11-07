@@ -9,8 +9,8 @@
     <h2 id="drive-backplane-heading">Drive Backplane</h2>
     <div class="summary-chips">
       {% if critical_count %}<span class="status-badge status-badge--critical">{{ critical_count }} Critical</span>{% endif %}
-      {% if warning_count %}<span class="status-badge status-badge--warning">{{ warning_count }} Warning</span>{% endif %}
-      {% if optimal_count %}<span class="status-badge status-badge--optimal">{{ optimal_count }} Optimal</span>{% endif %}
+      {% if warning_count %}<span class="status-badge status-badge--warning">{{ warning_count }} Attention</span>{% endif %}
+      {% if optimal_count %}<span class="status-badge status-badge--optimal">{{ optimal_count }} Healthy</span>{% endif %}
       <a href="{{ drives_url }}">{{ tiles | length }} Drives →</a>
     </div>
   </div>
@@ -24,8 +24,8 @@
       >
         <span class="drive-tile-v2__slot"><span class="visually-hidden">Slot </span>{{ tile.slot_label }}</span>
         <span class="drive-address">{{ tile.enclosure_id }}:{{ tile.slot_id }}</span>
-        {% if tile.health_label %}<strong class="drive-health-label status-text--{{ tile.tile_severity }}">{{ tile.health_label }}</strong>{% endif %}
-        <span class="drive-tile-v2__state drive-health-raw">{{ tile.state_text }}</span>
+        <strong class="drive-health-label status-text--{{ tile.tile_severity }}">{{ tile.tile_severity | health_label }}</strong>
+        {% if tile.health_label == 'Ready' %}<span class="drive-role">Role: Unconfigured</span>{% elif tile.health_label == 'Hot spare' %}<span class="drive-role">Role: Hot spare</span>{% endif %}
         {% if tile.health_reason %}<span class="drive-health-reason">{{ tile.health_reason }}</span>{% endif %}
         <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
           {% if tile.temperature_celsius is not none %}{{ tile.temperature_celsius | celsius }}{% else %}Temp unknown{% endif %}

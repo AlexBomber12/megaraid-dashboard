@@ -5,10 +5,11 @@
   </div>
   <div class="health-card health-card--{{ view_model.health.state_severity }}">
     <div class="health-card__summary">
-      <span class="text-label">Drive State</span>
-      <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.health_label or view_model.health.state }}</strong>
-      {% if view_model.health.health_label %}<span class="drive-health-raw">Controller state: {{ view_model.health.state }}</span>{% endif %}
-      <p>{{ view_model.health.summary_text }}</p>
+      <span class="text-label">Health</span>
+      <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.state_severity | health_label }}</strong>
+      {% if view_model.health.health_label == 'Ready' %}<p class="drive-role">Role: Unconfigured</p>{% elif view_model.health.health_label == 'Hot spare' %}<p class="drive-role">Role: Hot spare</p>{% endif %}
+      <p>{{ 'No reported faults.' if view_model.health.state_severity == 'optimal' else view_model.health.summary_text }}</p>
+      <details class="drive-controller-details"><summary>Controller details</summary><span class="drive-health-raw">Controller state: {{ view_model.health.state }}</span></details>
       {% if view_model.health.state_subtitle %}<p class="muted">{{ view_model.health.state_subtitle }}</p>{% endif %}
     </div>
     <dl class="kv-grid health-metrics">
@@ -19,8 +20,8 @@
         </dd>
       </div>
       <div>
-        <dt>SMART</dt>
-        <dd class="status-text--{{ view_model.health.smart_severity }}">{{ view_model.health.smart_status }}</dd>
+        <dt>SMART alert</dt>
+        <dd class="status-text--{{ view_model.health.smart_severity }}">{{ 'Yes' if view_model.health.smart_status == 'ALERT' else 'No' }}</dd>
       </div>
       {% for label, value, severity in [
         ("Predictive Failures", view_model.health.predictive_failure_count, "critical"),

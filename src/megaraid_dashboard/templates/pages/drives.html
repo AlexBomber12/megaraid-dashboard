@@ -11,8 +11,8 @@
           <h1>Drives</h1>
           <div class="summary-chips">
             {% if summary.critical %}<span class="status-badge status-badge--critical">{{ summary.critical }} Critical</span>{% endif %}
-            {% if summary.warning %}<span class="status-badge status-badge--warning">{{ summary.warning }} Warning</span>{% endif %}
-            <span class="status-badge status-badge--optimal">{{ summary.optimal }} Optimal</span>
+            {% if summary.warning %}<span class="status-badge status-badge--warning">{{ summary.warning }} Attention</span>{% endif %}
+            <span class="status-badge status-badge--optimal">{{ summary.optimal }} Healthy</span>
             <span class="muted">of {{ summary.total }}</span>
           </div>
         </div>

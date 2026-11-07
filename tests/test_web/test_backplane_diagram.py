@@ -3,9 +3,10 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment
 
 from megaraid_dashboard.services.drive_detail import BackplaneSlot
+from megaraid_dashboard.web.templates import create_templates
 
 
 class _BackplaneDiagramParser(HTMLParser):
@@ -122,9 +123,4 @@ def _parse(html: str) -> _BackplaneDiagramParser:
 
 def _environment() -> Environment:
     template_dir = Path(__file__).resolve().parents[2] / "src" / "megaraid_dashboard" / "templates"
-    return Environment(
-        loader=FileSystemLoader(template_dir),
-        autoescape=select_autoescape(enabled_extensions=("html", "xml")),
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
+    return create_templates(template_dir).env
