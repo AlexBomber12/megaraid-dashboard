@@ -5,8 +5,11 @@ profile, account `megaraid`. It replaces per-release executable helpers for futu
 compatible app updates. [Fresh installation](../INSTALL.md), schema migrations,
 account/security-policy changes, firmware and StorCLI upgrades are separate procedures.
 
-The installed application checkpoint remains [#141 / 27af3da](CURRENT_STATE.md).
-Installing this tool or recording an existing installation does not upgrade the app.
+The installed application is [#146 / 8b60b72](CURRENT_STATE.md). Its managed rollout
+finished verified on 2026-11-06 with preserved settings/policy and normal collection.
+The earlier #141 installation was adopted on 2026-11-01 without restart. Tool
+installation, adoption, managed activation and a real rollback remain distinct evidence;
+no production rollback drill has been performed.
 The owner requested a maintenance handoff, not an automatic update/monitoring service.
 
 ## Commands and trust boundary
@@ -57,7 +60,7 @@ Example preparation, with operator-selected directories and the actual approved 
 
 ```bash
 candidate_sha="$(git rev-parse HEAD)"
-baseline_sha='27af3da95318ce3f902eaa9bf6a86dad89710da2'
+baseline_sha='8b60b7242c0b908ff4fc86a8f07a8aa983288109'
 build_dir="$(mktemp -d)"
 mkdir "$build_dir/source" "$build_dir/wheels"
 git archive --format=tar --output="$build_dir/source.tar" "$candidate_sha"

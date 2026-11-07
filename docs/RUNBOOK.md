@@ -3,20 +3,21 @@
 This runbook is the operator reference for routine checks, common incidents, and recovery
 tasks. Generic command examples below use fresh-install defaults (`raid-monitor`,
 `/opt/megaraid-dashboard`, optional `/raid/` prefix). Existing SERVER instead uses
-`megaraid`, `/opt/megaraid-dashboard-ui-27af3da` and the root HTTPS origin.
+`megaraid`, `/opt/megaraid-dashboard-ui-8b60b72` and the root HTTPS origin.
 Use [CURRENT_STATE.md](CURRENT_STATE.md) for the observed release, protected rollout
 configuration, test evidence and remaining work. Resolve the effective account and
 release before adapting generic commands; do not print secret environment values.
 
 ## Current production and safe verification
 
-Release `27af3da` (#141) is deployed. Compact Actions, drive DG/Span/Row, shared Collector
+Release `8b60b72` (#146) is deployed and verified. Physical S0-S7 cage labels and
+Drives sorting retain real controller addresses; all eight LEDs are owner-confirmed. Compact Actions, drive DG/Span/Row, shared Collector
 ages, observed Patrol scheduling and CacheVault learn-date recovery are active.
 The Telegram transport test reached the owner; no real hardware failure was induced.
 
 After an SSH disconnect, check service WorkingDirectory/health and the matching
-rollout status before taking action. The #141 one-shot rollout finished `verified`;
-future updates use [versioned deployment](VERSIONED_DEPLOYMENT.md), whose durable receipt
+rollout status before taking action. The #146 managed rollout finished `verified`;
+current and future compatible updates use [versioned deployment](VERSIONED_DEPLOYMENT.md), whose durable receipt
 survives reboot and whose repeated verified request returns already_installed.
 See [the exact recovery checks](CURRENT_STATE.md#recovery-after-ssh-disconnect-or-repeated-activation).
 Never bypass the guard or restore the database solely because the terminal disconnected.
@@ -423,7 +424,7 @@ monitoring uncertainty as healthy hardware.
 
 ## Existing megaraid production service
 
-For the installed `27af3da` release, pinned StorCLI 1.23.02 and full-capability
+For the installed `8b60b72` release, pinned StorCLI 1.23.02 and full-capability
 policy, follow [the current checkpoint](CURRENT_STATE.md) and the
 [full rollout contract](STORCLI_FULL_ROLLOUT.md). Production runs as `megaraid`;
 installer `raid-monitor` defaults must not replace its service configuration.

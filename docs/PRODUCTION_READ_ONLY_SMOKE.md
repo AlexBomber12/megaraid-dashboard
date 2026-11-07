@@ -38,7 +38,9 @@ validation outcome, application revision and approximate data freshness.
 7. Open `/health` and `/healthz` with GET. Expect the application version and health
    JSON; record database/collector status without probing StorCLI from a shell.
 8. Close the private window. Report observed paths/statuses, TLS and freshness.
-   Physical LEDs, motors, buzzer, rebuilds and foreign metadata remain unverified.
+   This GET-only smoke does not prove physical effects. All eight Locate LEDs were
+   separately owner-confirmed on 2026-11-06; motors, acoustic alarm, rebuilds and
+   foreign recovery remain unverified. See [current acceptance](CURRENT_STATE.md).
 
 Never click Start/Stop Maintenance, Locate, buzzer controls, Patrol Read, Consistency
 Check, Spin Down, Hot Spare, UGood/UBad, replacement actions or foreign import/clear

@@ -1,12 +1,12 @@
 # Maintenance handoff
 
-Prepared **2026-11-01** for Alexey. The owner requested a handoff and maintenance plan,
+Updated **2026-11-06** for Alexey. The owner requested a handoff and maintenance plan,
 without recurring automatic checks. No new chat, automation, observer or timer is created.
 
 ## Start here
 
 1. Read [current state](CURRENT_STATE.md) and verify the actual installed revision.
-   `27af3da` (#141) is the last verified production application at this checkpoint.
+   `8b60b72` (#146) is the verified production application at this checkpoint.
 2. Read [the runbook](RUNBOOK.md), [notification contract](TELEGRAM_ALERTS.md) and
    [deployment procedure](VERSIONED_DEPLOYMENT.md) for the task.
 3. Begin read-only. An old note/screenshot/incident is not permission to operate a
@@ -38,8 +38,9 @@ The owner decides the frequency of any later review or automation separately.
   checks, maintenance/destructive gates and audit history.
 - Hardware incidents retain eligibility during maintenance; UI/HTTP errors and operator
   audit noise are not automatically Telegram hardware incidents.
-- Mocked tests and production reads do not prove physical LED, sound, spin-down,
-  replacement, foreign recovery, media recovery or rebuild effects.
+- All eight physical Locate LEDs were confirmed by the owner on 2026-11-06.
+  Mocked tests and production reads alone do not prove sound, spin-down, replacement,
+  foreign recovery, media recovery or rebuild effects.
 - Inspect durable state before retrying after disconnect. Application rollback does
   not restore/delete the live DB or reset notification state.
 
