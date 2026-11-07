@@ -6,7 +6,8 @@
   <div class="health-card health-card--{{ view_model.health.state_severity }}">
     <div class="health-card__summary">
       <span class="text-label">Drive State</span>
-      <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.state }}</strong>
+      <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.health_label or view_model.health.state }}</strong>
+      {% if view_model.health.health_label %}<span class="drive-health-raw">Controller state: {{ view_model.health.state }}</span>{% endif %}
       <p>{{ view_model.health.summary_text }}</p>
       {% if view_model.health.state_subtitle %}<p class="muted">{{ view_model.health.state_subtitle }}</p>{% endif %}
     </div>

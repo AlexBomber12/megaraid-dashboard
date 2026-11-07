@@ -20,6 +20,7 @@ from megaraid_dashboard.db.models import (
     Event,
     VirtualDriveSnapshot,
 )
+from megaraid_dashboard.services.controller_health import assess_controller_components
 from megaraid_dashboard.services.drive_actions import (
     ConsistencyCheckStatus,
     PatrolReadStatus,
@@ -32,8 +33,8 @@ from megaraid_dashboard.services.event_detector import virtual_drive_state_sever
 from megaraid_dashboard.services.overview import (
     SystemHealthViewModel,
     _load_system_health,
+    _physical_drive_aggregate_status,
     derive_controller_health,
-    temperature_severity,
 )
 from megaraid_dashboard.storcli import StorcliError, parse_foreign_config
 from megaraid_dashboard.storcli.states import normalize_alarm_state as _normalize_alarm_state
@@ -271,17 +272,14 @@ def _build_health_snapshot(
         snapshot,
         snapshot.physical_drives,
         snapshot.virtual_drives,
+        physical_drive_severity=_physical_drive_aggregate_status(
+            snapshot.physical_drives, settings=settings
+        ),
+        settings=settings,
     )
-    roc_severity = temperature_severity(
-        snapshot.roc_temperature_celsius,
-        temp_warning=settings.roc_temp_warning_celsius,
-        temp_critical=settings.roc_temp_critical_celsius,
-    )
-    if roc_severity in {"warning", "critical"}:
-        health = _worst_health(health, roc_severity)
     return ControllerHealthSnapshot(
         state=health.upper(),
-        summary_text=_health_summary(snapshot, health=health),
+        summary_text=_health_summary(snapshot, health=health, settings=settings),
         roc_temperature_celsius=snapshot.roc_temperature_celsius,
         cv_capacitance_percent=(
             None if snapshot.cachevault is None else snapshot.cachevault.capacitance_percent
@@ -490,13 +488,21 @@ def _page_subtitle(snapshot: ControllerSnapshot | None, *, now: datetime) -> str
     return f"SN {snapshot.serial_number}. Observed {captured_at.strftime('%B %-d, %Y %H:%M UTC')}."
 
 
-def _health_summary(snapshot: ControllerSnapshot, *, health: str) -> str:
+def _health_summary(snapshot: ControllerSnapshot, *, health: str, settings: Settings) -> str:
     online = sum(1 for drive in snapshot.physical_drives if drive.state == "Onln")
     total = len(snapshot.physical_drives)
     raid = _dominant_raid_level(snapshot.virtual_drives)
     if health == "optimal":
         return f"All systems nominal. {online}/{total} drives online. {raid} healthy."
-    return f"Controller requires attention. {online}/{total} drives online. {raid} state degraded."
+    reasons = " ".join(assess_controller_components(snapshot, settings=settings).reasons)
+    states = (
+        ", ".join(f"VD {drive.vd_id}: {drive.state}" for drive in snapshot.virtual_drives)
+        or "No virtual drives reported"
+    )
+    prefix = "Controller requires attention."
+    if reasons:
+        prefix += f" {reasons}"
+    return f"{prefix} {online}/{total} drives online. {raid} virtual-drive state: {states}."
 
 
 def _dominant_raid_level(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
@@ -669,11 +675,6 @@ def _load_consistency_check_state(snapshot: ControllerSnapshot) -> ConsistencyCh
         return TypeAdapter(ConsistencyCheckStatus).validate_python(value)
     except ValidationError:
         return None
-
-
-def _worst_health(current: str, candidate: str) -> str:
-    rank = {"optimal": 0, "warning": 1, "critical": 2, "unknown": 0}
-    return candidate if rank[candidate] > rank[current] else current
 
 
 def _format_uptime(delta: timedelta) -> str:

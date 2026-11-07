@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import PhysicalDriveSnapshot
-from megaraid_dashboard.services import overview as overview_module
 from megaraid_dashboard.services.overview import (
     _drive_state_badge,
     _drive_temperature_badge,
@@ -124,23 +123,10 @@ def test_drive_state_badge_treats_non_online_optimal_states_as_warning(state: st
     )
 
 
-def test_drive_state_badge_treats_unknown_severity_as_warning(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        overview_module,
-        "physical_drive_state_severity",
-        lambda previous_state, current_state: "unexpected",
-    )
-
-    assert (
-        _drive_state_badge(
-            _drive(state="Onln", temperature=40),
-            temp_warning=55,
-            temp_critical=60,
-        )
-        == "warning"
-    )
+def test_drive_state_badge_escalates_online_smart_alert() -> None:
+    drive = _drive(state="Onln", temperature=40)
+    drive.smart_alert = True
+    assert _drive_state_badge(drive, temp_warning=55, temp_critical=60) == "critical"
 
 
 def test_drive_temperature_badge_preserves_unknown_when_no_temperature() -> None:

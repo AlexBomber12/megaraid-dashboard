@@ -54,7 +54,7 @@ def test_main_page_with_warning_drive_temperature(
         app_version="0.1.0",
     )
 
-    assert view_model.controller.state == "OPTIMAL"
+    assert view_model.controller.state == "WARNING"
     assert (
         next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).temperature_state
         == "warning"
@@ -624,6 +624,9 @@ def _snapshot(
         update={
             "virtual_drives": [virtual_drive],
             "physical_drives": physical_drives,
+            "controller": sample_snapshot.controller.model_copy(
+                update={"roc_temperature_celsius": 80}
+            ),
         }
     )
 

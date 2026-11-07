@@ -23,6 +23,7 @@ from megaraid_dashboard.services.drive_actions import (
     build_consistency_check_start_command,
     build_patrol_read_mode_command,
 )
+from megaraid_dashboard.services.observation_health import observation_warning
 from megaraid_dashboard.storcli.policy import action_refusal, load_policy, replacement_refusal
 
 _SLOT_TOKEN_RE = re.compile(
@@ -60,6 +61,9 @@ def _maintenance_context_processor(request: Request) -> dict[str, Any]:
     session_factory = cast(sessionmaker[Session], request.app.state.session_factory)
     with session_factory() as session:
         context = {
+            "observation_warning": observation_warning(
+                session, settings=request.app.state.settings, now=datetime.now(UTC)
+            ),
             **{
                 f"{family.replace(' ', '_')}_disabled_reason": action_disabled_reason(
                     request.app.state.settings, family

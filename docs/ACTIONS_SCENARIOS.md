@@ -7,6 +7,9 @@ below run only against FakeStorcli, through the real application/database/browse
 Separately authorized physical LED and buzzer-setting acceptance is recorded in
 [the hardware ledger](LOCATE_ACTIVITY_VERIFICATION.md).
 
+The [2026-11-07 critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md) follows hardware
+incidents through detection, saved health, delivery, recovery and operator safety.
+
 ## Information hierarchy
 
 On SERVER, S0-S7 identify physical cage positions, not controller slot numbers.

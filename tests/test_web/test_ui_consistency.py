@@ -35,7 +35,7 @@ _UNSTYLED_HOOK_CLASSES = {
     "timeline",
 }
 
-_BASE_LIVE_REGIONS = {"maintenance-slot", "site-status"}
+_BASE_LIVE_REGIONS = {"maintenance-slot", "observation-warning-slot", "site-status"}
 
 
 class _PageParser(HTMLParser):

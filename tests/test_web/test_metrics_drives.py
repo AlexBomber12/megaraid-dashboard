@@ -70,7 +70,7 @@ def test_drive_metrics_reflect_seeded_snapshot(
         'megaraid_virtual_drive_state{name="system",raid_level="RAID5",vd_id="0"} 0.0'
     ) in response_text
     assert (
-        'megaraid_virtual_drive_state{name="backup",raid_level="RAID1",vd_id="1"} 1.0'
+        'megaraid_virtual_drive_state{name="backup",raid_level="RAID1",vd_id="1"} 2.0'
     ) in response_text
     assert response_text.count("megaraid_virtual_drive_state{") == 2
 
@@ -92,13 +92,17 @@ def test_drive_metrics_absent_without_snapshot(
         ("Onln", 0),
         ("UGood", 0),
         ("Optl", 0),
+        ("DHS", 0),
+        ("GHS", 0),
+        (" onLN ", 0),
         ("Rbld", 1),
         ("UReb", 1),
-        ("Missing", 1),
+        ("Missing", 2),
+        (" MSNG ", 2),
         ("Offln", 2),
         ("Failed", 2),
         ("UBad", 2),
-        ("Unexpected", 2),
+        ("Unexpected", 1),
     ],
 )
 def test_physical_drive_state_encoding(state: str, expected: int) -> None:
@@ -110,17 +114,45 @@ def test_physical_drive_state_encoding(state: str, expected: int) -> None:
     [
         ("Optl", 0),
         ("Optimal", 0),
-        ("Dgrd", 1),
-        ("Degraded", 1),
-        ("Pdgd", 1),
-        ("Partially-Degraded", 1),
+        ("Dgrd", 2),
+        ("Degraded", 2),
+        ("Pdgd", 2),
+        ("Partially-Degraded", 2),
+        (" partially degraded ", 2),
+        ("Rec", 1),
         ("Offln", 2),
         ("Failed", 2),
-        ("Unexpected", 2),
+        ("Unexpected", 1),
     ],
 )
 def test_virtual_drive_state_encoding(state: str, expected: int) -> None:
     assert _encode_vd_state(state) == expected
+
+
+@pytest.mark.parametrize(
+    ("state", "value"),
+    [
+        ("DHS", 0),
+        ("GHS", 0),
+        ("Msng", 2),
+        ("UBad", 2),
+        ("UGood", 0),
+    ],
+)
+def test_physical_role_and_fault_metric_values(
+    session_factory: sessionmaker[Session],
+    state: str,
+    value: int,
+) -> None:
+    snapshot = _snapshot_with_drives()
+    snapshot.physical_drives[0].state = state
+    with session_factory() as session, session.begin():
+        session.add(snapshot)
+    expected = (
+        'megaraid_physical_drive_state{enclosure="252",model="ST4000NM000",'
+        f'serial="SN0001",slot="0"}} {value}.0'
+    )
+    assert expected in _scrape_metrics(session_factory)
 
 
 def test_drive_metrics_cache_reuses_families_for_same_snapshot(

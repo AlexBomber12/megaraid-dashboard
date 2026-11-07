@@ -184,7 +184,7 @@ async def _start_metrics_server(
 
     try:
         config = uvicorn.Config(
-            create_metrics_app(session_factory),
+            create_metrics_app(session_factory, settings=settings),
             host=settings.metrics_listen_address,
             port=settings.metrics_port,
             log_level="warning",

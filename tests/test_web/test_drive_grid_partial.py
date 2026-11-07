@@ -30,12 +30,14 @@ def test_drive_grid_partial_renders_warning_temperature_class() -> None:
 
 def test_drive_grid_partial_renders_critical_failed_state_class() -> None:
     tiles = list(_tiles())
-    tiles[4] = _tile(slot_id=4, state_text="Failed", state_severity="critical")
+    tiles[4] = _tile(
+        slot_id=4, state_text="Failed", state_severity="critical", health_label="Critical"
+    )
 
     rendered = _render_drive_grid(tiles)
 
     assert "Failed" in rendered
-    assert '<span class="drive-tile-v2__state status-text--critical">' in rendered
+    assert '<strong class="drive-health-label status-text--critical">Critical</strong>' in rendered
     assert 'class="drive-tile-v2 drive-tile-v2--critical"' in rendered
 
 
@@ -80,6 +82,7 @@ def _tile(
     temperature_state: str = "optimal",
     state_severity: str = "optimal",
     tile_severity: str | None = None,
+    health_label: str = "Healthy",
 ) -> SimpleNamespace:
     resolved_tile_severity = tile_severity or (
         "critical"
@@ -99,4 +102,6 @@ def _tile(
         tile_severity=resolved_tile_severity,
         error_badge_count=None,
         detail_url=f"/drives/252:{slot_id}",
+        health_label=health_label,
+        health_reason="",
     )

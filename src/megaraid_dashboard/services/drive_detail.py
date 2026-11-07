@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from megaraid_dashboard.config import Settings
 from megaraid_dashboard.db.models import ControllerSnapshot, Event, PhysicalDriveSnapshot
+from megaraid_dashboard.services.drive_health import assess_drive_health
 from megaraid_dashboard.services.drive_history import (
     DriveTemperatureSeries,
     load_drive_temperature_series,
@@ -20,11 +21,9 @@ from megaraid_dashboard.services.drive_position import (
     physical_slot_label,
     physical_slot_number,
 )
-from megaraid_dashboard.services.event_detector import physical_drive_state_severity
 from megaraid_dashboard.services.overview import (
     SystemHealthViewModel,
     _CollectorStateProvider,
-    _event_severity_to_status,
     _load_system_health,
     compute_drive_tile_severity,
     format_tb,
@@ -36,9 +35,6 @@ _REPLACE_WARNING_TEXT = (
     "Replacing a drive changes RAID array state. Confirm the affected slot and serial number "
     "before continuing."
 )
-_OPTIMAL_STATES = {"Onln", "Online", "ONLINE", "UGood"}
-_CRITICAL_STATES = {"Failed", "MISSING", "Missing", "UBad"}
-_REBUILD_STATES = {"Rbld", "Rebld", "Rebuild", "Rebuilding"}
 
 
 @dataclass(frozen=True)
@@ -57,6 +53,7 @@ class DriveHealthSnapshot:
     locate_last_action: str | None
     locate_start_url: str
     locate_stop_url: str
+    health_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -401,14 +398,22 @@ def _build_health_snapshot(
     snapshot: ControllerSnapshot,
     settings: Settings,
 ) -> DriveHealthSnapshot:
-    state_severity = _drive_state_severity(drive.state)
+    health = assess_drive_health(
+        drive,
+        temperature=temperature_severity(
+            drive.temperature_celsius,
+            temp_warning=settings.temp_warning_celsius,
+            temp_critical=settings.temp_critical_celsius,
+        ),
+    )
     smart_status = "ALERT" if drive.smart_alert else "OK"
     latest_locate_action = _latest_locate_action(session, drive)
     return DriveHealthSnapshot(
         state=drive.state.upper(),
-        state_severity=state_severity,
+        state_severity=health.severity,
+        health_label=health.label,
         state_subtitle=_state_subtitle(drive, snapshot),
-        summary_text=_summary_text(drive),
+        summary_text=health.summary,
         temperature_celsius=drive.temperature_celsius,
         temperature_severity=temperature_severity(
             drive.temperature_celsius,
@@ -603,17 +608,6 @@ def _neighbor_drive_url(
     return f"/drives/{neighbor.enclosure_id}:{neighbor.slot_id}"
 
 
-def _drive_state_severity(state: str) -> str:
-    if state in _OPTIMAL_STATES:
-        return "optimal"
-    if state in _CRITICAL_STATES:
-        return "critical"
-    if state in _REBUILD_STATES:
-        return "warning"
-    severity = _event_severity_to_status(physical_drive_state_severity("Onln", state))
-    return "warning" if severity in {"unknown", "optimal"} else severity
-
-
 def _state_subtitle(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) -> str:
     if drive.disk_group_id is None:
         return "Unconfigured drive."
@@ -621,29 +615,6 @@ def _state_subtitle(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) 
     raid_text = "Unknown RAID" if virtual_drive is None else virtual_drive.raid_level
     vd_text = "unknown" if virtual_drive is None else str(virtual_drive.vd_id)
     return f"Member of VD {vd_text}. {raid_text}. DG {drive.disk_group_id}."
-
-
-def _summary_text(drive: PhysicalDriveSnapshot) -> str:
-    total_errors = drive.media_errors + drive.other_errors + drive.predictive_failures
-    if drive.state in _OPTIMAL_STATES and total_errors == 0 and not drive.smart_alert:
-        return "Drive functioning normally."
-    parts: list[str] = []
-    if drive.state not in _OPTIMAL_STATES:
-        parts.append(f"Drive state is {drive.state}.")
-    if drive.media_errors:
-        parts.append(
-            f"{drive.media_errors} historical media {_pluralize(drive.media_errors, 'error')}."
-        )
-    if drive.other_errors:
-        parts.append(f"{drive.other_errors} other {_pluralize(drive.other_errors, 'error')}.")
-    if drive.predictive_failures:
-        parts.append(
-            f"{drive.predictive_failures} predictive "
-            f"{_pluralize(drive.predictive_failures, 'failure')}."
-        )
-    if drive.smart_alert:
-        parts.append("S.M.A.R.T. alert is active.")
-    return " ".join(parts)
 
 
 def _dg_span_row_text(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) -> str:
@@ -727,10 +698,6 @@ def _action_button(
         is_enabled=enabled,
         disabled_reason=None if enabled else reason,
     )
-
-
-def _pluralize(count: int, singular: str) -> str:
-    return singular if count == 1 else f"{singular}s"
 
 
 def _today_utc() -> date:

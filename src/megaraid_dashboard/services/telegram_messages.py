@@ -16,6 +16,7 @@ from megaraid_dashboard.storcli.states import normalized_state
 _VD_DEGRADED_STATES = frozenset({"degraded", "dgrd", "partially degraded", "pdgd"})
 _VD_UNAVAILABLE_STATES = frozenset({"failed", "offline", "offln", "ofln"})
 _PD_HEADLINES = {
+    "ubad": "контроллер пометил диск непригодным (UBad).",
     "failed": "отказ диска.",
     "missing": "диск не обнаружен.",
     "msng": "диск не обнаружен.",

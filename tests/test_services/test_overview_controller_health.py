@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from megaraid_dashboard.db.models import (
+    CacheVaultSnapshot,
     ControllerSnapshot,
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
@@ -24,6 +25,9 @@ def _snapshot(*, alarm_state: str = "On") -> ControllerSnapshot:
         cv_present=True,
         bbu_present=False,
         roc_temperature_celsius=70,
+        cachevault=CacheVaultSnapshot(
+            type="CVPM02", state="Optimal", replacement_required=False, capacitance_percent=89
+        ),
     )
 
 
@@ -102,3 +106,15 @@ def test_alarm_field_does_not_escalate_health_regardless_of_value(alarm_state: s
     )
 
     assert health == "optimal"
+
+
+@pytest.mark.parametrize("absent", ["pd", "vd", "both"])
+def test_empty_complete_inventory_is_never_optimal(absent: str) -> None:
+    assert (
+        derive_controller_health(
+            _snapshot(),
+            [] if absent in {"pd", "both"} else [_physical_drive()],
+            [] if absent in {"vd", "both"} else [_virtual_drive()],
+        )
+        == "critical"
+    )

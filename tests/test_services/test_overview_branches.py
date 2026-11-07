@@ -155,26 +155,9 @@ def test_empty_next_run_text_treats_naive_next_run_as_utc() -> None:
 # --- Line 964: _drive_state_badge promotes "unknown" state status to warning --
 
 
-def test_drive_state_badge_treats_unknown_state_status_as_warning(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # physical_drive_state_severity never returns severities other than
-    # info/critical/warning, but the defensive branch at line 964 promotes
-    # an "unknown" mapping to "warning". Patch event_detector's helper used
-    # internally by overview.py to return a synthetic severity, which then
-    # flows through _event_severity_to_status -> "unknown".
-    import megaraid_dashboard.services.overview as overview_module
-
-    monkeypatch.setattr(
-        overview_module,
-        "physical_drive_state_severity",
-        lambda previous, current: "fabricated",
-    )
+def test_drive_state_badge_treats_unknown_state_status_as_warning() -> None:
     drive = _make_pd(state="Mystery", temperature_celsius=40)
-
-    badge = _drive_state_badge(drive, temp_warning=55, temp_critical=60)
-
-    assert badge == "warning"
+    assert _drive_state_badge(drive, temp_warning=55, temp_critical=60) == "warning"
 
 
 # --- Line 971: _drive_state_badge resets unknown temperature to optimal ------

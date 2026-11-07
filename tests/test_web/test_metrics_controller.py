@@ -17,6 +17,7 @@ from megaraid_dashboard.db import (
     get_sessionmaker,
 )
 from megaraid_dashboard.web.metrics import create_metrics_app
+from tests.test_services.test_telegram_notifier import _settings
 
 
 @pytest.fixture
@@ -109,6 +110,33 @@ def test_cachevault_capacitance_metric_is_absent_without_cachevault(
     response_text = _scrape_metrics(session_factory)
 
     assert "megaraid_cv_capacitance_percent" not in response_text
+
+
+@pytest.mark.parametrize(
+    ("temperature", "warning", "critical", "expected"),
+    [
+        (106, 95, 105, 2.0),
+        (106, 110, 120, 0.0),
+        (96, 95, 105, 1.0),
+    ],
+)
+def test_production_metric_uses_configured_health_thresholds(
+    session_factory: sessionmaker[Session],
+    temperature: int,
+    warning: int,
+    critical: int,
+    expected: float,
+) -> None:
+    _insert(session_factory, _snapshot(roc_temperature_celsius=temperature))
+    app = create_metrics_app(
+        session_factory,
+        settings=_settings(roc_temp_warning_celsius=warning, roc_temp_critical_celsius=critical),
+    )
+    with TestClient(app) as client:
+        assert (
+            _controller_metric("megaraid_controller_health", expected)
+            in client.get("/metrics").text
+        )
 
 
 def _insert(
