@@ -16,7 +16,7 @@
       </details>
     </div>
     <div class="action-row__now">
-      {% if buzzer_state == 'silenced' %}<span>Current alarm silenced</span>{% elif not buzzer_on and not buzzer_off %}<span class="status-badge status-badge--warning">Unknown</span>{% endif %}
+      {% if buzzer_state == 'silenced' %}<span>Current alarm silenced</span>{% elif not buzzer_on and not buzzer_off %}<span class="status-badge status-badge--unknown">Unknown</span>{% endif %}
       {{ row_note([enable_reason, disable_reason, silence_reason]) }}
       <p class="action-row__feedback" data-controller-action-status hidden role="status"></p>
       <p class="form-error" data-controller-action-error hidden role="alert"></p>

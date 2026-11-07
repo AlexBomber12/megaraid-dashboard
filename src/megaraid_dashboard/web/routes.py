@@ -4802,8 +4802,6 @@ def _temperature_chart_data(
             {
                 "label": "Average Temperature",
                 "data": values,
-                "borderColor": "#37d6ff",
-                "backgroundColor": "rgba(55, 214, 255, 0.16)",
                 "pointRadius": 2,
                 "spanGaps": True,
                 "tension": 0.2,
@@ -4842,7 +4840,6 @@ def _threshold_dataset(
     return {
         "label": label,
         "data": tuple(value for _ in range(point_count)),
-        "borderColor": color,
         "borderDash": (6, 6),
         "borderWidth": 1,
         "pointRadius": 0,
@@ -4865,7 +4862,6 @@ def _error_chart_data(
             {
                 "label": "Media Errors",
                 "data": media_errors,
-                "borderColor": "#ff5c6c",
                 "pointRadius": 2,
                 "spanGaps": True,
                 "tension": 0.2,
@@ -4873,7 +4869,6 @@ def _error_chart_data(
             {
                 "label": "Other Errors",
                 "data": other_errors,
-                "borderColor": "#f0b44d",
                 "pointRadius": 2,
                 "spanGaps": True,
                 "tension": 0.2,
@@ -4881,7 +4876,6 @@ def _error_chart_data(
             {
                 "label": "Predictive Failures",
                 "data": predictive_failures,
-                "borderColor": "#ff5c6c",
                 "borderDash": (6, 6),
                 "pointRadius": 2,
                 "spanGaps": True,

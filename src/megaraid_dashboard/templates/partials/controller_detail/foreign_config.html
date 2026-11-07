@@ -5,7 +5,7 @@
     <div class="action-row__name"><h3>Foreign Configuration</h3></div>
     <div class="action-row__now">
       {% if not fc.is_known %}
-        <span class="status-badge status-badge--warning">Unknown</span>
+        <span class="status-badge status-badge--unknown">Unknown</span>
       {% elif fc.present %}
         <strong class="status-text--warning">Detected on {{ fc.drive_count }} drive(s)</strong>
       {% else %}

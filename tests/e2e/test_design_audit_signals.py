@@ -90,6 +90,10 @@ def test_combined_faults_keep_alarm_colours_and_fit_viewport(
         )
         expect(row.locator('[data-label="Predictive"]')).to_have_css("color", critical)
         expect(row.locator('[data-label="SMART alert"]')).to_have_css("color", critical)
+        hot_row = page.locator("tbody tr").filter(
+            has=page.get_by_role("link", name="252:3", exact=True)
+        )
+        expect(hot_row.locator('[data-label="Temp"]')).to_have_css("color", critical)
         expect(page.locator(".summary-chips")).to_contain_text("2 Critical", ignore_case=True)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
         expect(row.locator('[data-label="Temp"]')).to_have_text("35°C")

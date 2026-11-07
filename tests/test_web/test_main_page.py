@@ -84,7 +84,7 @@ def test_main_page_renders_new_overview(
     assert 'status-badge--optimal">OPTIMAL' not in response.text
     assert '<div class="controller-card-row2">' in response.text
     assert response.text.count('<div class="metric-item">') == 3
-    assert '<span class="metric-label">RoC</span>' in response.text
+    assert '<span class="metric-label">RoC Temp</span>' in response.text
     assert '<span class="metric-label">CacheVault</span>' in response.text
     assert '<span class="metric-label">BBU</span>' not in response.text
     assert '<span class="metric-label">Errors (24h)</span>' in response.text

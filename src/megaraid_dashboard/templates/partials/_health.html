@@ -1,0 +1,21 @@
+{# Health presentation only; raw controller states and write gates remain in their services. #}
+{% macro status_badge(severity, label) -%}
+  <span class="status-badge status-badge--{{ severity }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro drive_summary(items, severity_attribute, drives_url=none) -%}
+  {% set critical = items | selectattr(severity_attribute, 'equalto', 'critical') | list | length %}
+  {% set warning = items | selectattr(severity_attribute, 'equalto', 'warning') | list | length %}
+  {% set healthy = items | selectattr(severity_attribute, 'equalto', 'optimal') | list | length %}
+  {% set unknown = items | length - critical - warning - healthy %}
+  <div class="summary-chips">
+    {% for severity, count in [('critical', critical), ('warning', warning), ('unknown', unknown), ('optimal', healthy)] if count %}
+      {{ status_badge(severity, count ~ ' ' ~ (severity | health_label)) }}
+    {% endfor %}
+    {% if drives_url %}<a href="{{ drives_url }}">{{ items | length }} Drives →</a>{% else %}<span class="muted">{{ items | length }} Drives</span>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro drive_role(label) -%}
+  {% if label == 'Ready' %}<span class="drive-role">Role: Unconfigured</span>{% elif label == 'Hot spare' %}<span class="drive-role">Role: Hot spare</span>{% endif %}
+{%- endmacro %}

@@ -48,7 +48,7 @@ def test_pluralize_uses_plural_for_multiple() -> None:
     assert _pluralize(2, "drive", "drives") == "drives"
 
 
-def test_drive_row_with_warning_temperature_and_degraded_state_emits_one_badge(
+def test_drive_row_with_degraded_state_retains_warning_temperature(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -56,10 +56,11 @@ def test_drive_row_with_warning_temperature_and_degraded_state_emits_one_badge(
 
     drive = _controller_zero_row(session)
 
-    assert _warning_or_critical_badges(drive.row_state, drive.temperature_severity) == ("warning",)
+    assert drive.row_state == "warning"
+    assert drive.temperature_severity == "warning"
 
 
-def test_drive_row_with_warning_temperature_and_optimal_state_emits_one_warning_badge(
+def test_drive_row_with_online_state_reports_warning_temperature(
     session: Session,
     sample_snapshot: StorcliSnapshot,
 ) -> None:
@@ -67,7 +68,8 @@ def test_drive_row_with_warning_temperature_and_optimal_state_emits_one_warning_
 
     drive = _controller_zero_row(session)
 
-    assert _warning_or_critical_badges(drive.row_state, drive.temperature_severity) == ("warning",)
+    assert drive.row_state == "warning"
+    assert drive.temperature_severity == "warning"
 
 
 def test_drive_row_with_failed_state_and_optimal_temperature_emits_one_critical_badge(
