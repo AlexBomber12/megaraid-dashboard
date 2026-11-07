@@ -1,6 +1,6 @@
 # MegaRAID Dashboard — maintenance roadmap
 
-Updated: **2026-11-07**. Installed application: `9f2693e` (#149) on SERVER.
+Updated: **2026-11-08**. Installed application: `f9e736f` (#150) on SERVER.
 [CURRENT_STATE.md](CURRENT_STATE.md) records the production verification boundary.
 This plan grants no controller mutation, notification, deployment or recurring automation.
 
@@ -33,11 +33,17 @@ This plan grants no controller mutation, notification, deployment or recurring a
   100% statement/branch coverage, 515 safety and 291 Chromium cases. Managed acceptance
   passed at 2026-11-07 16:55:45 UTC with normal collection and no controller writes.
 
+- Shared Healthy / Attention / Critical / Unknown labels and retained count/error
+  badges (#150) are installed and accepted at 2026-11-07 22:38:55 UTC. #150 CI:
+  3411 default tests (one existing skip), 100% coverage, 515 safety and 292 Chromium
+  cases; two additional isolated badge/recovery checks passed. Normal collection,
+  mapping/sort and Observed refresh were verified without controller writes.
+
 ## Remaining work
 
 | Priority | Work | Required evidence |
 | --- | --- | --- |
-| 0 | Finish shared UI health vocabulary and publish both documentation PRs | Same health words on summary/tiles/list/details; raw controller evidence retained in details; fresh CI/review |
+| 0 | Review/merge the updated documentation PRs and accept handoff | PR #147 and knowledge-vault #4; current-head CI/review; owner records open operational gates or explicit deferrals |
 | 1 | Inspect independent app/Collector monitoring; add only missing coverage | Observer independent of the failed app; incident-only failure/recovery tests without RAID faults |
 | 2 | Verify recurring backups, retention and separate-copy restore | Scheduled/off-host copy, SQLite integrity and history/delivery checks; live DB untouched |
 | 3 | Observe schedule rollover after a natural Patrol completion | Fresh read evidence; no guessed next date or forced operation |

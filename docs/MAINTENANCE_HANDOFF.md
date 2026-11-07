@@ -1,12 +1,12 @@
 # Maintenance handoff
 
-Updated **2026-11-07** for Alexey. The owner requested a handoff and maintenance plan,
+Updated **2026-11-08** for Alexey. The owner requested a handoff and maintenance plan,
 without recurring automatic checks. No new chat, automation, observer or timer is created.
 
 ## Start here
 
 1. Read [current state](CURRENT_STATE.md) and verify the actual installed revision.
-   `9f2693e` (#149) is the verified production application at this checkpoint.
+   `f9e736f` (#150) is the verified production application at this checkpoint.
 2. Read [the runbook](RUNBOOK.md), [notification contract](TELEGRAM_ALERTS.md) and
    [deployment procedure](VERSIONED_DEPLOYMENT.md) for the task.
 3. Begin read-only. An old note/screenshot/incident is not permission to operate a
@@ -16,27 +16,35 @@ Completed UI/Learn Cycle findings are closed. Independent app/Collector monitori
 recurring backup/restore proof remain open in [the roadmap](roadmap.md). Do not describe
 them as installed/tested merely because this handoff exists.
 
-## Release #149 acceptance and transfer gates
+## Release #150 acceptance and transfer gates
 
-Managed activation was verified on 2026-11-07 at 16:55:45 UTC. Normal Collector,
-health, 1/8/1 optimal exporter grades on loopback 8092, all eight drive views,
-physical mapping/sort and automatic/manual Observed refresh passed. Settings/policy
-were preserved; Buzzer remains Enabled. No controller writes or real fault drill.
-[The scenario ledger](CRITICAL_SCENARIOS_AUDIT.md) records 3404 default tests
-(one existing skip), 100% coverage, 515 safety cases, 291 browser cases and 51
-isolated incident chains; that is software evidence, not physical recovery certification.
+Managed activation was verified on 2026-11-07 at 22:38:55 UTC (23:38:55 Europe/Rome).
+Normal Collector, application/database health, preserved settings/policy/configuration,
+fresh 1/8/1 optimal exporter grades on loopback 8092, physical mapping/sort and both
+Observed refresh paths passed. Healthy labels and the retained 8 Healthy count were
+checked across production views. Attention/Critical and numerical error badges passed
+two isolated fault/recovery cases. Buzzer remains Enabled. No controller writes or
+production fault drill. #150 CI passed 3411 default tests (one existing skip), 100%
+statement/branch coverage, 515 safety cases and 292 browser cases. The earlier
+[critical scenario ledger](CRITICAL_SCENARIOS_AUDIT.md) retains its #149 counts and
+51 incident chains. A read-only 2026-11-08 follow-up confirmed normal operation.
 
-Before closing handoff, publish/review the project and vault documentation PRs,
-finish the requested shared health vocabulary, and verify independent availability/
-freshness monitoring plus recurring/off-host backup and separate-copy restore.
-The exporter and deployment backup already working do not close the latter two items.
-Alexey owns acceptance and any future authorization. Record the result or explicit
-deferral of each open item; do not silently turn an unverified item into completed work.
+| Gate | Status | Owner and closure evidence |
+| --- | --- | --- |
+| Shared UI health vocabulary | Closed by deployed #150 | Production views and isolated fault/recovery checks recorded |
+| Source/vault documentation | Publication authorized; PR #147 and vault #4 open | Alexey: fresh CI/review, merge and acceptance of this handoff |
+| Independent app/Collector monitoring | Unverified | Alexey: identify the existing observer and prove failure/recovery plus stale-Collector detection, independently of the app, without RAID faults |
+| Recurring recoverable backups | Unverified | Alexey: prove schedule, retention, off-host copy and separate-copy restore integrity/history/delivery state; live DB untouched |
+
+The healthy exporter and deployment backup do not close the monitoring/recurring
+recovery gates. Record evidence or an explicit owner-accepted deferral before closing
+handoff; an unverified item must not silently become completed work. These notes
+create no recurring agent job, monitor, backup timer or autonomous update authority.
 
 Natural Patrol schedule rollover, acoustic/Silence behavior and production rollback
-are retained limitations, not reasons to exercise healthy RAID. A safe separate
-testbed or genuine authorized maintenance is the acceptance boundary for physical
-replacement/rebuild/spin-down/foreign recovery.
+remain documented limits. Physical replacement/rebuild/spin-down/foreign recovery
+acceptance belongs on a disposable testbed or genuine separately authorized maintenance,
+not an induced fault in healthy RAID. They are not routine production acceptance steps.
 
 ## Maintenance triggers
 

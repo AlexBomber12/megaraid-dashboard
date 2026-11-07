@@ -1,22 +1,22 @@
 # Production state and remaining work
 
-Evidence checkpoint: **2026-11-07**, SERVER. This is dated verification, not a live
+Documentation updated **2026-11-08**. Production acceptance: **2026-11-07**, SERVER. This is dated verification, not a live
 health feed. Detailed telemetry and exact backup/status receipts remain private,
 in ignored recovery material. Do not publish credentials, serials or raw logs.
 
 ## Installed release
 
-**PR #149 is installed and verified.** The owner also confirmed on 2026-11-06 that
+**PR #150 is installed and verified.** The owner also confirmed on 2026-11-06 that
 physical Locate identification has been checked for all eight cages. The real Buzzer
 Enable/Disable setting round trip and audit also passed; acoustic alarm is not certified.
 
 | Item | Verified state |
 | --- | --- |
-| Application | `9f2693eb3000cc908cb1393f127fe98730ec8abc`, merged [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149) |
+| Application | `f9e736fab4f9b78718d7db9e0774ef0f41ed8f38`, merged [PR #150](https://github.com/AlexBomber12/megaraid-dashboard/pull/150) |
 | Public origin | <https://megaraid.alexbomber.com/>; nginx HTTPS and Basic authentication |
 | Service | `megaraid-dashboard.service`, user/group `megaraid`, active/running at verification |
 | Hardening exception | `NoNewPrivileges=no` for the reviewed sudo-based rollout; fresh-install defaults differ |
-| Working directory | `/opt/megaraid-dashboard-ui-9f2693e` |
+| Working directory | `/opt/megaraid-dashboard-ui-f9e736f` |
 | Local application port | `8090`; application/database/Collector health verified |
 | Metrics | `127.0.0.1:8092/metrics`; 1 controller, 8 PD and 1 VD report optimal (0), Collector timestamp fresh |
 | Database | `/var/lib/megaraid-dashboard/megaraid.db`; migration `0009_event_deliveries` |
@@ -26,7 +26,7 @@ Enable/Disable setting round trip and audit also passed; acoustic alarm is not c
 | Binary SHA-256 | `642fff8a3976dbc85406d9f7e8f5f5ce4ceab2753ac68cab5245888b281c8547` |
 | Capability | `full-supported-actions`; `CONTROLLER_READ_ONLY=false` |
 | Maintenance / destructive mode | Both false after deployment acceptance and after the supervised buzzer check; maintenance closed |
-| Alarm Buzzer | Owner-selected Enabled retained and confirmed again at #149 acceptance; maintenance closed |
+| Alarm Buzzer | Owner-selected Enabled retained and confirmed again at #150 acceptance; maintenance closed |
 | Approval policy | 79 exact writes, 25 reads and 8 explicit replacement topologies; preserved |
 
 Capability is an authorization ceiling, not permission to exercise a healthy array.
@@ -48,35 +48,40 @@ Do not apply fresh-install `raid-monitor` defaults over this deployment.
 | Physical cage labels, Drives sort, buzzer aliases and managed install permissions | #146, `8b60b72` | Managed production activation and authenticated UI checks; physical LED acceptance confirmed by owner |
 | Shared drive-health assessment | #148, `510ce9b` | SMART/predictive/temperature/error evidence across saved-data views; raw state and command gates preserved |
 | Critical alerts, component/metric grades and monitoring uncertainty | #149, `9f2693e` | 51 isolated incident chains, full action catalog, managed deployment and read-only production acceptance |
+| Shared health vocabulary and retained error badges | #150, `f9e736f` | Healthy labels across views, two isolated badge/recovery cases and production normal-Collector/UI acceptance |
 
-PR #149 had a fresh current-head Codex +1 and all three green CI jobs before merge.
-Reviewed head `bf34ee922a418d9643a06c9f8a02273a6034da55` and installed squash release
-have identical trees. [CI run 42316293906](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42316293906)
-passed 3404 default tests (one existing skip), 515 isolated safety cases and 291 Chromium
-cases, with 100% statement/branch coverage. Automated hardware boundaries are mocked.
+PR #150 had a fresh current-head review without findings and all three green CI jobs
+before merge. Reviewed `ecb73fb1c71a04894f0b84ce79da7f045e53d137` and the installed
+squash release have identical trees. [CI run 42416059669](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42416059669)
+passed 3411 default tests (one existing skip), 515 isolated safety cases and 292 Chromium
+cases, with 100% statement/branch coverage. Hardware boundaries are mocked.
 
-Managed activation reached `verified` on **2026-11-07 at 16:55:45 UTC**
-(17:55:45 Europe/Rome), from baseline #148 / `510ce9b`. A new normal Collector sample
-was saved by the new process. Configuration, policy and effective settings were preserved.
-App/database/Collector health passed. The bounded checked-process journal contained one
-completed normal cycle, no warning/error events and no traceback; browser warnings/errors
-were absent. No controller writes, forced collection, migrations or dependency changes.
+Managed activation reached `verified` on **2026-11-07 at 22:38:55 UTC**
+(23:38:55 Europe/Rome), from #149 / `9f2693e`. The new process saved a normal Collector
+sample; application/database/Collector, settings, exact command policy and protected
+configuration passed. The checked process journal and browser contained no new
+warning/error or traceback. No controller writes, forced poll, migration or dependency
+change was used. A read-only follow-up on 2026-11-08 (Europe/Rome) confirmed the same
+current healthy release, fresh metrics and five normal Collector completions in the
+bounded journal window, without warnings/errors or traceback. This is dated evidence.
 
-The MegaRAID exporter is on loopback **8092**, not the default 8091 used by another
-service on SERVER. An ad-hoc acceptance check initially used the wrong port; correcting
-the checker confirmed fresh metrics and optimal grades for 1 controller, 8 PD and 1 VD.
-No application configuration was changed to make the check pass. A healthy exporter
-does not itself establish independent scraping or outage notification.
+Overview, Controller, Drives, all eight drive-detail cards, VD health, position tooltips
+and Notifier use **Healthy / Attention / Critical / Unknown**. The retained green
+count reads **8 Healthy**. Raw firmware values are separate Controller details;
+Onln is absent from ordinary tiles/list rows. Two additional disposable-DB browser
+cases confirmed 1 Critical / 7 Healthy, 1 Attention / 7 Healthy, the numerical media
+error badge, and recovery to 8 Healthy. These were synthetic faults, not SERVER incidents.
 
-Authenticated production checks covered one horizontal S0-S7 row on Overview and all
-eight detail diagrams, matching titles/highlights/Previous/Next destinations, Drives
-ascending/descending physical order and retained order through Refresh now.
-The #149 recheck confirmed Healthy/Onln on all eight detail pages, matching selected
-positions, both Observed refresh paths (16:48 -> 16:55 UTC automatically), and no
-monitoring notice with reliable fresh data or horizontal overflow. The controller
-reported an existing running Consistency Check; acceptance did not start or stop it. Physical
-labels are presentation only: S0-S3 -> 252:4-7; S4-S7 -> 252:0-3. URLs, stored slot IDs,
-serial identity and command/topology targets still use actual controller addresses.
+Production reads confirmed the horizontal S0-S7 row, all eight selected positions,
+ascending/descending Drives order and retained sort after Refresh now. S0-S3 map to
+252:4-7; S4-S7 map to 252:0-3. Stored addresses, serials, command/topology targets and
+action gates remain unchanged. Observed advanced automatically from 22:30 to 22:38 UTC;
+manual refresh retained the correct sample. No horizontal overflow or fresh-data
+monitoring warning appeared. Existing running Consistency Check was observed only.
+
+The MegaRAID exporter uses loopback **8092**, not 8091 (another service on SERVER).
+Fresh grades were optimal (0) for 1 controller, 8 PD and 1 VD. Exporter availability
+does not prove an independent consumer or outage notification.
 
 The firmware's schedule-marker rollover rule after natural Patrol completion remains
 unverified. Reported schedule preserves its value without promising a future start;
@@ -124,7 +129,7 @@ Independent availability/freshness monitoring remains unverified. [Delivery cont
 
 ## Recovery after SSH disconnect or repeated activation
 
-The installed #149 release used [versioned deployment](VERSIONED_DEPLOYMENT.md):
+The installed #150 release used [versioned deployment](VERSIONED_DEPLOYMENT.md):
 detached systemd execution and a durable root-owned receipt under
 `/var/lib/megaraid-dashboard-deploy/FULL_COMMIT_SHA.json`. It finished `verified`;
 the exact private backup/context is recorded in recovery material. Check status before
@@ -133,7 +138,7 @@ repeating a request. `queued` is not success. Do not restore live DB history aft
 ```bash
 systemctl show megaraid-dashboard.service -pActiveState -pSubState -pWorkingDirectory -pMainPID
 curl --fail --silent --show-error http://127.0.0.1:8090/healthz
-python3 /usr/local/sbin/megaraid-dashboard-deploy.py status --commit 9f2693eb3000cc908cb1393f127fe98730ec8abc
+python3 /usr/local/sbin/megaraid-dashboard-deploy.py status --commit f9e736fab4f9b78718d7db9e0774ef0f41ed8f38
 ```
 
 Guarded managed application rollback is available from its private context; no actual
@@ -144,10 +149,9 @@ do not execute an old staged release or bypass a baseline refusal.
 
 ## Remaining work, in order
 
-First close the owner-requested UI vocabulary follow-up: Healthy / Attention /
-Critical / Unknown as the shared health vocabulary, with raw firmware states in
-details. This is pending a separate implementation PR, not part of installed #149.
-
+The shared health-vocabulary follow-up is closed by deployed #150. The project
+documentation PR #147 and knowledge-vault PR #4 carry the updated handoff; publication
+is owner-authorized, and review/CI/merge and final handoff acceptance remain separate.
 
 1. Inspect existing independent app/Collector monitoring; add only missing incident-only coverage.
 2. Verify recurring backups, retention/off-host storage and a separate-copy restore.

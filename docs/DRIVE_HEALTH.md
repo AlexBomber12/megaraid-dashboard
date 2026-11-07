@@ -21,8 +21,11 @@ in Controller details. Healthy spare/unconfigured drives keep an explicit **Role
 label, not another competing health grade. Health-column sorting uses the displayed
 assessment; physical S ordering and real-address action targets are preserved.
 
-This wording change is a separate, undeployed follow-up to #149. Installed #149 and
-its accepted software/hardware boundaries are recorded in [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149).
+This wording change shipped in [PR #150](https://github.com/AlexBomber12/megaraid-dashboard/pull/150),
+installed as `f9e736f` and verified on 2026-11-07 at 22:38:55 UTC. The retained 8 Healthy
+count and two isolated Attention/Critical/numerical-error/recovery cases passed.
+Production reads checked normal collection, all eight cards and both Observed refresh
+paths. [Current state](CURRENT_STATE.md) records the acceptance boundary.
 
 | Observed evidence | Assessment | Explanation |
 | --- | --- | --- |

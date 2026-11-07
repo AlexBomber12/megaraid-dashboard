@@ -1,5 +1,24 @@
 # Changelog
 
+## Production checkpoint — 2026-11-07 (#150)
+
+Installed `f9e736fab4f9b78718d7db9e0774ef0f41ed8f38`, from #149 / `9f2693e`, after
+fresh current-head review without findings and all green CI. Managed verification
+finished at 22:38:55 UTC (23:38:55 Europe/Rome) after a new normal Collector sample.
+Application/database/Collector, settings/policy/configuration, fresh 1/8/1 exporter
+grades, all eight cards, mapping/sort and both Observed refresh paths passed.
+
+- Use Healthy / Attention / Critical / Unknown consistently across health views.
+- Retain 8 Healthy, fault counters and numerical error badges; two additional
+  disposable-DB badge/recovery checks passed. Keep raw controller codes in details.
+- #150 CI: 3411 default tests (one existing skip), 100% statement/branch coverage,
+  515 isolated safety and 292 Chromium cases. No controller write or production fault.
+- Read-only follow-up on 2026-11-08 confirmed the current healthy release, fresh
+  metrics and normal collection. Documentation/vault publication is authorized;
+  independent monitoring and recurring backup/restore proof remain open.
+
+The following #149/#146 checkpoints retain their original release-specific evidence.
+
 ## Production checkpoint — 2026-11-07 (#149)
 
 Installed `9f2693eb3000cc908cb1393f127fe98730ec8abc` from #148 / `510ce9b` after

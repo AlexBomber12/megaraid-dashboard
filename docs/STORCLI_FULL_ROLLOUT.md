@@ -1,5 +1,5 @@
-> Current acceptance (2026-11-06): #146 is installed and verified; the owner confirmed
-> all eight physical Locate LEDs. Historical unverified-effect statements below describe
+> Current application: #150, verified on 2026-11-07; documentation updated 2026-11-08.
+> The owner confirmed all eight physical Locate LEDs on 2026-11-06. Historical unverified-effect statements below describe
 > their original checkpoint. Buzzer Enable/Disable settings are verified separately;
 > Silence and audible effects remain unverified.
 > See [current state](CURRENT_STATE.md) and [hardware acceptance](LOCATE_ACTIVITY_VERIFICATION.md).
@@ -7,7 +7,7 @@
 # One-shot production rollout: all approved supported actions
 
 The combined rollout and later audit/UI/compatibility fixes have been deployed.
-SERVER now runs `8b60b72` (#146); see [the dated inventory and evidence](CURRENT_STATE.md).
+SERVER now runs `f9e736f` (#150); see [the dated inventory and evidence](CURRENT_STATE.md).
 The [button-chain audit](OPERATOR_ACTION_READINESS.md) documents software verification
 and physical limits. Its original deployment hold is historical and has been satisfied.
 

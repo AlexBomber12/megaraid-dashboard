@@ -119,8 +119,12 @@ Buzzer stayed Enabled. Existing running Consistency Check was observed only.
 No forced poll, controller write, Telegram test or real fault drill was performed.
 Private receipts and actual SERVER screenshots are in ignored deployment-9f2693e artifacts.
 
-The owner subsequently requested consistent health wording across the UI. That separate
-follow-up does not invalidate the fault/authorization checks above and is not yet deployed.
+The shared health-vocabulary follow-up shipped as #150 / `f9e736f` and was verified
+on 2026-11-07 at 22:38:55 UTC. Healthy labels, retained counters, normal Collector,
+mapping/sort and Observed refresh passed. Two extra isolated cases preserved
+Attention/Critical and numerical error badges plus recovery; no production fault.
+#150 CI passed 3411 default tests (one existing skip), 100% coverage, 515 safety and
+292 browser cases. The earlier #149 audit numbers above remain historical evidence.
 
 The owner already confirmed physical identification for all eight LEDs. Buzzer's
 Enabled setting is verified separately from audible output. No array degradation,

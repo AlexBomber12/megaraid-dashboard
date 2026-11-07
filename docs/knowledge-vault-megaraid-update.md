@@ -1,19 +1,23 @@
-# Obsidian maintenance handoff — 2026-11-07
+# Obsidian maintenance handoff — 2026-11-08
 
-Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed application is
-`9f2693e` (#149), including #148 shared drive health, #149 critical incidents/component/metric/freshness fixes, earlier UI/schedule fixes and physical S0-S7 cage labels,
-Drives sort/refresh preservation, buzzer aliases and managed installation permissions.
-Latest managed activation finished verified on 2026-11-07 at 16:55:45 UTC; all eight physical Locate LEDs
-were confirmed by the owner. Real Buzzer Disable -> On -> Disable setting/audit
-acceptance passed on 2026-11-06; initial Disabled restored after the test. The owner
-later chose Enabled; a fresh 18:13 UTC normal sample confirmed it with maintenance
-closed and no further controller command needed for that follow-up.
-Real rollback and acoustic alarm effects are not certified.
-The owner requested a handoff and plan, without recurring automatic checks.
+Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed `f9e736f` (#150)
+includes #148 shared drive assessment, #149 critical/component/metric/freshness fixes
+and #150 Healthy / Attention / Critical / Unknown presentation. The green 8 Healthy
+count, fault counts and numerical error badges remain; firmware codes stay diagnostic.
 
-The #149 normal sample, eight drive pages, mapping/sort and both Observed refresh
-paths passed; MegaRAID exporter is on loopback 8092 with healthy 1/8/1 grades.
-Shared UI health wording is a separately requested follow-up, not installed in #149.
+Managed acceptance finished verified on 2026-11-07 at 22:38:55 UTC (23:38:55 Europe/Rome).
+All eight cards, mapping/sort, normal Collector and automatic/manual Observed refresh
+passed. Fresh exporter grades on loopback 8092 were optimal for 1 controller / 8 PD /
+1 VD. Buzzer remains Enabled. #150 CI: 3411 default tests (one existing skip), 100%
+coverage, 515 safety and 292 Chromium; two extra isolated badge/recovery cases passed.
+No controller write or production fault drill. Read-only follow-up on 2026-11-08
+confirmed the same healthy current release, fresh metrics and normal collection.
+
+The owner confirmed all eight physical Locate LEDs on 2026-11-06. Buzzer setting/audit
+round-trip acceptance passed separately that day; the later chosen Enabled state is
+retained. Silence/acoustic output and a real production rollback remain unverified.
+The owner authorized publication in project PR #147 and knowledge-vault PR #4 on
+2026-11-08; merging and cross-device synchronization remain separate steps.
 
 Maintain these `AlexBomber12/knowledge-vault` notes together:
 
