@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.config import get_settings
+from megaraid_dashboard.db.models import CacheVaultSnapshot
 from megaraid_dashboard.services.controller_detail import load_controller_detail_view_model
 from megaraid_dashboard.services.drive_detail import load_drive_detail_view_model
 from megaraid_dashboard.services.drive_health import assess_drive_health
@@ -24,6 +25,9 @@ from tests.test_services.test_drive_grid_tile import _drive
         ("Onln", False, 0, 0, 0, "optimal", "optimal", "functioning normally"),
         (" ONLINE ", False, 0, 0, 0, "unknown", "optimal", "functioning normally"),
         ("UGood", False, 0, 0, 0, "optimal", "optimal", "functioning normally"),
+        ("DHS", False, 0, 0, 0, "optimal", "optimal", "functioning normally"),
+        ("GHS", False, 0, 0, 0, "optimal", "optimal", "functioning normally"),
+        ("DHS", True, 0, 0, 0, "optimal", "critical", "S.M.A.R.T."),
         ("Onln", True, 0, 0, 0, "optimal", "critical", "S.M.A.R.T."),
         ("Onln", False, 1, 0, 0, "optimal", "critical", "1 predictive failure."),
         ("Onln", False, 2, 1, 0, "optimal", "critical", "2 predictive failures."),
@@ -67,6 +71,8 @@ def test_reported_health_signals_and_precedence(
     assert drive.state == state
     if state == "UGood":
         assert result.label == "Ready"
+    if state in {"DHS", "GHS"} and severity == "optimal":
+        assert result.label == "Hot spare"
     if media and severity == "warning":
         assert "failure" not in result.summary
 
@@ -119,14 +125,19 @@ def test_saved_drive_has_one_assessment_on_all_surfaces(
     temperature: int,
     severity: str,
 ) -> None:
-    _seed_snapshot(
+    snapshot = _seed_snapshot(
         session,
         states={4: state},
         smart_alerts={4: smart},
         predictive_failures={4: predictive},
         media_errors={4: media},
         temperatures={4: temperature},
+        with_virtual_drive=True,
     )
+    snapshot.cachevault = CacheVaultSnapshot(
+        type="CVPM02", state="Optimal", capacitance_percent=89, replacement_required=False
+    )
+    session.commit()
     settings = get_settings()
     overview = load_main_page_view_model(
         session, settings=settings, scheduler=None, collector_enabled=False, app_version="test"

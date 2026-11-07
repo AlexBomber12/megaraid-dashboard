@@ -624,6 +624,9 @@ def _snapshot(
         update={
             "virtual_drives": [virtual_drive],
             "physical_drives": physical_drives,
+            "controller": sample_snapshot.controller.model_copy(
+                update={"roc_temperature_celsius": 80}
+            ),
         }
     )
 

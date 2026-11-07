@@ -13,6 +13,7 @@ addresses and all command/action eligibility checks remain unchanged.
 | Elevated configured temperature | Attention | Elevated temperature |
 | Historical media/other error count without a stronger signal | Attention | Historical count; no automatic failed-drive/replacement verdict |
 | UGood without reported issues | Ready | Raw UGood remains visible; no surface scan or compatibility certification |
+| DHS/GHS without reported issues | Hot spare | Observed spare is healthy; its raw role remains visible |
 | Online without reported issues | Healthy | Raw controller state remains visible |
 
 Critical signals take precedence over warnings; all reported reasons stay visible.
@@ -25,6 +26,10 @@ This changes presentation only: event severity, Telegram delivery, persistence,
 wrapper/schema/grants, maintenance/destructive gates and replacement eligibility
 are unchanged. No automatic controller operation follows a health badge.
 Healthy/Ready describes reported evidence, not guaranteed absence of defects.
+
+The follow-up [critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md) separately
+corrects new UBad event severity/delivery, CacheVault/controller aggregate evidence
+and collection-freshness notices. It does not alter command eligibility or raw states.
 
 ## Verification
 

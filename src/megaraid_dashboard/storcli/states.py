@@ -9,6 +9,7 @@ _ALIASES = {
     "ofln": "offline",
     "dgrd": "degraded",
     "pdgd": "partially degraded",
+    "partially-degraded": "partially degraded",
 }
 
 

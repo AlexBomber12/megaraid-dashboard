@@ -53,11 +53,12 @@ The synthetic date/ID in this table illustrates existing event identity, not a r
 | Condition | Outcome | Exact SERVER preview | Characters SERVER / AI-SERVER | Evidence |
 | --- | --- | --- | --- | --- |
 | VD Dgrd / Degraded | Send | `🔴 SERVER: сбой массива, риск потери данных.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 97 / 100 | M; N/R |
-| VD Pdgd / Partially Degraded | Send | `🔴 SERVER: сбой массива, риск потери данных.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 97 / 100 | M; N/R |
+| VD Pdgd / Partially Degraded / Partially-Degraded | Send | `🔴 SERVER: сбой массива, риск потери данных.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 97 / 100 | M; N/R |
 | VD OfLn / Offln / Offline | Send | `🔴 SERVER: массив недоступен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | M; N/R |
 | VD Failed | Send | `🔴 SERVER: массив недоступен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | M; N/R |
 | VD entirely absent from complete inventory | Send: same unavailable-array text as VD Offline | `🔴 SERVER: массив недоступен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | P; D |
 | PD Failed | Send | `🔴 SERVER: отказ диска.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 76 / 79 | M; N/R |
+| PD UBad (new critical event) | Send | `🔴 SERVER: контроллер пометил диск непригодным (UBad).\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 107 / 110 | [Critical scenario chain](CRITICAL_SCENARIOS_AUDIT.md) |
 | PD Missing / Msng (entry present or confirmed disappearance) | Send | `🔴 SERVER: диск не обнаружен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | M; N/R |
 | PD Offline / Offln | Send | `🔴 SERVER: диск в состоянии «офлайн».\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 90 / 93 | M; N/R |
 | Positive/increasing media errors | Send | `🔴 SERVER: ошибки носителя диска.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 86 / 89 | M; N/R |
@@ -83,7 +84,7 @@ rendering accepts only integral non-bool 0–200 °C metadata. The alert's recor
 measurement is shown, not a fabricated latest reading. Missing/invalid event measurements
 use the fallback; a missing current sensor still defers dispatch. Footer tests cover
 Rome summer/winter time, naive stored UTC, and full 64-bit IDs. The longest catalog preview
-is 104 characters; the 160-character contract leaves room for real event IDs.
+is 110 characters; the 160-character contract leaves room for real event IDs.
 
 ## Suppress, defer and retry matrix
 

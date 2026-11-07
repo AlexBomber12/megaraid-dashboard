@@ -204,6 +204,17 @@ class EventDetector:
             events.extend(_new_physical_drive_events(physical_drive))
         if current.cachevault is not None:
             events.extend(self._new_cachevault_events(current.cachevault))
+        elif not current.controller.cv_present:
+            events.append(
+                DetectedEvent(
+                    severity="critical",
+                    category="cv_state",
+                    subject="CacheVault",
+                    summary="CacheVault is not detected",
+                    before=None,
+                    after={"present": False},
+                )
+            )
         return events
 
     def _detect_controller(
@@ -859,9 +870,9 @@ def _smart_alert_event(
 
 def physical_drive_state_severity(previous_state: str, current_state: str) -> str:
     normalized = normalized_state(current_state)
-    if normalized in {"failed", "missing", "offline"}:
+    if normalized in {"failed", "missing", "offline", "ubad"}:
         return "critical"
-    if normalized in {"jbod", "ugood", "ubad"}:
+    if normalized in {"jbod", "ugood"}:
         return "warning"
     return "info"
 

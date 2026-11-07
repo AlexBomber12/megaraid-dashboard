@@ -44,7 +44,7 @@ def assess_drive_health(
         warning.append("Rebuild in progress.")
     elif state == "jbod":
         warning.append("JBOD drive; not a RAID member.")
-    elif state not in {"onln", "online", "ugood"}:
+    elif state not in {"onln", "online", "ugood", "dhs", "ghs"}:
         warning.append(f"Unrecognized drive state: {drive.state}.")
 
     if drive.smart_alert:
@@ -65,7 +65,8 @@ def assess_drive_health(
         return DriveHealthAssessment("critical", "Critical", reasons)
     if warning:
         return DriveHealthAssessment("warning", "Attention", reasons)
-    return DriveHealthAssessment("optimal", "Ready" if state == "ugood" else "Healthy", ())
+    labels = {"ugood": "Ready", "dhs": "Hot spare", "ghs": "Hot spare"}
+    return DriveHealthAssessment("optimal", labels.get(state, "Healthy"), ())
 
 
 def _count(value: int, description: str) -> str:

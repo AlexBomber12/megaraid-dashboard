@@ -5,6 +5,9 @@ confirmation/recovery paths. This is a software acceptance checklist, not permis
 exercise a healthy RAID. Production checks are GET-only. Controller mutations below run
 only against FakeStorcli, through the real application, database, HTTP and browser gates.
 
+The [2026-11-07 critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md) follows hardware
+incidents through detection, saved health, delivery, recovery and operator safety.
+
 ## Information hierarchy
 
 On SERVER, S0-S7 identify physical cage positions, not controller slot numbers.
