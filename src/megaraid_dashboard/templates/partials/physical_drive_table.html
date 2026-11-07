@@ -13,13 +13,13 @@
         {{ sort_th("slot", "Slot", default=true) }}
         {{ sort_th("model", "Model") }}
         <th scope="col">Serial</th>
-        {{ sort_th("state", "State") }}
+        {{ sort_th("state", "Health") }}
         {{ sort_th("temperature", "Temp", numeric=true) }}
         {{ sort_th("size", "Size", numeric=true) }}
         {{ sort_th("media_errors", "Media Errors", numeric=true) }}
         {{ sort_th("other_errors", "Other Errors", numeric=true) }}
         {{ sort_th("predictive", "Predictive", numeric=true) }}
-        <th scope="col">SMART</th>
+        <th scope="col">SMART alert</th>
       </tr>
     </thead>
     <tbody>
@@ -31,14 +31,14 @@
           </td>
           <td data-label="Model" data-sort-value="{{ drive.model }}">{{ drive.model }}</td>
           <td class="mono" data-label="Serial">{{ drive.serial_number }}</td>
-          <td data-label="State" data-sort-value="{{ drive.state }}">
+          <td data-label="Health" data-sort-value="{{ drive.row_state | health_label }}">
             <span class="status-badge status-badge--{{ drive.row_state }}">
               <svg class="status-badge__icon" aria-hidden="true">
                 <use href="{{ request.url_for('static', path='icons.svg').path }}?v={{ static_asset_version }}#icon-{{ drive.status_icon }}"/>
               </svg>
-              {{ drive.health_label or drive.state }}
+              {{ drive.row_state | health_label }}
             </span>
-            {% if drive.health_label %}<span class="drive-health-raw">{{ drive.state }}</span>{% endif %}
+            {% if drive.health_label == 'Ready' %}<span class="drive-role">Role: Unconfigured</span>{% elif drive.health_label == 'Hot spare' %}<span class="drive-role">Role: Hot spare</span>{% endif %}
             {% if drive.health_reason %}<span class="drive-health-reason">{{ drive.health_reason }}</span>{% endif %}
           </td>
           <td
@@ -56,7 +56,7 @@
           {{ count_cell(drive.media_errors, "Media Errors") }}
           {{ count_cell(drive.other_errors, "Other Errors") }}
           {{ count_cell(drive.predictive_failures, "Predictive", "critical") }}
-          <td class="smart--{{ drive.smart_severity }}" data-label="SMART">{{ drive.smart_label }}</td>
+          <td class="smart--{{ drive.smart_severity }}" data-label="SMART alert">{{ drive.smart_label }}</td>
         </tr>
       {% else %}
         <tr><td class="data-table__empty" colspan="10">No physical drives in the latest snapshot.</td></tr>

@@ -3,7 +3,7 @@
   <span>
     Notifier
     <strong class="status-text--{{ 'optimal' if health.notifier_ok else 'critical' }}">
-      {% if health.notifier_ok %}OK{% else %}Error{% endif %}
+      {{ ('optimal' if health.notifier_ok else 'critical') | health_label }}
     </strong>
   </span>
   <span>Collector <strong>{{ health.collector_last_run_text }}</strong></span>

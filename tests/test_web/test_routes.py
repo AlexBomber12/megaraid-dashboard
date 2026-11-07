@@ -138,7 +138,7 @@ def test_overview_navigation_and_assets_are_prefix_aware(
     assert "drive-tile-v2--optimal" in response.text
     assert 'class="status-bar-v2"' in response.text
     assert "Notifier" in response.text
-    assert '<div class="controller-state">CRITICAL</div>' in response.text
+    assert '<div class="controller-state">Critical</div>' in response.text
     assert "Drive temperature is critical." in response.text
     assert "/raid/static/css/app.css" in response.text
     assert "/raid/static/vendor/htmx.min.js" in response.text
@@ -464,8 +464,8 @@ def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapsh
     assert '<button type="button" class="sort-button">Other Errors</button>' in response.text
     assert response.text.count("<tr data-row-state=") == 8
     assert '<span class="status-badge status-badge--critical">1 Critical</span>' in response.text
-    assert '<span class="status-badge status-badge--warning">5 Warning</span>' in response.text
-    assert '<span class="status-badge status-badge--optimal">2 Optimal</span>' in response.text
+    assert '<span class="status-badge status-badge--warning">5 Attention</span>' in response.text
+    assert '<span class="status-badge status-badge--optimal">2 Healthy</span>' in response.text
     assert '<span class="muted">of 8</span>' in response.text
     assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
 
