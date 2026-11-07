@@ -30,9 +30,9 @@ from tests.safety.harness import FakeStorcli
             "Controller marks drive unusable (UBad).",
         ),
         ("Onln", False, 0, 1, 35, "warning", "Attention", "1 historical media error."),
-        ("UGood", False, 0, 0, 35, "optimal", "Ready", ""),
-        ("DHS", False, 0, 0, 35, "optimal", "Hot spare", ""),
-        ("GHS", False, 0, 0, 35, "optimal", "Hot spare", ""),
+        ("UGood", False, 0, 0, 35, "optimal", "Healthy", ""),
+        ("DHS", False, 0, 0, 35, "optimal", "Healthy", ""),
+        ("GHS", False, 0, 0, 35, "optimal", "Healthy", ""),
         ("Onln", False, 0, 0, 56, "warning", "Attention", "Drive temperature is elevated."),
         ("Onln", False, 0, 0, 61, "critical", "Critical", "Drive temperature is critical."),
         ("Mystery", False, 0, 0, 35, "warning", "Attention", "Unrecognized drive state: Mystery."),
@@ -77,9 +77,15 @@ def test_fault_health_and_recovery_across_all_views(
         tile = page.locator('.drive-grid-v2 [data-physical-slot="S0"]')
         expect(tile).to_have_class(f"drive-tile-v2 drive-tile-v2--{severity}")
         expect(tile.locator(".drive-health-label")).to_have_text(label)
-        expect(tile.locator(".drive-health-raw")).to_have_text(state)
-        expected_summary = "OPTIMAL" if severity == "optimal" else severity.upper()
+        expect(tile.locator(".drive-health-raw")).to_have_count(0)
+        expected_summary = {"optimal": "Healthy", "warning": "Attention", "critical": "Critical"}[
+            severity
+        ]
         expect(page.locator(".controller-state")).to_have_text(expected_summary)
+        if state in {"UGood", "DHS", "GHS"}:
+            expect(tile.locator(".drive-role")).to_have_text(
+                "Role: Unconfigured" if state == "UGood" else "Role: Hot spare"
+            )
         if reason:
             expect(tile.locator(".drive-health-reason")).to_have_text(reason)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
@@ -95,6 +101,9 @@ def test_fault_health_and_recovery_across_all_views(
         health = page.locator("[data-drive-detail-section='health-snapshot']")
         expect(health.locator(".health-card")).to_have_class(f"health-card health-card--{severity}")
         expect(health.locator(".health-card__state")).to_have_text(label)
+        expect(health.locator(".drive-health-raw")).not_to_be_visible()
+        health.get_by_text("Controller details", exact=True).click()
+        expect(health.locator(".drive-health-raw")).to_be_visible()
         expect(health.locator(".drive-health-raw")).to_contain_text(state.upper())
         if reason:
             expect(health).to_contain_text(reason)
@@ -109,7 +118,7 @@ def test_fault_health_and_recovery_across_all_views(
         )
         expect(row).to_have_attribute("data-row-state", severity)
         expect(row.locator(".status-badge")).to_contain_text(label)
-        expect(row.locator(".drive-health-raw")).to_have_text(state)
+        expect(row.locator(".drive-health-raw")).to_have_count(0)
         if reason:
             expect(row.locator(".drive-health-reason")).to_have_text(reason)
         if previews and smart:
@@ -122,7 +131,7 @@ def test_fault_health_and_recovery_across_all_views(
         expect(row.locator(".status-badge")).to_contain_text("Healthy")
         expect(row.locator(".drive-health-reason")).to_have_count(0)
         page.goto(f"{live_server}/")
-        expect(page.locator(".controller-state")).to_have_text("OPTIMAL")
+        expect(page.locator(".controller-state")).to_have_text("Healthy")
         expect(tile).to_have_class("drive-tile-v2 drive-tile-v2--optimal")
         expect(tile.locator(".drive-health-label")).to_have_text("Healthy")
         page.goto(f"{live_server}/drives/252:4")

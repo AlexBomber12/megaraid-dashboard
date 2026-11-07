@@ -1,7 +1,7 @@
 {% set controller = view_model.controller %}
 <a href="{{ request.url_for('controller_detail').path }}" class="controller-card controller-card--{{ controller.state | lower }}">
   <div class="controller-card-row1">
-    <div class="controller-state">{{ controller.state }}</div>
+    <div class="controller-state">{{ controller.state | health_label }}</div>
     <div class="controller-model">{{ controller.model }} &middot; SN {{ controller.serial }} &middot; {{ controller.raid_summary }}</div>
   </div>
   <div class="controller-card-row2">
@@ -12,10 +12,6 @@
     <div class="metric-item">
       <span class="metric-label">CacheVault</span>
       <span class="metric-value">{% if controller.cv_capacitance_percent is not none %}{{ controller.cv_capacitance_percent }}%{% else %}N/A{% endif %}</span>
-    </div>
-    <div class="metric-item">
-      <span class="metric-label">BBU</span>
-      <span class="metric-value">{{ controller.bbu_status }}</span>
     </div>
     <div class="metric-item">
       <span class="metric-label">Errors (24h)</span>

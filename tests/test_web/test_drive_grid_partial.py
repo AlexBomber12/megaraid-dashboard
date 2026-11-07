@@ -36,7 +36,8 @@ def test_drive_grid_partial_renders_critical_failed_state_class() -> None:
 
     rendered = _render_drive_grid(tiles)
 
-    assert "Failed" in rendered
+    assert "Critical" in rendered
+    assert "drive-health-raw" not in rendered
     assert '<strong class="drive-health-label status-text--critical">Critical</strong>' in rendered
     assert 'class="drive-tile-v2 drive-tile-v2--critical"' in rendered
 

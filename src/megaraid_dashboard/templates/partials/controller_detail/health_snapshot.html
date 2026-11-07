@@ -6,8 +6,8 @@
   </div>
   <div class="health-card health-card--{{ health_class }}">
     <div class="health-card__summary">
-      <span class="text-label">Controller State</span>
-      <strong class="health-card__state status-text--{{ health_class }}">{{ view_model.health.state }}</strong>
+      <span class="text-label">Health</span>
+      <strong class="health-card__state status-text--{{ health_class }}">{{ health_class | health_label }}</strong>
       <span class="health-card__detail">{{ view_model.health.summary_text }}</span>
     </div>
     <dl class="kv-grid">
@@ -19,7 +19,6 @@
         <dt>CacheVault</dt>
         <dd>{% if view_model.health.cv_capacitance_percent is not none %}{{ view_model.health.cv_capacitance_percent }}%{% else %}N/A{% endif %}</dd>
       </div>
-      <div><dt>BBU</dt><dd>{{ view_model.health.bbu_status }}</dd></div>
       <div>
         <dt>Mem ECC Errors</dt>
         <dd class="{% if view_model.health.memory_ecc_errors_total in (0, '0') %}is-zero{% else %}status-text--warning{% endif %}">{{ view_model.health.memory_ecc_errors_total }}</dd>
@@ -30,5 +29,6 @@
       </div>
       <div><dt>Uptime</dt><dd>{{ view_model.health.uptime_text }}</dd></div>
     </dl>
+    <details><summary>Controller details</summary><dl class="kv-grid"><div><dt>Reported BBU state</dt><dd>{{ view_model.health.bbu_status }}</dd></div></dl></details>
   </div>
 </section>

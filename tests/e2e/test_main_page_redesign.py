@@ -23,8 +23,8 @@ def test_main_page_redesign_navigation_and_live_refresh(
 
     controller_card = authenticated_page.locator(".controller-card")
     expect(controller_card).to_be_visible()
-    expect(controller_card.locator(".controller-state")).to_have_text("OPTIMAL")
-    expect(controller_card.locator(".controller-card-row2 .metric-item")).to_have_count(4)
+    expect(controller_card.locator(".controller-state")).to_have_text("Healthy")
+    expect(controller_card.locator(".controller-card-row2 .metric-item")).to_have_count(3)
 
     drive_tiles = authenticated_page.locator(".drive-tile-v2")
     expect(drive_tiles).to_have_count(8)

@@ -4,6 +4,26 @@ Overview tiles, Drives rows, drive-detail health cards and position diagrams use
 one presentation assessment. Firmware state, serial identity, S labels, controller
 addresses and all command/action eligibility checks remain unchanged.
 
+## Shared UI vocabulary
+
+Every health badge uses **Healthy / Attention / Critical / Unknown**, including
+controller summaries, drive counts, tiles, list rows, detail cards, VD health and
+position tooltips. Unknown means no recognized assessment is available; an unknown
+firmware drive state still produces Attention with its explicit reason under the
+existing assessment rules. Missing temperature alone does not imply drive failure.
+
+Online is an operational controller state, not a health verdict: an online drive
+with SMART/predictive faults remains Critical. Healthy replaces Optimal in displayed
+assessment badges. Internal severity keys, metrics and raw states are unchanged.
+Raw controller states remain under **Controller details** on drive and VD details;
+they are omitted from drive tiles/list rows. Reported BBU/CacheVault state remains
+in Controller details. Healthy spare/unconfigured drives keep an explicit **Role**
+label, not another competing health grade. Health-column sorting uses the displayed
+assessment; physical S ordering and real-address action targets are preserved.
+
+This wording change is a separate, undeployed follow-up to #149. Installed #149 and
+its accepted software/hardware boundaries are recorded in [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149).
+
 | Observed evidence | Assessment | Explanation |
 | --- | --- | --- |
 | Failed, Offline/Offln/OfLn, Missing/Msng, UBad | Critical | Controller failure, offline, absent drive or controller-marked unusable |
@@ -12,8 +32,8 @@ addresses and all command/action eligibility checks remain unchanged.
 | Rebuild, JBOD or unrecognized firmware state | Attention | Rebuild in progress, outside RAID or unknown raw state |
 | Elevated configured temperature | Attention | Elevated temperature |
 | Historical media/other error count without a stronger signal | Attention | Historical count; no automatic failed-drive/replacement verdict |
-| UGood without reported issues | Ready | Raw UGood remains visible; no surface scan or compatibility certification |
-| DHS/GHS without reported issues | Hot spare | Observed spare is healthy; its raw role remains visible |
+| UGood without reported issues | Healthy | Role: Unconfigured; raw UGood in details; no surface scan or compatibility certification |
+| DHS/GHS without reported issues | Healthy | Role: Hot spare; raw role in controller details |
 | Online without reported issues | Healthy | Raw controller state remains visible |
 
 Critical signals take precedence over warnings; all reported reasons stay visible.
@@ -25,7 +45,7 @@ physical failure. Unrecognized state spellings are warnings.
 This changes presentation only: event severity, Telegram delivery, persistence,
 wrapper/schema/grants, maintenance/destructive gates and replacement eligibility
 are unchanged. No automatic controller operation follows a health badge.
-Healthy/Ready describes reported evidence, not guaranteed absence of defects.
+Healthy describes reported evidence, not guaranteed absence of defects or RAID compatibility.
 
 The follow-up [critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md) separately
 corrects new UBad event severity/delivery, CacheVault/controller aggregate evidence

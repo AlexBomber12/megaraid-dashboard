@@ -11,6 +11,14 @@
 
 # Operator control coverage and safety contract
 
+The health-vocabulary follow-up adds four read-only Controller details disclosures:
+drive firmware state, VD firmware state, reported BBU state and CacheVault state.
+The backplane link tooltip uses the shared health label; destinations are unchanged.
+`tests/e2e/test_drive_health.py` covers drive disclosure and fault/recovery; the
+controller disclosure browser case checks BBU/CV/VD and unchanged fake-hardware calls.
+The reviewed source-control inventory includes these disclosures. No form, command,
+mutation route or action-eligibility rule changes with the terminology.
+
 The compact Actions panel retains the command and failure matrix below. The reviewed
 source inventory also covers the shared maintenance gate on Controller, Drive and
 Foreign Configuration, per-command mode alternatives, and the relocated Locate and

@@ -9,7 +9,7 @@
       class="backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}"
       data-physical-slot="{{ slot.slot_label }}"
       href="{{ slot.detail_url }}"
-      title="Slot {{ slot.slot_label }} · {{ severity_class | title }}"
+      title="Slot {{ slot.slot_label }} · {{ severity_class | health_label }}"
       {% if slot.is_this %}aria-current="page"{% endif %}
     >
       <span>{{ slot.slot_label }}</span>

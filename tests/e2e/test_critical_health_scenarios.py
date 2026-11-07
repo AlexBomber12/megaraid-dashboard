@@ -19,19 +19,42 @@ from tests.e2e.conftest import _LiveServerHandle
 from tests.safety.harness import FakeStorcli
 
 
+def test_controller_raw_states_are_read_only_details(
+    authenticated_page: Page,
+    live_server: str,
+    snapshot_with_drives: str,
+    fake_storcli: FakeStorcli,
+) -> None:
+    del snapshot_with_drives
+    page = authenticated_page
+    page.goto(f"{live_server}/controller")
+    health = page.locator('[data-controller-section="health-snapshot"]')
+    expect(health.locator(".health-card__state")).to_have_text("Healthy")
+    for section in ("health-snapshot", "cachevault", "raid-config"):
+        disclosure = page.locator(f'[data-controller-section="{section}"] details').first
+        expect(disclosure).not_to_have_attribute("open", "")
+        disclosure.get_by_text("Controller details", exact=True).click()
+        expect(disclosure).to_have_attribute("open", "")
+        expect(disclosure).to_contain_text("state")
+    expect(page.locator('[data-controller-section="raid-config"] .status-badge')).to_have_text(
+        "Healthy"
+    )
+    assert fake_storcli.calls == []
+
+
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize(
     ("case", "grade", "reason"),
     [
-        ("cv-failed", "CRITICAL", "CacheVault reports Failed."),
-        ("cv-replace", "CRITICAL", "CacheVault replacement is required."),
-        ("cv-absent", "CRITICAL", "CacheVault is not detected."),
-        ("cv-low", "WARNING", "CacheVault capacitance is below the warning threshold."),
-        ("roc-warning", "WARNING", "Controller temperature is elevated."),
-        ("roc-critical", "CRITICAL", "Controller temperature is critical."),
-        ("custom-thresholds", "OPTIMAL", "All systems nominal."),
-        ("empty-inventory", "CRITICAL", "No virtual drives reported"),
-        ("vd-hyphen", "CRITICAL", "VD 0: Partially-Degraded"),
+        ("cv-failed", "Critical", "CacheVault reports Failed."),
+        ("cv-replace", "Critical", "CacheVault replacement is required."),
+        ("cv-absent", "Critical", "CacheVault is not detected."),
+        ("cv-low", "Attention", "CacheVault capacitance is below the warning threshold."),
+        ("roc-warning", "Attention", "Controller temperature is elevated."),
+        ("roc-critical", "Critical", "Controller temperature is critical."),
+        ("custom-thresholds", "Healthy", "All systems nominal."),
+        ("empty-inventory", "Critical", "No virtual drives reported"),
+        ("vd-hyphen", "Critical", "VD 0: Partially-Degraded"),
     ],
 )
 def test_component_fault_is_visible_and_recovers_on_all_summaries(
@@ -104,7 +127,7 @@ def test_component_fault_is_visible_and_recovers_on_all_summaries(
             )
         )
     page.get_by_role("button", name="Refresh now").click()
-    expect(health.locator(".health-card__state")).to_have_text("OPTIMAL")
+    expect(health.locator(".health-card__state")).to_have_text("Healthy")
     expect(health.locator(".health-card__detail")).to_contain_text("All systems nominal.")
     page.get_by_role("link", name="Overview", exact=True).first.click()
-    expect(page.locator(".controller-state")).to_have_text("OPTIMAL")
+    expect(page.locator(".controller-state")).to_have_text("Healthy")
