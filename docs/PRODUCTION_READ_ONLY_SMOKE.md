@@ -5,6 +5,9 @@
 > The #137 post-deploy check used service health, persisted date and current-process
 > journal; it was not a fresh full browser audit. #139–141 subsequently received
 > production GET-only UI checks, including both Observed refresh paths. See [CURRENT_STATE.md](CURRENT_STATE.md).
+> #149 acceptance on 2026-11-07 rechecked Overview, Drives, all eight details, mapping,
+> sort retention and both Observed refresh paths; no new browser warnings/errors.
+> Normal Collector and loopback 8092 metrics passed; no forced poll/controller write.
 > This manual procedure remains read-only even when production has action capability.
 
 This is a manual procedure for `https://megaraid.alexbomber.com/`, not a scheduled

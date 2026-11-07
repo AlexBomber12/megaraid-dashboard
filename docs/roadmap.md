@@ -1,6 +1,6 @@
 # MegaRAID Dashboard — maintenance roadmap
 
-Updated: **2026-11-06**. Installed application: `8b60b72` (#146) on SERVER.
+Updated: **2026-11-07**. Installed application: `9f2693e` (#149) on SERVER.
 [CURRENT_STATE.md](CURRENT_STATE.md) records the production verification boundary.
 This plan grants no controller mutation, notification, deployment or recurring automation.
 
@@ -28,10 +28,16 @@ This plan grants no controller mutation, notification, deployment or recurring a
   closed and no additional follow-up write. Acoustic/Silence unverified.
 - Reconciled source/Obsidian documentation and [maintenance handoff](MAINTENANCE_HANDOFF.md).
 
+- Shared drive-health assessment (#148) and critical-alert/component/metric/freshness
+  corrections (#149) are installed. #149 passed 3404 default tests (one existing skip),
+  100% statement/branch coverage, 515 safety and 291 Chromium cases. Managed acceptance
+  passed at 2026-11-07 16:55:45 UTC with normal collection and no controller writes.
+
 ## Remaining work
 
 | Priority | Work | Required evidence |
 | --- | --- | --- |
+| 0 | Finish shared UI health vocabulary and publish both documentation PRs | Same health words on summary/tiles/list/details; raw controller evidence retained in details; fresh CI/review |
 | 1 | Inspect independent app/Collector monitoring; add only missing coverage | Observer independent of the failed app; incident-only failure/recovery tests without RAID faults |
 | 2 | Verify recurring backups, retention and separate-copy restore | Scheduled/off-host copy, SQLite integrity and history/delivery checks; live DB untouched |
 | 3 | Observe schedule rollover after a natural Patrol completion | Fresh read evidence; no guessed next date or forced operation |

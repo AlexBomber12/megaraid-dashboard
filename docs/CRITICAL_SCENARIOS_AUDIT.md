@@ -1,14 +1,15 @@
 # Critical alerts and operator scenarios
 
-Audit date: 2026-11-07. Production baseline: #148 / `510ce9b`. This audit uses
-isolated saved snapshots, fake StorCLI and mocked Telegram/SMTP. SERVER inspection
-was limited to release status and health. No controller operation or real message
-was used to manufacture a fault. Candidate corrections require their own review,
-green CI and explicit deployment authorization.
+Audit date: 2026-11-07. Pre-update production baseline: #148 / `510ce9b`.
+Corrections shipped in [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149),
+installed as `9f2693eb3000cc908cb1393f127fe98730ec8abc`. Fault scenarios use
+isolated saved snapshots, fake StorCLI and mocked Telegram/SMTP. Deployment acceptance
+used normal collection and production reads only; no controller operation or real
+message manufactured a fault.
 
 ## Corrections found by following the user journey
 
-| Trigger | Previous behavior | Candidate behavior |
+| Trigger | Previous behavior | Delivered behavior |
 | --- | --- | --- |
 | UBad on the first poll or after a state change | Critical in the UI, warning event excluded from Telegram | Critical event, explicit UBad Telegram wording, normal relevance/dedup gates |
 | First reliable poll confirms CacheVault absence | No baseline absence event | Critical absence event; unknown or failed probes still do not prove absence |
@@ -102,8 +103,24 @@ Final local acceptance passed 3404 default tests (one existing skip), 515 isolat
 safety cases and 291 Chromium cases. Ruff, formatting, strict mypy and shell checks
 passed; statement/branch coverage stays at 100%.
 The catalog contains all 20 action types, including the unavailable Mark Bad path.
-Fresh GitHub CI/review are separate merge gates; these local results do not authorize
-deployment.
+Fresh current-head Codex +1 and all three green GitHub checks passed before merge
+([run 42316293906](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42316293906)).
+Reviewed `bf34ee922a418d9643a06c9f8a02273a6034da55` and squash-release trees match.
+
+## Production acceptance — 2026-11-07
+
+Managed activation finished `verified` at 16:55:45 UTC after a new normal sample.
+Application/database/Collector, preserved settings/policy/configuration, eight healthy
+drive details, horizontal physical mapping, retained Drives sort and automatic/manual
+Observed refresh passed. Loopback 8092 exporter reported optimal 1 controller / 8 PD /
+1 VD and a fresh Collector timestamp. The checked process journal contained one
+normal completion, no warning/error or traceback; browser warnings/errors were absent.
+Buzzer stayed Enabled. Existing running Consistency Check was observed only.
+No forced poll, controller write, Telegram test or real fault drill was performed.
+Private receipts and actual SERVER screenshots are in ignored deployment-9f2693e artifacts.
+
+The owner subsequently requested consistent health wording across the UI. That separate
+follow-up does not invalidate the fault/authorization checks above and is not yet deployed.
 
 The owner already confirmed physical identification for all eight LEDs. Buzzer's
 Enabled setting is verified separately from audible output. No array degradation,

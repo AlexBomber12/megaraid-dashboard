@@ -1,23 +1,24 @@
 # Production state and remaining work
 
-Evidence checkpoint: **2026-11-06**, SERVER. This is dated verification, not a live
+Evidence checkpoint: **2026-11-07**, SERVER. This is dated verification, not a live
 health feed. Detailed telemetry and exact backup/status receipts remain private,
 in ignored recovery material. Do not publish credentials, serials or raw logs.
 
 ## Installed release
 
-**PR #146 is installed and verified.** The owner also confirmed on 2026-11-06 that
+**PR #149 is installed and verified.** The owner also confirmed on 2026-11-06 that
 physical Locate identification has been checked for all eight cages. The real Buzzer
 Enable/Disable setting round trip and audit also passed; acoustic alarm is not certified.
 
 | Item | Verified state |
 | --- | --- |
-| Application | `8b60b7242c0b908ff4fc86a8f07a8aa983288109`, merged [PR #146](https://github.com/AlexBomber12/megaraid-dashboard/pull/146) |
+| Application | `9f2693eb3000cc908cb1393f127fe98730ec8abc`, merged [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149) |
 | Public origin | <https://megaraid.alexbomber.com/>; nginx HTTPS and Basic authentication |
 | Service | `megaraid-dashboard.service`, user/group `megaraid`, active/running at verification |
 | Hardening exception | `NoNewPrivileges=no` for the reviewed sudo-based rollout; fresh-install defaults differ |
-| Working directory | `/opt/megaraid-dashboard-ui-8b60b72` |
+| Working directory | `/opt/megaraid-dashboard-ui-9f2693e` |
 | Local application port | `8090`; application/database/Collector health verified |
+| Metrics | `127.0.0.1:8092/metrics`; 1 controller, 8 PD and 1 VD report optimal (0), Collector timestamp fresh |
 | Database | `/var/lib/megaraid-dashboard/megaraid.db`; migration `0009_event_deliveries` |
 | Configuration | `/etc/megaraid-dashboard/env`, plus protected rollout env/drop-ins |
 | Hardware | LSI 9270CV-8i / SAS 2208, firmware `23.34.0-0019`, Ubuntu 24.04 |
@@ -25,7 +26,7 @@ Enable/Disable setting round trip and audit also passed; acoustic alarm is not c
 | Binary SHA-256 | `642fff8a3976dbc85406d9f7e8f5f5ce4ceab2753ac68cab5245888b281c8547` |
 | Capability | `full-supported-actions`; `CONTROLLER_READ_ONLY=false` |
 | Maintenance / destructive mode | Both false after deployment acceptance and after the supervised buzzer check; maintenance closed |
-| Alarm Buzzer | Enabled, confirmed by the normal sample at 2026-11-06 18:13 UTC after the owner selected Enabled; maintenance closed |
+| Alarm Buzzer | Owner-selected Enabled retained and confirmed again at #149 acceptance; maintenance closed |
 | Approval policy | 79 exact writes, 25 reads and 8 explicit replacement topologies; preserved |
 
 Capability is an authorization ceiling, not permission to exercise a healthy array.
@@ -45,22 +46,35 @@ Do not apply fresh-install `raid-monitor` defaults over this deployment.
 | Observed states and retained Patrol schedule | #140, `42b9f6e` | Compact collection-to-page path and scenario ledger |
 | Reported schedule and live Observed header | #141, `27af3da` | Real normal samples: automatic/manual refresh without full reload |
 | Physical cage labels, Drives sort, buzzer aliases and managed install permissions | #146, `8b60b72` | Managed production activation and authenticated UI checks; physical LED acceptance confirmed by owner |
+| Shared drive-health assessment | #148, `510ce9b` | SMART/predictive/temperature/error evidence across saved-data views; raw state and command gates preserved |
+| Critical alerts, component/metric grades and monitoring uncertainty | #149, `9f2693e` | 51 isolated incident chains, full action catalog, managed deployment and read-only production acceptance |
 
-PR #146 had a fresh current-head Codex +1 and all three green CI jobs before merge.
-Reviewed head `fff4e73cf4ef07764a74eb3d238666c851b56473` and the installed squash release
-have identical trees. [CI run 42128112501](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42128112501)
-passed 3276 default tests (one existing skip), 515 isolated safety cases and 237 Chromium
+PR #149 had a fresh current-head Codex +1 and all three green CI jobs before merge.
+Reviewed head `bf34ee922a418d9643a06c9f8a02273a6034da55` and installed squash release
+have identical trees. [CI run 42316293906](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42316293906)
+passed 3404 default tests (one existing skip), 515 isolated safety cases and 291 Chromium
 cases, with 100% statement/branch coverage. Automated hardware boundaries are mocked.
 
-Managed activation reached `verified` on **2026-11-06 at 07:58:54 UTC** after a newer
-normal sample from the new process. Configuration, policy and effective settings were
-preserved. App/database/Collector health passed; the bounded checked-process journal
-and browser had no warning/error events. Deployment and post-install UI checks issued
-no controller writes. No migrations, dependency changes, forced collection or RAID jobs.
+Managed activation reached `verified` on **2026-11-07 at 16:55:45 UTC**
+(17:55:45 Europe/Rome), from baseline #148 / `510ce9b`. A new normal Collector sample
+was saved by the new process. Configuration, policy and effective settings were preserved.
+App/database/Collector health passed. The bounded checked-process journal contained one
+completed normal cycle, no warning/error events and no traceback; browser warnings/errors
+were absent. No controller writes, forced collection, migrations or dependency changes.
+
+The MegaRAID exporter is on loopback **8092**, not the default 8091 used by another
+service on SERVER. An ad-hoc acceptance check initially used the wrong port; correcting
+the checker confirmed fresh metrics and optimal grades for 1 controller, 8 PD and 1 VD.
+No application configuration was changed to make the check pass. A healthy exporter
+does not itself establish independent scraping or outage notification.
 
 Authenticated production checks covered one horizontal S0-S7 row on Overview and all
 eight detail diagrams, matching titles/highlights/Previous/Next destinations, Drives
-ascending/descending physical order and retained order through Refresh now. Physical
+ascending/descending physical order and retained order through Refresh now.
+The #149 recheck confirmed Healthy/Onln on all eight detail pages, matching selected
+positions, both Observed refresh paths (16:48 -> 16:55 UTC automatically), and no
+monitoring notice with reliable fresh data or horizontal overflow. The controller
+reported an existing running Consistency Check; acceptance did not start or stop it. Physical
 labels are presentation only: S0-S3 -> 252:4-7; S4-S7 -> 252:0-3. URLs, stored slot IDs,
 serial identity and command/topology targets still use actual controller addresses.
 
@@ -94,6 +108,11 @@ and rebuild effects remain unverified. Never induce a healthy-RAID fault for a c
 
 ## Telegram
 
+#149 makes new UBad incidents critical and adds a confirmed initial CacheVault-absence
+incident. The `Partially-Degraded` alias reaches detection, relevance, text and metrics.
+Historical warning events are not rewritten or resent. The [critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md)
+separates simulated delivery from production checks.
+
 One neutral real test was API-accepted on 2026-10-30 and receipt confirmed by the owner.
 This proves transport/destination delivery, not a real hardware-fault drill. No repeated
 Telegram test was sent for this deployment or documentation update.
@@ -105,7 +124,7 @@ Independent availability/freshness monitoring remains unverified. [Delivery cont
 
 ## Recovery after SSH disconnect or repeated activation
 
-The installed #146 release used [versioned deployment](VERSIONED_DEPLOYMENT.md):
+The installed #149 release used [versioned deployment](VERSIONED_DEPLOYMENT.md):
 detached systemd execution and a durable root-owned receipt under
 `/var/lib/megaraid-dashboard-deploy/FULL_COMMIT_SHA.json`. It finished `verified`;
 the exact private backup/context is recorded in recovery material. Check status before
@@ -114,7 +133,7 @@ repeating a request. `queued` is not success. Do not restore live DB history aft
 ```bash
 systemctl show megaraid-dashboard.service -pActiveState -pSubState -pWorkingDirectory -pMainPID
 curl --fail --silent --show-error http://127.0.0.1:8090/healthz
-python3 /usr/local/sbin/megaraid-dashboard-deploy.py status --commit 8b60b7242c0b908ff4fc86a8f07a8aa983288109
+python3 /usr/local/sbin/megaraid-dashboard-deploy.py status --commit 9f2693eb3000cc908cb1393f127fe98730ec8abc
 ```
 
 Guarded managed application rollback is available from its private context; no actual
@@ -124,6 +143,11 @@ audit and notification history. #141 was the historical legacy baseline, adopted
 do not execute an old staged release or bypass a baseline refusal.
 
 ## Remaining work, in order
+
+First close the owner-requested UI vocabulary follow-up: Healthy / Attention /
+Critical / Unknown as the shared health vocabulary, with raw firmware states in
+details. This is pending a separate implementation PR, not part of installed #149.
+
 
 1. Inspect existing independent app/Collector monitoring; add only missing incident-only coverage.
 2. Verify recurring backups, retention/off-host storage and a separate-copy restore.
@@ -136,6 +160,7 @@ observer or automatic update. Deployment backup is not recurring recovery proof.
 
 ## Documentation map
 
+- [Critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md), [drive-health contract](DRIVE_HEALTH.md).
 - [Roadmap](roadmap.md), [maintenance handoff](MAINTENANCE_HANDOFF.md).
 - [Versioned deployment](VERSIONED_DEPLOYMENT.md), [runbook](RUNBOOK.md),
   [fresh installation](../INSTALL.md), [troubleshooting](../TROUBLESHOOTING.md).

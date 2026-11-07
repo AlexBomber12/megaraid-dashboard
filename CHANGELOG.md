@@ -1,5 +1,26 @@
 # Changelog
 
+## Production checkpoint — 2026-11-07 (#149)
+
+Installed `9f2693eb3000cc908cb1393f127fe98730ec8abc` from #148 / `510ce9b` after
+fresh current-head +1 and all green CI. Managed verification finished at 16:55:45 UTC
+with preserved settings/policy/configuration and a newer normal Collector sample.
+UI checks covered Overview, Drives, all eight detail pages, mapping/sort and both
+Observed refresh paths. Buzzer remains Enabled. Loopback exporter 8092 reports
+healthy 1 controller / 8 PD / 1 VD. No controller writes or induced fault.
+
+- #148 shares drive-health assessment across tiles, list, detail and position diagram.
+- #149 corrects new UBad/initial confirmed CV-absence incidents, shared CV/configured
+  temperature/empty-inventory grades, healthy spares, PD/VD metrics and the
+  Partially-Degraded alias; shows live monitoring uncertainty without inventing faults.
+- 3404 default tests (one existing skip), 100% statement/branch coverage, 515 isolated
+  safety cases and 291 Chromium cases; 51 saved-data incident chains with mocked delivery.
+- Raw firmware vocabulary is still visible in #149. The requested common health
+  vocabulary is a separate follow-up, not part of this deployed checkpoint.
+
+The #146 checkpoint below is historical; its physical LED and supervised buzzer-setting
+evidence remains valid within those separate acceptance boundaries.
+
 ## Production checkpoint — 2026-11-06 (#146)
 
 Installed `8b60b7242c0b908ff4fc86a8f07a8aa983288109` after fresh +1 and all green CI.

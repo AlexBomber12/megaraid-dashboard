@@ -3,20 +3,20 @@
 This runbook is the operator reference for routine checks, common incidents, and recovery
 tasks. Generic command examples below use fresh-install defaults (`raid-monitor`,
 `/opt/megaraid-dashboard`, optional `/raid/` prefix). Existing SERVER instead uses
-`megaraid`, `/opt/megaraid-dashboard-ui-8b60b72` and the root HTTPS origin.
+`megaraid`, `/opt/megaraid-dashboard-ui-9f2693e` and the root HTTPS origin.
 Use [CURRENT_STATE.md](CURRENT_STATE.md) for the observed release, protected rollout
 configuration, test evidence and remaining work. Resolve the effective account and
 release before adapting generic commands; do not print secret environment values.
 
 ## Current production and safe verification
 
-Release `8b60b72` (#146) is deployed and verified. Physical S0-S7 cage labels and
+Release `9f2693e` (#149) is deployed and verified. Physical S0-S7 cage labels and
 Drives sorting retain real controller addresses; all eight LEDs are owner-confirmed. Compact Actions, drive DG/Span/Row, shared Collector
 ages, observed Patrol scheduling and CacheVault learn-date recovery are active.
 The Telegram transport test reached the owner; no real hardware failure was induced.
 
 After an SSH disconnect, check service WorkingDirectory/health and the matching
-rollout status before taking action. The #146 managed rollout finished `verified`;
+rollout status before taking action. The #149 managed rollout finished `verified`;
 current and future compatible updates use [versioned deployment](VERSIONED_DEPLOYMENT.md), whose durable receipt
 survives reboot and whose repeated verified request returns already_installed.
 See [the exact recovery checks](CURRENT_STATE.md#recovery-after-ssh-disconnect-or-repeated-activation).
@@ -33,6 +33,13 @@ The routines below describe how to verify them, not proof that they are installe
 
 
 ## Routines
+
+The daily/weekly/monthly headings below are optional operator checklists, not
+installed schedules or newly authorized recurring work.
+
+MegaRAID metrics on SERVER use `http://127.0.0.1:8092/metrics`; port 8091 belongs to
+another service. `/healthz` alone does not prove snapshot freshness. Check Observed,
+Collector age and any shared monitoring warning before trusting last-known health.
 
 ### Daily dashboard check
 
@@ -107,7 +114,7 @@ The routines below describe how to verify them, not proof that they are installe
 2. Confirm the physical slot against the chassis labeling before touching hardware.
    Expected output: the dashboard slot matches the drive to replace.
 3. Start an approved maintenance window before Locate Start or other maintenance-gated writes.
-   Expected output: alerts are suppressed only for the intentional, bounded maintenance work.
+   Expected output: writes are unlocked only within the approved bounded window; real hardware alerts remain eligible.
 4. Start locate LED for the affected slot if needed and permitted by the selected capability.
    Expected output: explicit controller acceptance and a saved audit record; physically verify
    the LED because command acceptance does not prove LED behavior.
@@ -118,7 +125,7 @@ The routines below describe how to verify them, not proof that they are installe
 7. Use the replacement insert step and follow rebuild progress.
    Expected output: rebuild percentage advances or completes.
 8. Stop maintenance mode after rebuild is complete and the virtual drive is optimal.
-   Expected output: dashboard returns to normal and new alerts are no longer suppressed.
+   Expected output: writes are locked again; hardware alert eligibility was preserved throughout maintenance.
 
 Locate Stop is the sole maintenance exception. With read-only disabled and locate
 capability selected, use the authenticated, CSRF-protected Stop action after an inactive
@@ -424,7 +431,7 @@ monitoring uncertainty as healthy hardware.
 
 ## Existing megaraid production service
 
-For the installed `8b60b72` release, pinned StorCLI 1.23.02 and full-capability
+For the installed `9f2693e` release, pinned StorCLI 1.23.02 and full-capability
 policy, follow [the current checkpoint](CURRENT_STATE.md) and the
 [full rollout contract](STORCLI_FULL_ROLLOUT.md). Production runs as `megaraid`;
 installer `raid-monitor` defaults must not replace its service configuration.

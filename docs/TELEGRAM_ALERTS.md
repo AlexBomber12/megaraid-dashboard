@@ -2,7 +2,7 @@
 
 Implementation-audit base: `6385bfbb7af81da564fcef8c97988cf665ab8a31` (historical).
 The contract below is verified with redacted fixtures and mocked pipeline tests.
-At the [2026-11-06 production checkpoint](CURRENT_STATE.md), SERVER runs `8b60b72`
+At the [2026-11-07 production checkpoint](CURRENT_STATE.md), SERVER runs `9f2693e` (#149)
 with automatic Telegram enabled. A single neutral test on 2026-10-30 at 22:11:08 UTC
 was API-accepted and receipt confirmed by the owner. No real hardware incident was
 induced; transport delivery and mocked incident behavior are separate evidence.

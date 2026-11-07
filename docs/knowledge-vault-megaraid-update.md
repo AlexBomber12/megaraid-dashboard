@@ -1,15 +1,19 @@
-# Obsidian maintenance handoff — 2026-11-06
+# Obsidian maintenance handoff — 2026-11-07
 
 Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed application is
-`8b60b72` (#146), including the earlier UI/schedule fixes, physical S0-S7 cage labels,
+`9f2693e` (#149), including #148 shared drive health, #149 critical incidents/component/metric/freshness fixes, earlier UI/schedule fixes and physical S0-S7 cage labels,
 Drives sort/refresh preservation, buzzer aliases and managed installation permissions.
-Managed activation finished verified on 2026-11-06; all eight physical Locate LEDs
+Latest managed activation finished verified on 2026-11-07 at 16:55:45 UTC; all eight physical Locate LEDs
 were confirmed by the owner. Real Buzzer Disable -> On -> Disable setting/audit
 acceptance passed on 2026-11-06; initial Disabled restored after the test. The owner
 later chose Enabled; a fresh 18:13 UTC normal sample confirmed it with maintenance
 closed and no further controller command needed for that follow-up.
 Real rollback and acoustic alarm effects are not certified.
 The owner requested a handoff and plan, without recurring automatic checks.
+
+The #149 normal sample, eight drive pages, mapping/sort and both Observed refresh
+paths passed; MegaRAID exporter is on loopback 8092 with healthy 1/8/1 grades.
+Shared UI health wording is a separately requested follow-up, not installed in #149.
 
 Maintain these `AlexBomber12/knowledge-vault` notes together:
 
