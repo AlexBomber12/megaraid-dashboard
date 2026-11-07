@@ -17,16 +17,22 @@ green CI and explicit deployment authorization.
 | Only a disk/sensor/cache component needs attention | Controller text claimed RAID was degraded | Component reason and actual VD state; no invented degradation |
 | No physical or virtual inventory is reported | Could say Optimal, including “0/0 drives … healthy” | Critical summary; explicit lack of virtual drives |
 | Assigned spare is observed as DHS/GHS | Unknown-state warning | Hot spare, with unchanged raw state; SMART/predictive/temperature faults still win |
+| PD/VD state metrics and partially-degraded spelling | Spares were critical, Missing/degraded were warning; hyphenated VD state missed critical classification | Normalize semantic aliases; spare 0, Missing/degraded 2, unknown 1; no raw firmware value changes |
 | Collector fails or saved data gets old | Healthy last-known sample lacked a prominent monitoring warning | Shared live warning distinguishes last-known health from current reliable observation |
 
 Existing events are not rewritten and old warning rows are not retrospectively
 promoted. Transport, channel configuration, the migration cutoff, authentication,
 CSRF, command policy and destructive/maintenance gates are unchanged.
 
+The StorCLI semantic-normalization contract gains the `Partially-Degraded` alias;
+raw JSON/state values, invocation/command validation and privileges are unchanged.
+PD/VD state metric names and 0/1/2 meanings stay stable, with corrected assignment:
+degraded/missing are critical, healthy spares are optimal, unrecognized states warn.
+
 ## Scenario ledger
 
-The 16-case chain runs each observation on a first poll, a transition from a healthy
-baseline and during active maintenance: 48 cases. It uses the real detector, event
+The 17-case chain runs each observation on a first poll, a transition from a healthy
+baseline and during active maintenance: 51 cases. It uses the real detector, event
 store, freshness/relevance logic, formatter and delivery bookkeeping with a fake
 sender. It also compares Overview, Controller and the configured controller-health
 metric, then proves a second cycle does not send the incident again.
@@ -45,6 +51,7 @@ metric, then proves a second cycle does not send the incident again.
 | Explicitly empty complete inventory | No healthy-volume claim; ambiguous/partial inventory is rejected separately | `test_overview_controller_health`; empty-inventory browser case |
 | Unknown/contradictory legacy CV presence | Unverified/conflicting warning; never fabricate absence | `test_controller_health`; existing collector/relevance tests |
 | Custom RoC/capacitance thresholds | Effective configuration wins over defaults | Component, metrics HTTP and browser cases |
+| Metric severity and firmware aliases | PD/VD numeric grades agree with actionable severity; a hyphenated degraded VD reaches Telegram and both pages | HTTP metric tests; hyphenated-state chain/browser cases |
 | No reliable sample, stale sample or failed poll | Visible notice on Overview/Controller/Drives/detail; clears after a reliable sample | `test_observation_health` service/browser suites |
 | Failed/incomplete inventory or optional CV probe | Whole poll rejected; no false disappearance or recovery | Collector/parser/scheduler regression suites |
 | Monitoring repeatedly fails | Confirmed outage only after count/time gates; later success ends it | Scheduler and Telegram relevance suites |
@@ -91,9 +98,9 @@ and screenshots are under `artifacts/critical-*`. Screenshots are synthetic faul
 not SERVER incidents. This ledger is software evidence, not physical RAID recovery
 certification or proof of Telegram receipt during a genuine hardware incident.
 
-Local acceptance completed: 3390 default tests passed, one existing skip, 100%
-statement/branch coverage; 515 isolated operator-safety integration cases and 289
-Chromium cases passed. Ruff, formatting, strict mypy and shell checks passed.
+Final local acceptance passed 3404 default tests (one existing skip), 515 isolated
+safety cases and 291 Chromium cases. Ruff, formatting, strict mypy and shell checks
+passed; statement/branch coverage stays at 100%.
 The catalog contains all 20 action types, including the unavailable Mark Bad path.
 Fresh GitHub CI/review are separate merge gates; these local results do not authorize
 deployment.

@@ -53,7 +53,7 @@ The synthetic date/ID in this table illustrates existing event identity, not a r
 | Condition | Outcome | Exact SERVER preview | Characters SERVER / AI-SERVER | Evidence |
 | --- | --- | --- | --- | --- |
 | VD Dgrd / Degraded | Send | `🔴 SERVER: сбой массива, риск потери данных.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 97 / 100 | M; N/R |
-| VD Pdgd / Partially Degraded | Send | `🔴 SERVER: сбой массива, риск потери данных.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 97 / 100 | M; N/R |
+| VD Pdgd / Partially Degraded / Partially-Degraded | Send | `🔴 SERVER: сбой массива, риск потери данных.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 97 / 100 | M; N/R |
 | VD OfLn / Offln / Offline | Send | `🔴 SERVER: массив недоступен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | M; N/R |
 | VD Failed | Send | `🔴 SERVER: массив недоступен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | M; N/R |
 | VD entirely absent from complete inventory | Send: same unavailable-array text as VD Offline | `🔴 SERVER: массив недоступен.\nПерешли в ChatGPT. Диски не трогай.\n26.10 10:57 · №42` | 82 / 85 | P; D |

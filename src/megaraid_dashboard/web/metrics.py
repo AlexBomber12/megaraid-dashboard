@@ -24,6 +24,7 @@ from megaraid_dashboard.db.models import (
     PhysicalDriveSnapshot,
     VirtualDriveSnapshot,
 )
+from megaraid_dashboard.storcli.states import normalized_state
 
 EVENTS_TOTAL = Counter(
     "megaraid_events_total",
@@ -185,21 +186,18 @@ def _encode_controller_health(
 
 
 def _encode_pd_state(state: str) -> int:
-    normalized = state.lower()
-    if normalized in {"onln", "ugood", "optl"}:
+    from megaraid_dashboard.services.event_detector import physical_drive_state_severity
+
+    normalized = normalized_state(state)
+    if normalized in {"onln", "online", "ugood", "optimal", "dhs", "ghs"}:
         return 0
-    if normalized in {"rbld", "ureb", "missing"}:
-        return 1
-    return 2
+    return 2 if physical_drive_state_severity(state, state) == "critical" else 1
 
 
 def _encode_vd_state(state: str) -> int:
-    normalized = state.lower()
-    if normalized in {"optl", "optimal"}:
-        return 0
-    if normalized in {"dgrd", "degraded", "pdgd", "partially-degraded"}:
-        return 1
-    return 2
+    from megaraid_dashboard.services.event_detector import virtual_drive_state_severity
+
+    return {"info": 0, "warning": 1, "critical": 2}[virtual_drive_state_severity(state)]
 
 
 def build_registry(

@@ -51,11 +51,19 @@ def _healthy(sample: StorcliSnapshot, *, at: datetime = NOW) -> StorcliSnapshot:
 
 
 def _fault(sample: StorcliSnapshot, case: str) -> StorcliSnapshot:
-    if case in {"vd-degraded", "vd-offline"}:
+    if case in {"vd-degraded", "vd-offline", "vd-hyphen"}:
         return sample.model_copy(
             update={
                 "virtual_drives": [
-                    d.model_copy(update={"state": "Dgrd" if case == "vd-degraded" else "OfLn"})
+                    d.model_copy(
+                        update={
+                            "state": {
+                                "vd-degraded": "Dgrd",
+                                "vd-offline": "OfLn",
+                                "vd-hyphen": "Partially-Degraded",
+                            }[case]
+                        }
+                    )
                     for d in sample.virtual_drives
                 ]
             }
@@ -108,6 +116,7 @@ def _fault(sample: StorcliSnapshot, case: str) -> StorcliSnapshot:
     [
         ("vd-degraded", "CRITICAL", "сбой массива"),
         ("vd-offline", "CRITICAL", "массив недоступен"),
+        ("vd-hyphen", "CRITICAL", "сбой массива"),
         ("pd-failed", "CRITICAL", "отказ диска"),
         ("pd-ubad", "CRITICAL", "непригодным"),
         ("pd-missing", "CRITICAL", "диск не обнаружен"),

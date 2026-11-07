@@ -31,6 +31,7 @@ from tests.safety.harness import FakeStorcli
         ("roc-critical", "CRITICAL", "Controller temperature is critical."),
         ("custom-thresholds", "OPTIMAL", "All systems nominal."),
         ("empty-inventory", "CRITICAL", "No virtual drives reported"),
+        ("vd-hyphen", "CRITICAL", "VD 0: Partially-Degraded"),
     ],
 )
 def test_component_fault_is_visible_and_recovers_on_all_summaries(
@@ -62,6 +63,8 @@ def test_component_fault_is_visible_and_recovers_on_all_summaries(
         elif case == "empty-inventory":
             session.execute(delete(PhysicalDriveSnapshot))
             session.execute(delete(VirtualDriveSnapshot))
+        elif case == "vd-hyphen":
+            session.execute(update(VirtualDriveSnapshot).values(state="Partially-Degraded"))
         else:
             session.execute(
                 update(ControllerSnapshot).values(
@@ -94,6 +97,7 @@ def test_component_fault_is_visible_and_recovers_on_all_summaries(
         return
     with app.state.session_factory() as session, session.begin():
         session.execute(update(ControllerSnapshot).values(roc_temperature_celsius=80))
+        session.execute(update(VirtualDriveSnapshot).values(state="Optl"))
         session.execute(
             update(CacheVaultSnapshot).values(
                 state="Optimal", replacement_required=False, capacitance_percent=89
