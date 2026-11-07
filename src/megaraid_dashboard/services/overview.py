@@ -25,6 +25,7 @@ from megaraid_dashboard.db.models import (
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.controller_health import assess_controller_components
+from megaraid_dashboard.services.display_format import celsius
 from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
 from megaraid_dashboard.services.drive_health import assess_drive_health
 from megaraid_dashboard.services.drive_position import physical_slot_label, physical_slot_number
@@ -799,7 +800,7 @@ def _physical_drive_row(
         status_icon=_drive_status_icon(row_state),
         temperature="Unknown"
         if drive.temperature_celsius is None
-        else f"{drive.temperature_celsius} C",
+        else celsius(drive.temperature_celsius),
         temperature_sort=-1 if drive.temperature_celsius is None else drive.temperature_celsius,
         temperature_severity=_drive_temperature_badge(
             drive,
@@ -974,7 +975,7 @@ def _temperature_tooltip(
 ) -> str | None:
     if value is None:
         return None
-    return f"Current {value} C / Warning {warning} C / Critical {critical} C"
+    return f"Current {celsius(value)} / Warning {celsius(warning)} / Critical {celsius(critical)}"
 
 
 def format_tb(size_bytes: int) -> str:

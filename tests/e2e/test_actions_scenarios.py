@@ -114,7 +114,7 @@ def test_overview_and_controller_agree_on_observed_operation(
     expect(
         page.locator('[data-action-key="Consistency Check"] [data-operation-state]')
     ).to_have_text({"active": "Running", "stopped": "Stopped", "unknown": "Unknown"}[state])
-    expect(page.locator(".page-header")).to_contain_text("Observed October 29, 2026 08:00 UTC")
+    expect(page.locator(".page-header time")).to_have_attribute("datetime", "2026-10-29T08:00:00Z")
     assert fake_storcli.calls == []
 
 
@@ -151,7 +151,7 @@ def test_observed_header_and_operations_refresh_together_without_forecasting(
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.clock.install(time=datetime(2026, 11, 1, 0, 0, tzinfo=UTC))
     login_and_navigate(page, f"{live_server}/controller")
-    expect(page.locator(".page-header")).to_contain_text("Observed October 31, 2026 22:35 UTC")
+    expect(page.locator(".page-header time")).to_have_attribute("datetime", "2026-10-31T22:35:00Z")
     with app.state.session_factory() as session, session.begin():
         snapshot = session.scalar(select(ControllerSnapshot))
         snapshot.captured_at = datetime(2026, 10, 31, 22, 42, 43, tzinfo=UTC)
@@ -163,7 +163,7 @@ def test_observed_header_and_operations_refresh_together_without_forecasting(
         page.clock.run_for(30_001)
     else:
         page.get_by_role("button", name="Refresh now", exact=True).click()
-    expect(page.locator(".page-header")).to_contain_text("Observed October 31, 2026 22:42 UTC")
+    expect(page.locator(".page-header time")).to_have_attribute("datetime", "2026-10-31T22:42:43Z")
     row = page.locator('[data-action-key="Patrol Read"]')
     expect(row).to_have_attribute("data-observed-at", "2026-10-31T22:42:43Z")
     expect(row.locator("[data-operation-state]")).to_have_text("Running")

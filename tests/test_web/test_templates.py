@@ -53,6 +53,8 @@ def test_iso_utc_formats_aware_datetime_as_zulu_iso8601() -> None:
 
 def test_celsius_formats_temperature_with_degree_symbol() -> None:
     assert templates.celsius(42) == "42°C"
+    assert templates.celsius(34.5) == "34.5°C"
+    assert templates.celsius(0) == "0°C"
 
 
 def test_celsius_returns_na_for_none() -> None:

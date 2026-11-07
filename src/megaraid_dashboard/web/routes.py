@@ -554,6 +554,15 @@ def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
         slot_id=slot_id,
         range_days=30,
     )
+    with _session(request) as session:
+        charts_view_model = _drive_charts_view_model(
+            session=session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=view_model.identity.serial_number,
+            range_days=30,
+            now_utc=view_model.updated_at,
+        )
     _log_drive_detail_rendered(
         enclosure_id=enclosure_id,
         slot_id=slot_id,
@@ -571,6 +580,7 @@ def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "view_model": view_model,
+            "charts_view_model": charts_view_model,
             "replacement_resume": _replacement_resume_context(
                 request, enclosure_id, slot_id, view_model.identity.serial_number
             ),

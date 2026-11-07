@@ -18,7 +18,14 @@
         <span aria-current="page">Controller</span>
       </nav>
       <h1>{{ view_model.hardware.model }}</h1>
-      <p>{{ view_model.page_subtitle }}</p>
+      <p>
+        {{ view_model.page_subtitle }}
+        {% if view_model.observed_at is not none %}
+          Observed
+          <noscript>{{ view_model.observed_at | iso_utc }} UTC</noscript>
+          <time datetime="{{ view_model.observed_at | iso_utc }}" data-local-time hidden>{{ view_model.observed_at | iso_utc }} UTC</time>
+        {% endif %}
+      </p>
     </header>
 
     {% from "partials/_actions.html" import action_gate with context %}

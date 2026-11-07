@@ -467,7 +467,7 @@ def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapsh
     assert '<span class="status-badge status-badge--warning">5 Attention</span>' in response.text
     assert '<span class="status-badge status-badge--optimal">2 Healthy</span>' in response.text
     assert '<span class="muted">of 8</span>' in response.text
-    assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
+    assert 'title="Current 61°C / Warning 55°C / Critical 60°C"' in response.text
 
 
 def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:
@@ -640,6 +640,23 @@ def test_drive_charts_aligns_duplicate_points_when_temperature_is_missing(
     assert temperature_payload["labels"] == ["2026-04-25 12:00", "2026-04-25 12:00"]
     assert temperature_payload["datasets"][0]["data"] == [None, 45.0]
     assert error_payload["datasets"][0]["data"] == [11, 22]
+
+
+def test_initial_drive_charts_match_same_range_fragment(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        initial = client.get("/drives/252:4")
+        fragment = client.get("/drives/252/4/charts?range_days=30")
+
+    assert initial.status_code == fragment.status_code == 200
+    initial_payloads = _json_scripts(initial.text)
+    fragment_payloads = _json_scripts(fragment.text)
+    for name in ("temperature-history-data", "error-history-data"):
+        assert initial_payloads[name] == fragment_payloads[name]
+    for name in ("temperature-history-heading", "error-history-heading"):
+        assert initial.text.count(f'id="{name}"') == 1
+        assert fragment.text.count(f'id="{name}"') == 1
 
 
 def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
