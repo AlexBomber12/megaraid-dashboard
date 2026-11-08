@@ -9,8 +9,8 @@ It is a presentation policy, not authorization to change controller settings or 
   firmware states remain available as technical detail and retain their service semantics.
 - Normal measurements use neutral text. Elevated temperature and nonzero fault counters
   retain their own warning/critical colour, even if the containing row is already Critical.
-- Error-count badges follow their containing drive's assessed severity. A historical media
-  error must not acquire the visual meaning of a critical predictive failure.
+- Drive tiles carry no separate error-count badge: the tile's reason text already names each
+  counter, and a bare number cannot say whether it is a media error or a predictive failure.
 - Unknown values use gray. Missing/conflicting evidence that requires operator action keeps
   its explicit warning/error and disabled command gates. Unrecognized physical-drive firmware
   states still assess as Attention; they are counted, not silently downgraded to Unknown.
@@ -89,3 +89,34 @@ native canvas dimensions after settling, without calling resize/update to repair
 Drive Observed must refresh in the same live cycle as its health values, using the saved
 snapshot timestamp. The drive header is therefore an identified live region, subject to the
 same identity, focus, dialog and workflow pause rules as the other drive regions.
+
+## Noise pass (November 2026, after #153)
+
+Every fact appears once per screen, where it is acted on. Healthy is quiet; problems are loud.
+
+- In collections (backplane tiles, table rows) Healthy is calm text with a green stripe or
+  icon. The single summary states (controller card, Health Snapshot grade, summary chips)
+  keep green as the one reassurance.
+- Event importance (Info / Warning / Critical) is an icon and a word, never a status pill.
+  Pills are reserved for the Healthy / Attention / Critical / Unknown assessment. Info uses
+  the info colour, never the optimal green. Category names are display labels; stored
+  categories and filter query values are unchanged. Only categories with events, or a
+  selected one, are offered as filters. A subject the message already names is omitted.
+- A health card says a sentence only for a fault: the grade already says Healthy. The
+  controller summary leads with the cause and the drive count; VD states live in the RAID
+  Configuration table. Firmware states are fields or an inline raw value, not one-value
+  disclosures. "Member of VD n. RAID" stays; the DG number belongs to Position, whose
+  DG / Span / Row remains evidence-bound.
+- The Error Trend sparkline is removed. The Error Counter History chart below shows the same
+  counters, and the sparkline's caption relabelled predictive failures as "Shield" next to a
+  constant "BBM 0", neither of which the collector stores.
+- Technical detail cards (Identity, Connection, Hardware Identity, CacheVault) list values
+  the controller did not report once, as "Not Reported", instead of a row per "Unknown".
+  Health cards keep Unknown, because there the absence is the signal. Hardware Identity does
+  not repeat the page title, subtitle or the buzzer's Actions row; Position does not repeat
+  the enclosure and slots from the page title.
+- An action the drive's current state can never accept is not a row: one "Other Actions"
+  row names it, as the single-VD CC mode switch is already omitted. Gates and API refusals
+  are unchanged. A reason shared by several Actions rows is stated once above them.
+- Threshold labels sit inside the plot at the right edge and never overlap. Chart series
+  differ in lightness and dash, not hue alone.

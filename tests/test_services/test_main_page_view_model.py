@@ -160,51 +160,6 @@ def test_main_page_with_active_consistency_check_and_patrol_read(
     ]
 
 
-def test_main_page_error_badge_aggregation(
-    session: Session,
-    sample_snapshot: StorcliSnapshot,
-    tmp_path: Path,
-) -> None:
-    _insert(
-        session,
-        _snapshot(sample_snapshot, media_errors=3, other_errors=2, predictive_failures=1),
-    )
-
-    view_model = load_main_page_view_model(
-        session,
-        settings=_settings(tmp_path),
-        scheduler=None,
-        collector_enabled=True,
-        app_version="0.1.0",
-    )
-
-    assert (
-        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).error_badge_count
-        == 6
-    )
-
-
-def test_main_page_error_badge_hidden_when_all_zero(
-    session: Session,
-    sample_snapshot: StorcliSnapshot,
-    tmp_path: Path,
-) -> None:
-    _insert(session, _snapshot(sample_snapshot))
-
-    view_model = load_main_page_view_model(
-        session,
-        settings=_settings(tmp_path),
-        scheduler=None,
-        collector_enabled=True,
-        app_version="0.1.0",
-    )
-
-    assert (
-        next(tile for tile in view_model.drive_grid.tiles if tile.slot_id == 0).error_badge_count
-        is None
-    )
-
-
 def test_main_page_drive_grid_sort_order(
     session: Session,
     sample_snapshot: StorcliSnapshot,

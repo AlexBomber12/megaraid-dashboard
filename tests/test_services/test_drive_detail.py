@@ -20,7 +20,6 @@ from megaraid_dashboard.db.models import (
 )
 from megaraid_dashboard.services.drive_detail import (
     _load_backplane_layout,
-    _load_error_sparkline,
     _neighbor_drive_url,
     _require_aware_utc,
     _speed_value,
@@ -106,31 +105,21 @@ def test_temperature_at_56c_is_warning(session: Session) -> None:
     assert view_model.health.temperature_severity == "warning"
 
 
-def test_error_sparkline_shows_incremental_growth(session: Session) -> None:
+def test_health_snapshot_reports_latest_error_counters(session: Session) -> None:
     captured_at = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
-    _seed_snapshot(session, captured_at=captured_at - timedelta(days=2), media_errors={4: 1})
     _seed_snapshot(session, captured_at=captured_at - timedelta(days=1), media_errors={4: 1})
     _seed_snapshot(session, captured_at=captured_at, media_errors={4: 3})
 
-    sparkline = _load_error_sparkline(session, serial_number="SN0004", days=30)
+    view_model = load_drive_detail_view_model(
+        session,
+        enclosure_id=252,
+        slot_id=4,
+        settings=get_settings(),
+        app_version="test",
+    )
 
-    assert sparkline.current_total == 3
-    assert sparkline.media_errors == 3
-    assert sparkline.points[-3].total_count == 1
-    assert sparkline.points[-3].incremental_delta == 1
-    assert sparkline.points[-2].incremental_delta == 0
-    assert sparkline.points[-1].total_count == 3
-    assert sparkline.points[-1].incremental_delta == 2
-
-
-def test_error_sparkline_all_zero_still_has_flat_points(session: Session) -> None:
-    _seed_snapshot(session)
-
-    sparkline = _load_error_sparkline(session, serial_number="SN0004", days=30)
-
-    assert len(sparkline.points) == 30
-    assert {point.total_count for point in sparkline.points} == {0}
-    assert sparkline.meta_text == "Media 0 / Other 0 / BBM 0 / Shield 0"
+    assert view_model.health.media_errors == 3
+    assert view_model.health.other_errors == 0
 
 
 def test_position_diagram_has_eight_entries_and_one_current_slot(session: Session) -> None:
@@ -291,16 +280,6 @@ def test_loader_validates_range_and_missing_data(session: Session) -> None:
             settings=get_settings(),
             app_version="test",
         )
-
-
-def test_error_sparkline_validates_days_and_handles_unknown_serial(session: Session) -> None:
-    with pytest.raises(ValueError, match="days must be positive"):
-        _load_error_sparkline(session, serial_number="SN0004", days=0)
-
-    sparkline = _load_error_sparkline(session, serial_number="UNKNOWN", days=2)
-
-    assert len(sparkline.points) == 2
-    assert sparkline.current_total == 0
 
 
 def test_backplane_layout_defaults_without_snapshot_or_settings(session: Session) -> None:
@@ -476,7 +455,8 @@ def test_virtual_drive_subtitle_and_custom_identity_extras(session: Session) -> 
         app_version="test",
     )
 
-    assert view_model.health.state_subtitle == "Member of VD 0. RAID5. DG 0."
+    # The DG number belongs to Position, whose DG / Span / Row stays evidence-bound.
+    assert view_model.health.state_subtitle == "Member of VD 0. RAID5."
     assert view_model.identity.wwn == "wwn-4"
     assert view_model.identity.raw_size_text == "931.5 GB"
     assert view_model.identity.coerced_size_text == "1.0 TB"

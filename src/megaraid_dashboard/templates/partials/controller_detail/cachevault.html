@@ -1,18 +1,18 @@
+{% from "partials/_health.html" import detail_fields %}
 <section class="section" data-controller-section="cachevault" aria-labelledby="cachevault-heading">
   <div class="section-title">
     <h2 id="cachevault-heading">CacheVault</h2>
   </div>
-  <div class="card">
-    {% if view_model.cachevault %}
-      <dl class="kv-grid">
-        <div><dt>Model</dt><dd>{{ view_model.cachevault.model }}</dd></div>
-        <div><dt>Capacitance</dt><dd>{% if view_model.cachevault.capacitance_percent is not none %}{{ view_model.cachevault.capacitance_percent }}%{% else %}N/A{% endif %}</dd></div>
-        <div><dt>Temperature</dt><dd>{% if view_model.cachevault.temperature_celsius is not none %}{{ view_model.cachevault.temperature_celsius | celsius }}{% else %}N/A{% endif %}</dd></div>
-        <div><dt>Manufactured</dt><dd>{{ view_model.cachevault.mfg_date_text }}</dd></div>
-      </dl>
-      <details><summary>Controller details</summary><dl class="kv-grid"><div><dt>Controller state</dt><dd>{{ view_model.cachevault.state }}</dd></div></dl></details>
-    {% else %}
-      <p class="muted">No CacheVault module is present in the latest snapshot.</p>
-    {% endif %}
-  </div>
+  {% if view_model.cachevault %}
+    {% set cv = view_model.cachevault %}
+    {{ detail_fields([
+      ("Model", cv.model, ""),
+      ("Capacitance", (cv.capacitance_percent ~ "%") if cv.capacitance_percent is not none else "", ""),
+      ("Temperature", (cv.temperature_celsius | celsius) if cv.temperature_celsius is not none else "", ""),
+      ("Manufactured", cv.mfg_date_text, ""),
+      ("Reported State", cv.state, "mono"),
+    ]) }}
+  {% else %}
+    <div class="card"><p class="muted">No CacheVault module is present in the latest snapshot.</p></div>
+  {% endif %}
 </section>

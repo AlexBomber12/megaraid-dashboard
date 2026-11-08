@@ -3,13 +3,44 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from megaraid_dashboard.db.models import ControllerSnapshot, Event
 
 EVENTS_PAGE_SIZE = 50
 _CONTROLLER_LABEL = "LSI MegaRAID SAS9270CV-8i"
+# Display names only: stored categories and filter query values stay unchanged.
+_CATEGORY_LABELS = {
+    "controller": "Controller",
+    "controller_alarm_setting_changed": "Alarm Setting",
+    "pd_state": "Drive State",
+    "vd_state": "Virtual Drive State",
+    "cv_state": "CacheVault State",
+    "smart_alert": "SMART Alert",
+    "media_errors": "Media Errors",
+    "other_errors": "Other Errors",
+    "predictive_failures": "Predictive Failures",
+    "temperature": "Drive Temperature",
+    "controller_temperature": "Controller Temperature",
+    "disk_space": "Disk Space",
+    "system": "System",
+    "operator_action": "Operator Action",
+    "drive_mark_ubad": "Mark Bad",
+    "drive_mark_ugood": "Mark Good",
+    "drive_spin_down": "Spin Down",
+    "drive_make_hot_spare": "Hot Spare",
+    "controller_buzzer_silence": "Buzzer Silence",
+    "controller_buzzer_disable": "Buzzer Disable",
+    "controller_buzzer_enable": "Buzzer Enable",
+    "foreign_config_detected": "Foreign Configuration",
+    "consistency_check_inconsistency": "Consistency Check",
+}
+
+
+def category_label(category: str) -> str:
+    """Human name of a stored event category; unknown keys still read as words."""
+    return _CATEGORY_LABELS.get(category, category.replace("_", " ").title())
 
 
 @dataclass(frozen=True)
@@ -38,12 +69,17 @@ class EventRow:
         return self.severity.capitalize()
 
     @property
-    def severity_icon(self) -> str:
-        return {
-            "info": "check-circle",
-            "warning": "alert-triangle",
-            "critical": "x-circle",
-        }.get(self.severity, "circle")
+    def category_label(self) -> str:
+        return category_label(self.category)
+
+    @property
+    def show_subject(self) -> bool:
+        """The subject is noise when the message already names it ("PD 252:6" vs "252:6")."""
+        subject = self.subject.strip()
+        if not subject:
+            return False
+        identifier = subject.removeprefix("PD ").strip()
+        return subject not in self.summary and identifier not in self.summary
 
 
 @dataclass(frozen=True)
@@ -188,9 +224,15 @@ def list_recent_events(session: Session, *, limit: int) -> list[Event]:
     )
 
 
+def count_events_by_category(session: Session) -> dict[str, int]:
+    rows = session.execute(select(Event.category, func.count()).group_by(Event.category))
+    return {str(category): int(count) for category, count in rows}
+
+
 def event_severity_to_status(severity: str) -> str:
+    # Info is not Healthy: it keeps the neutral info colour, never the optimal green.
     return {
-        "info": "optimal",
+        "info": "info",
         "warning": "warning",
         "critical": "critical",
     }.get(severity, "unknown")

@@ -12,6 +12,8 @@ from tests.e2e.conftest import _LiveServerHandle, login_and_navigate
 from tests.safety.harness import FakeStorcli, database_observation
 from tests.safety.scenarios import ACTIONS
 
+_ROW_NAMES = {"mark-ugood": "Unconfigured Good", "spindown": "Spin Down", "hotspare": "Hot Spare"}
+
 
 @pytest.mark.parametrize(
     "state", ["Onln", "UGood", "UBad", "Offln", "Msng", "Failed", "Rbld", "Unknown"]
@@ -46,11 +48,11 @@ def test_drive_state_availability_and_refusal_explanations(
         if expected[action.name]:
             expect(button).to_be_enabled()
         else:
-            expect(button).to_be_disabled()
-            row = button.locator("xpath=ancestor::div[contains(@class, 'action-row')][1]")
-            reason = row.locator(".action-row__note").first
-            expect(reason).to_be_visible()
-            assert len(reason.inner_text().strip()) > 10
+            # A state the action can never accept: no form or button, named once instead.
+            expect(button).to_have_count(0)
+            unavailable = page.locator("[data-unavailable-actions]")
+            expect(unavailable).to_contain_text(f"Not available in {state.upper()} state")
+            expect(unavailable).to_contain_text(_ROW_NAMES[action.name])
     known = {a.path for a in ACTIONS} | {"/maintenance/start", "/maintenance/stop"}
     rendered = page.locator("[hx-post], form[method=post]").evaluate_all(
         "els => els.map(el => el.getAttribute('hx-post') || el.getAttribute('action'))"

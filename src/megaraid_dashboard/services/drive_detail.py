@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -48,30 +48,14 @@ class DriveHealthSnapshot:
     smart_status: str
     smart_severity: str
     predictive_failure_count: int
+    media_errors: int
+    other_errors: int
     can_locate_start: bool
     can_locate_stop: bool
     locate_last_action: str | None
     locate_start_url: str
     locate_stop_url: str
     health_label: str = ""
-
-
-@dataclass(frozen=True)
-class ErrorSparklinePoint:
-    date: date
-    total_count: int
-    incremental_delta: int
-
-
-@dataclass(frozen=True)
-class ErrorSparkline:
-    current_total: int
-    media_errors: int
-    other_errors: int
-    bbm_errors: int
-    shield_counter: int
-    points: list[ErrorSparklinePoint]
-    meta_text: str
 
 
 @dataclass(frozen=True)
@@ -146,7 +130,6 @@ class DriveDetailViewModel:
     prev_drive_url: str | None
     next_drive_url: str | None
     health: DriveHealthSnapshot
-    error_sparkline: ErrorSparkline
     position: PhysicalPosition
     temperature_chart: DriveTemperatureSeries
     identity: DriveIdentity
@@ -156,20 +139,6 @@ class DriveDetailViewModel:
     system_health: SystemHealthViewModel
     updated_at: datetime
     auto_refresh_seconds: int
-
-
-@dataclass(frozen=True)
-class _DailyErrorSnapshot:
-    day: date
-    captured_at: datetime
-    media_errors: int
-    other_errors: int
-    bbm_errors: int
-    shield_counter: int
-
-    @property
-    def total(self) -> int:
-        return self.media_errors + self.other_errors + self.bbm_errors + self.shield_counter
 
 
 def load_drive_detail_view_model(
@@ -204,11 +173,6 @@ def load_drive_detail_view_model(
         prev_drive_url=_neighbor_drive_url(snapshot.physical_drives, drive, offset=-1),
         next_drive_url=_neighbor_drive_url(snapshot.physical_drives, drive, offset=1),
         health=_build_health_snapshot(session, drive=drive, snapshot=snapshot, settings=settings),
-        error_sparkline=_load_error_sparkline(
-            session,
-            serial_number=drive.serial_number,
-            days=range_days,
-        ),
         position=PhysicalPosition(
             physical_slot_label=physical_slot_label(drive.slot_id),
             enclosure=drive.enclosure_id,
@@ -244,91 +208,6 @@ def load_drive_detail_view_model(
         ),
         updated_at=now,
         auto_refresh_seconds=getattr(settings, "auto_refresh_seconds", _DEFAULT_REFRESH_SECONDS),
-    )
-
-
-def _load_error_sparkline(
-    session: Session,
-    *,
-    serial_number: str,
-    days: int,
-) -> ErrorSparkline:
-    if days <= 0:
-        msg = "days must be positive"
-        raise ValueError(msg)
-
-    latest_captured_at = session.scalar(
-        select(ControllerSnapshot.captured_at)
-        .join(PhysicalDriveSnapshot)
-        .where(PhysicalDriveSnapshot.serial_number == serial_number)
-        .order_by(ControllerSnapshot.captured_at.desc())
-        .limit(1)
-    )
-    end_day = _require_aware_utc(latest_captured_at).date() if latest_captured_at else _today_utc()
-    start_day = end_day - timedelta(days=days - 1)
-    latest_by_day: dict[date, _DailyErrorSnapshot] = {}
-
-    rows = session.execute(
-        select(
-            ControllerSnapshot.captured_at,
-            PhysicalDriveSnapshot.media_errors,
-            PhysicalDriveSnapshot.other_errors,
-            PhysicalDriveSnapshot.predictive_failures,
-        )
-        .join(PhysicalDriveSnapshot)
-        .where(PhysicalDriveSnapshot.serial_number == serial_number)
-        .where(
-            ControllerSnapshot.captured_at >= datetime.combine(start_day, datetime.min.time(), UTC)
-        )
-        .where(
-            ControllerSnapshot.captured_at
-            < datetime.combine(end_day + timedelta(days=1), datetime.min.time(), UTC)
-        )
-        .order_by(ControllerSnapshot.captured_at.asc(), PhysicalDriveSnapshot.id.asc())
-    )
-    for captured_at, media_errors, other_errors, predictive_failures in rows:
-        captured_at_utc = _require_aware_utc(captured_at)
-        daily_snapshot = _DailyErrorSnapshot(
-            day=captured_at_utc.date(),
-            captured_at=captured_at_utc,
-            media_errors=int(media_errors),
-            other_errors=int(other_errors),
-            bbm_errors=0,
-            shield_counter=int(predictive_failures),
-        )
-        previous = latest_by_day.get(daily_snapshot.day)
-        if (
-            previous is None or daily_snapshot.captured_at >= previous.captured_at
-        ):  # pragma: no branch
-            latest_by_day[daily_snapshot.day] = daily_snapshot
-
-    points: list[ErrorSparklinePoint] = []
-    previous_total = 0
-    latest = _DailyErrorSnapshot(start_day, datetime.min.replace(tzinfo=UTC), 0, 0, 0, 0)
-    for day_offset in range(days):
-        current_day = start_day + timedelta(days=day_offset)
-        latest = latest_by_day.get(current_day, latest)
-        delta = max(0, latest.total - previous_total)
-        points.append(
-            ErrorSparklinePoint(
-                date=current_day,
-                total_count=latest.total,
-                incremental_delta=delta,
-            )
-        )
-        previous_total = latest.total
-
-    return ErrorSparkline(
-        current_total=latest.total,
-        media_errors=latest.media_errors,
-        other_errors=latest.other_errors,
-        bbm_errors=latest.bbm_errors,
-        shield_counter=latest.shield_counter,
-        points=points,
-        meta_text=(
-            f"Media {latest.media_errors} / Other {latest.other_errors} / "
-            f"BBM {latest.bbm_errors} / Shield {latest.shield_counter}"
-        ),
     )
 
 
@@ -423,6 +302,8 @@ def _build_health_snapshot(
         smart_status=smart_status,
         smart_severity="critical" if drive.smart_alert else "optimal",
         predictive_failure_count=drive.predictive_failures,
+        media_errors=drive.media_errors,
+        other_errors=drive.other_errors,
         can_locate_start=latest_locate_action != "start",
         can_locate_stop=True,
         locate_last_action=latest_locate_action,
@@ -614,7 +495,7 @@ def _state_subtitle(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) 
     virtual_drive = min(snapshot.virtual_drives, key=lambda item: item.vd_id, default=None)
     raid_text = "Unknown RAID" if virtual_drive is None else virtual_drive.raid_level
     vd_text = "unknown" if virtual_drive is None else str(virtual_drive.vd_id)
-    return f"Member of VD {vd_text}. {raid_text}. DG {drive.disk_group_id}."
+    return f"Member of VD {vd_text}. {raid_text}."
 
 
 def _dg_span_row_text(drive: PhysicalDriveSnapshot, snapshot: ControllerSnapshot) -> str:
@@ -698,10 +579,6 @@ def _action_button(
         is_enabled=enabled,
         disabled_reason=None if enabled else reason,
     )
-
-
-def _today_utc() -> date:
-    return datetime.now(UTC).date()
 
 
 def _require_aware_utc(value: datetime) -> datetime:

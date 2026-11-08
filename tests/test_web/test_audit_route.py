@@ -107,13 +107,18 @@ def test_events_non_operator_action_row_does_not_render_actor_span() -> None:
 def test_events_operator_action_filter_chip_is_available() -> None:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        empty = client.get("/events")
+        _insert_event(test_app, category="operator_action", subject="PD 252:4", summary="Locate")
+        _insert_event(test_app, category="controller_buzzer_silence", subject="Buzzer", summary="x")
         response = client.get("/events")
 
+    # Only categories that have events are offered, with display names and counts.
+    assert 'href="/events?category=operator_action"' not in empty.text
     assert response.status_code == 200
     assert 'href="/events?category=operator_action"' in response.text
-    assert ">operator action</a>" in response.text
+    assert '>Operator Action <span class="filter-chip__count">1</span></a>' in response.text
     assert 'href="/events?category=controller_buzzer_silence"' in response.text
-    assert ">controller buzzer silence</a>" in response.text
+    assert '>Buzzer Silence <span class="filter-chip__count">1</span></a>' in response.text
 
 
 def _insert_operator_action(test_app: FastAPI, *, username: str, message: str) -> None:

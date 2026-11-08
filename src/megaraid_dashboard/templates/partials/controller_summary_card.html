@@ -32,6 +32,9 @@
           {% if operation.tooltip %}<span class="op-segment__detail">{{ operation.tooltip }}</span>{% endif %}
         </span>
       {% endfor %}
+    {% elif not controller.operations_known and not controller.last_patrol_read_completed_text and not controller.next_patrol_read_in_text %}
+      {# Two "unknown" statements say one thing: nothing was reported. #}
+      <span class="muted" data-operations-not-reported>Operations not reported</span>
     {% else %}
       <span>{{ 'No active operations' if controller.operations_known else 'Operation status unknown' }}</span>
       <span class="controller-ops__meta">

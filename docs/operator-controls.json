@@ -51,17 +51,11 @@
     "<input type=\"hidden\" name=\"csrf_token\" value=\"\">",
     "<button type=\"submit\" class=\"button\" aria-pressed=\"{{ 'true' if buzzer_off else 'false' }}\" {% if not view_model.buzzer.can_disable or disable_reason %}disabled{% endif %}>"
   ],
-  "src/megaraid_dashboard/templates/partials/controller_detail/cachevault.html": [
-    "<summary>"
-  ],
   "src/megaraid_dashboard/templates/partials/controller_detail/foreign_config.html": [
     "<a class=\"button button--warning\" href=\"{{ request.url_for('controller_foreign_config').path }}\">"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/hardware_identity.html": [
     "<summary id=\"hardware-identity-heading\">"
-  ],
-  "src/megaraid_dashboard/templates/partials/controller_detail/health_snapshot.html": [
-    "<summary>"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/live_operations.html": [
     "<summary aria-label=\"About {{ operation.name }}\">",
@@ -76,9 +70,6 @@
     "<input type=\"hidden\" name=\"mode\" value=\"{{ mode }}\">",
     "<button class=\"button\" type=\"submit\" aria-pressed=\"false\" {% if not operation.can_change_mode or mode_reason %}disabled{% endif %}>",
     "<button class=\"button\" type=\"button\" aria-pressed=\"true\" disabled>"
-  ],
-  "src/megaraid_dashboard/templates/partials/controller_detail/raid_config_table.html": [
-    "<summary>"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/roc_history_chart.html": [
     "<button type=\"button\" class=\"range-tabs__button\" data-range-hours=\"1\" role=\"tab\" aria-selected=\"false\">",
@@ -95,9 +86,6 @@
     "<input type=\"hidden\" name=\"serial_number\" value=\"{{ view_model.identity.serial_number }}\">",
     "<input type=\"hidden\" name=\"dg_id\" value=\"{{ drive_dg_id if drive_dg_id != '-' else '' }}\">",
     "<button type=\"submit\" class=\"button{% if action.is_destructive %} button--danger{% endif %}\" {% if not action.is_enabled or no_dg or contract_reason %}disabled{% endif %} >"
-  ],
-  "src/megaraid_dashboard/templates/partials/drive_detail/health_snapshot.html": [
-    "<summary>"
   ],
   "src/megaraid_dashboard/templates/partials/drive_detail/locate_control.html": [
     "<button type=\"button\" class=\"button\" aria-label=\"Start Locate LED\" hx-post=\"{{ request.url_for('drive_locate_start', enclosure=enc, slot=slot).path }}\" hx-swap=\"none\" hx-sync=\"closest .drive-actions:drop\" hx-on::before-request=\"window.driveActions.begin(this)\" hx-on::after-request=\"this.removeAttribute('aria-busy'); window.driveActions.flash(this, event.detail)\" data-locate-action=\"start\" {% if start_reason or not view_model.health.can_locate_start %}disabled{% endif %} >",

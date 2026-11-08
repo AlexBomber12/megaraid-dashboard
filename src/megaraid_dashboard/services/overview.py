@@ -131,7 +131,6 @@ class DriveGridTileViewModel:
     state_text: str
     state_severity: str
     tile_severity: str
-    error_badge_count: int | None
     detail_url: str
     health_label: str = ""
     health_reason: str = ""
@@ -361,12 +360,6 @@ def _drive_grid_tile(
         temp_critical=temp_critical,
     )
     health = assess_drive_health(drive, temperature=temperature_state)
-    error_count = (
-        drive.media_errors
-        + drive.other_errors
-        + getattr(drive, "bbm_errors", 0)
-        + drive.predictive_failures
-    )
     return DriveGridTileViewModel(
         slot_label=physical_slot_label(drive.slot_id),
         enclosure_id=drive.enclosure_id,
@@ -380,7 +373,6 @@ def _drive_grid_tile(
             temp_warning=temp_warning,
             temp_critical=temp_critical,
         ),
-        error_badge_count=None if error_count == 0 else error_count,
         detail_url=f"/drives/{drive.enclosure_id}:{drive.slot_id}",
         health_label=health.label,
         health_reason=health.summary if health.reasons else "",
@@ -804,11 +796,11 @@ def _physical_drive_row(
         if drive.temperature_celsius is None
         else celsius(drive.temperature_celsius),
         temperature_sort=-1 if drive.temperature_celsius is None else drive.temperature_celsius,
-        temperature_severity=_drive_temperature_badge(
-            drive,
+        # A temperature keeps its own grade on any row: normal is plain text, elevated is colored.
+        temperature_severity=temperature_severity(
+            drive.temperature_celsius,
             temp_warning=temp_warning,
             temp_critical=temp_critical,
-            row_state=row_state,
         ),
         temperature_tooltip=_temperature_tooltip(
             drive.temperature_celsius,
@@ -860,25 +852,6 @@ def _drive_state_badge(
     return compute_drive_tile_severity(
         drive, temp_warning=temp_warning, temp_critical=temp_critical
     )
-
-
-def _drive_temperature_badge(
-    drive: PhysicalDriveSnapshot,
-    *,
-    temp_warning: int,
-    temp_critical: int,
-    row_state: str,
-) -> str:
-    temp_status = temperature_severity(
-        drive.temperature_celsius,
-        temp_warning=temp_warning,
-        temp_critical=temp_critical,
-    )
-    if temp_status == "unknown":
-        return "unknown"
-    if temp_status == "optimal" and row_state in {"critical", "warning"}:
-        return "neutral"
-    return temp_status
 
 
 def _drive_status_icon(row_state: str) -> str:

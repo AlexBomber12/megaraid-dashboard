@@ -11,9 +11,9 @@ from megaraid_dashboard.config import get_settings
 from megaraid_dashboard.db.models import PhysicalDriveSnapshot
 from megaraid_dashboard.services.overview import (
     _drive_state_badge,
-    _drive_temperature_badge,
     _empty_next_run_text,
     _event_severity_to_status,
+    _physical_drive_row,
     _require_aware_utc,
     _temperature_tooltip,
     derive_controller_health,
@@ -129,40 +129,27 @@ def test_drive_state_badge_escalates_online_smart_alert() -> None:
     assert _drive_state_badge(drive, temp_warning=55, temp_critical=60) == "critical"
 
 
-def test_drive_temperature_badge_preserves_unknown_when_no_temperature() -> None:
-    assert (
-        _drive_temperature_badge(
-            _drive(temperature=None),
-            temp_warning=55,
-            temp_critical=60,
-            row_state="optimal",
-        )
-        == "unknown"
-    )
+def test_table_temperature_is_unknown_when_no_temperature() -> None:
+    row = _physical_drive_row(_drive(temperature=None), temp_warning=55, temp_critical=60)
+    assert row.temperature_severity == "unknown"
 
 
-def test_drive_temperature_badge_is_neutral_when_row_state_already_warning() -> None:
-    assert (
-        _drive_temperature_badge(
-            _drive(temperature=35),
-            temp_warning=55,
-            temp_critical=60,
-            row_state="warning",
-        )
-        == "neutral"
-    )
+def test_table_temperature_keeps_its_own_grade_on_a_problem_row() -> None:
+    drive = _drive(temperature=35)
+    drive.media_errors = 12
+    row = _physical_drive_row(drive, temp_warning=55, temp_critical=60)
+    assert row.row_state == "warning"
+    assert row.temperature_severity == "optimal"
 
 
 @pytest.mark.parametrize("temperature, expected", [(56, "warning"), (61, "critical")])
-def test_drive_temperature_badge_keeps_fault_colour_under_critical_row(
+def test_table_temperature_keeps_fault_colour_under_critical_row(
     temperature: int, expected: str
 ) -> None:
-    assert (
-        _drive_temperature_badge(
-            _drive(temperature=temperature), temp_warning=55, temp_critical=60, row_state="critical"
-        )
-        == expected
-    )
+    drive = _drive(state="Offln", temperature=temperature)
+    row = _physical_drive_row(drive, temp_warning=55, temp_critical=60)
+    assert row.row_state == "critical"
+    assert row.temperature_severity == expected
 
 
 def test_private_small_helpers_cover_unknown_and_missing_inputs() -> None:

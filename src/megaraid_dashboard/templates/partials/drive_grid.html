@@ -23,11 +23,6 @@
         <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
           {% if tile.temperature_celsius is not none %}{{ tile.temperature_celsius | celsius }}{% else %}Temp unknown{% endif %}
         </span>
-        {% if tile.error_badge_count is not none %}
-          <span class="drive-error-badge-v2" title="{{ tile.error_badge_count }} drive errors">
-            {{ tile.error_badge_count }}<span class="visually-hidden"> errors</span>
-          </span>
-        {% endif %}
       </a>
     {% endfor %}
   </div>

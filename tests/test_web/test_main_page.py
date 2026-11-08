@@ -91,8 +91,8 @@ def test_main_page_renders_new_overview(
     assert "110&deg;C" in response.text
     assert "Critical" in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
-    assert '<span class="drive-error-badge-v2" title="1 drive errors">' in response.text
-    assert '1<span class="visually-hidden"> errors</span>' in response.text
+    # Counts are named in each tile's reason text; no bare-number badge repeats them.
+    assert "drive-error-badge-v2" not in response.text
     assert response.text.count('class="activity-item-v2"') == 10
     assert '<span class="activity-item-v2__age">pd_state</span>' not in response.text
     assert '<time class="activity-item-v2__age" datetime="' in response.text

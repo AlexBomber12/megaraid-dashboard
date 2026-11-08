@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from megaraid_dashboard.db.dao import insert_snapshot, record_event
 from megaraid_dashboard.db.models import Event
 from megaraid_dashboard.services.events import (
+    EventRow,
+    category_label,
+    count_events_by_category,
     event_severity_to_status,
     load_events_fragment,
     load_events_page,
@@ -25,7 +28,7 @@ def test_empty_database_returns_empty_events_and_no_cursor(session: Session) -> 
 @pytest.mark.parametrize(
     ("severity", "expected_status"),
     [
-        ("info", "optimal"),
+        ("info", "info"),
         ("warning", "warning"),
         ("critical", "critical"),
         ("unexpected", "unknown"),
@@ -33,6 +36,54 @@ def test_empty_database_returns_empty_events_and_no_cursor(session: Session) -> 
 )
 def test_event_severity_to_status_contract(severity: str, expected_status: str) -> None:
     assert event_severity_to_status(severity) == expected_status
+
+
+@pytest.mark.parametrize(
+    ("category", "expected"),
+    [
+        ("pd_state", "Drive State"),
+        ("controller_alarm_setting_changed", "Alarm Setting"),
+        ("drive_make_hot_spare", "Hot Spare"),
+        ("future_thing", "Future Thing"),
+    ],
+)
+def test_category_label_names_stored_keys(category: str, expected: str) -> None:
+    assert category_label(category) == expected
+
+
+@pytest.mark.parametrize(
+    ("subject", "summary", "shown"),
+    [
+        ("PD 252:6", "Drive 252:6 state changed from Onln to Offln", False),
+        ("VD 0", "VD 0 state changed from Optl to Dgrd", False),
+        ("Controller", "Alarm setting changed to On", True),
+        ("  ", "Anything", False),
+    ],
+)
+def test_event_row_omits_a_subject_the_message_already_names(
+    subject: str, summary: str, shown: bool
+) -> None:
+    row = EventRow(
+        id=1,
+        occurred_at=datetime(2026, 11, 8, 12, 0, tzinfo=UTC),
+        severity="info",
+        severity_status="info",
+        category="pd_state",
+        subject=subject,
+        summary=summary,
+    )
+    assert row.show_subject is shown
+    assert row.category_label == "Drive State"
+
+
+def test_count_events_by_category_groups_stored_events(session: Session) -> None:
+    base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    _insert_event(session, occurred_at=base_time, category="pd_state")
+    _insert_event(session, occurred_at=base_time, category="pd_state")
+    _insert_event(session, occurred_at=base_time, category="vd_state")
+    session.commit()
+
+    assert count_events_by_category(session) == {"pd_state": 2, "vd_state": 1}
 
 
 def test_cursor_pagination_emits_cursor_then_none_on_last_page(session: Session) -> None:

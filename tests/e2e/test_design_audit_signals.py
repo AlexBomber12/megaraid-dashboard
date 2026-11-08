@@ -89,7 +89,7 @@ def test_combined_faults_keep_alarm_colours_and_fit_viewport(
             "Drive is offline. S.M.A.R.T. alert is active. 2 predictive failures."
         )
         expect(row.locator('[data-label="Predictive"]')).to_have_css("color", critical)
-        expect(row.locator('[data-label="SMART alert"]')).to_have_css("color", critical)
+        expect(row.locator('[data-label="SMART Alert"]')).to_have_css("color", critical)
         hot_row = page.locator("tbody tr").filter(
             has=page.get_by_role("link", name="252:3", exact=True)
         )
@@ -104,7 +104,7 @@ def test_combined_faults_keep_alarm_colours_and_fit_viewport(
             page.screenshot(path=str(Path(folder) / f"combined-faults-{width}.png"), full_page=True)
 
         page.goto(f"{live_server}/drives/252:6")
-        expect(_field(page, "SMART alert")).to_have_css("color", critical)
+        expect(_field(page, "SMART Alert")).to_have_css("color", critical)
         expect(_field(page, "Predictive Failures")).to_have_css("color", critical)
         expect(_field(page, "Link Speed")).to_have_css("color", warning)
         expect(_field(page, "Media Errors")).to_have_css(
@@ -162,7 +162,7 @@ def test_chart_structure_thresholds_and_instances_survive_every_range(
         page.wait_for_function("Object.keys(window.Chart?.instances || {}).length === 2")
         assert (
             page.locator("#temperature-history-data").evaluate(
-                "el => JSON.parse(el.textContent).thresholdDatasets.length"
+                "el => Object.keys(JSON.parse(el.textContent).thresholds).length"
             )
             == 2
         )

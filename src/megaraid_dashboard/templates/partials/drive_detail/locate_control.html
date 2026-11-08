@@ -19,7 +19,8 @@
   >
     <div class="action-row__name"><h3>Locate LED</h3></div>
     <div class="action-row__now">
-      <strong data-locate-status>LED state unverified.{% if view_model.health.locate_last_action %} Last accepted command: {{ view_model.health.locate_last_action }}.{% endif %}</strong>
+      {# Constant, honest text: regular weight, so it does not read as news on every visit. #}
+      <span data-locate-status>LED state unverified.{% if view_model.health.locate_last_action %} Last accepted command: {{ view_model.health.locate_last_action }}.{% endif %}</span>
       {% set notes = [start_contract_reason, stop_contract_reason] %}
       {% if locate_start_disabled_reason and not locate_disabled_reason %}
         {% set _ = notes.append("Stop is available without a maintenance window, for recovery.") %}

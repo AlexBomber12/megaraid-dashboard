@@ -36,8 +36,11 @@ def test_online_spin_down_is_disabled(
 ):
     page = authenticated_page
     login_and_navigate(page, f"{live_server}/drives/252:0")
-    expect(page.get_by_role("button", name="Spin Down", exact=True)).to_be_disabled()
-    expect(page.locator("body")).to_contain_text("Only unconfigured UGood or UBad")
+    # An online member offers no Spin Down form; one row names the unavailable actions.
+    expect(page.get_by_role("button", name="Spin Down", exact=True)).to_have_count(0)
+    expect(page.locator("[data-unavailable-actions]")).to_contain_text(
+        "Not available in ONLN state: Unconfigured Good, Spin Down, Hot Spare."
+    )
     expect(page.get_by_role("button", name="Mark Bad", exact=True)).to_have_count(0)
     assert fake_storcli.calls == []
 

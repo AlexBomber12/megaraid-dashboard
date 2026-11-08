@@ -157,13 +157,23 @@ def test_foreign_config_page_renders_status_bar_without_live_refresh(
 def test_supported_advanced_actions_and_replacement_keep_confirmation_gates(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    html = _get(sample_snapshot, "/drives/252/4").text
-    forms = _parse(html).advanced_action_forms
+    # An online member offers none of them: one "Other Actions" row names them instead.
+    online = _get(sample_snapshot, "/drives/252/4").text
+    assert _parse(online).advanced_action_forms == []
+    assert "data-unavailable-actions" in online
+    forms = [
+        form
+        for state in ("UBad", "UGood")
+        for form in _parse(
+            _get(_with_drive_state(sample_snapshot, slot_id=4, state=state), "/drives/252/4").text
+        ).advanced_action_forms
+    ]
     assert {form["action"] for form in forms} == {
         "/drives/252:4/actions/mark-ugood",
         "/drives/252:4/actions/spindown",
         "/drives/252:4/actions/hotspare",
     }
+    html = online
     for form in forms:
         assert form["data-confirm-tone"] == "warning"
         assert "data-confirm-phrase" not in form
@@ -306,3 +316,11 @@ def _insert_operator_event(test_app: FastAPI) -> None:
             )
         )
         session.commit()
+
+
+def _with_drive_state(snapshot: StorcliSnapshot, *, slot_id: int, state: str) -> StorcliSnapshot:
+    drives = [
+        drive.model_copy(update={"state": state}) if drive.slot_id == slot_id else drive
+        for drive in snapshot.physical_drives
+    ]
+    return snapshot.model_copy(update={"physical_drives": drives})

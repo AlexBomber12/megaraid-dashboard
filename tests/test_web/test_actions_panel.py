@@ -86,7 +86,10 @@ def test_unknown_operation_modes_are_not_selected(full_app):
     )[0]
     assert 'aria-pressed="true"' not in operations
     assert "Unknown mode." in operations
-    assert "State unknown" in operations
+    # One shared note above both rows, not the same sentence in each row.
+    assert operations.count("state unknown, so Start and Stop are unavailable") == 1
+    assert "Consistency Check and Patrol Read: state unknown" in operations
+    assert "State unknown, so Start" not in operations
     assert fake.mutations == []
 
 

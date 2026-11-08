@@ -8,8 +8,8 @@
       <span class="text-label">Health</span>
       <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.state_severity | health_label }}</strong>
       {% from "partials/_health.html" import drive_role %}{{ drive_role(view_model.health.health_label) }}
-      <p>{{ 'No reported faults.' if view_model.health.state_severity == 'optimal' else view_model.health.summary_text }}</p>
-      <details class="drive-controller-details"><summary>Controller details</summary><span class="drive-health-raw">Controller state: {{ view_model.health.state }}</span></details>
+      {# The grade already says Healthy; only a fault needs a sentence. #}
+      {% if view_model.health.state_severity != 'optimal' %}<p>{{ view_model.health.summary_text }}</p>{% endif %}
       {% if view_model.health.state_subtitle %}<p class="muted">{{ view_model.health.state_subtitle }}</p>{% endif %}
     </div>
     <dl class="kv-grid health-metrics">
@@ -20,22 +20,22 @@
         </dd>
       </div>
       <div>
-        <dt>SMART alert</dt>
-        <dd class="status-text--{{ view_model.health.smart_severity }}">{{ 'Yes' if view_model.health.smart_status == 'ALERT' else 'No' }}</dd>
+        <dt>SMART Alert</dt>
+        <dd class="{{ 'status-text--critical' if view_model.health.smart_status == 'ALERT' else 'is-zero' }}">{{ 'Yes' if view_model.health.smart_status == 'ALERT' else 'No' }}</dd>
       </div>
       {% for label, value, severity in [
         ("Predictive Failures", view_model.health.predictive_failure_count, "critical"),
-        ("Media Errors", view_model.error_sparkline.media_errors, "warning"),
-        ("Other Errors", view_model.error_sparkline.other_errors, "warning"),
+        ("Media Errors", view_model.health.media_errors, "warning"),
+        ("Other Errors", view_model.health.other_errors, "warning"),
       ] %}
         <div>
           <dt>{{ label }}</dt>
           <dd class="{% if value in (0, '0') %}is-zero{% else %}status-text--{{ severity }}{% endif %}">{{ value }}</dd>
         </div>
       {% endfor %}
-      <div class="kv-grid__wide">
-        <dt>Error Trend</dt>
-        <dd>{% include "partials/drive_detail/error_sparkline.html" %}</dd>
+      <div>
+        <dt>Firmware State</dt>
+        <dd class="mono" data-firmware-state>{{ view_model.health.state }}</dd>
       </div>
     </dl>
   </div>
