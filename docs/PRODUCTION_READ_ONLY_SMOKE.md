@@ -12,6 +12,11 @@
 > 7d/365d/30d swaps, with unique titles and saved range; Drive Observed advances
 > automatically and manually with two normal samples. #152's verified service receipt
 > alone had missed these UI regressions; #153 closes them. No controller write.
+> #155 acceptance: Events combined/empty filters and quiet polling retain query/counts;
+> both drive graphs and RoC thresholds are drawn/readable. Automatic Observed
+> 14:55 -> 15:04 Europe/Rome and completed manual refresh use normal saved data.
+> Close thresholds/new excluded events are isolated tests; no production injection.
+> [Exact dated results](RELEASE_155_ACCEPTANCE.md).
 > This manual procedure remains read-only even when production has action capability.
 
 This is a manual procedure for `https://megaraid.alexbomber.com/`, not a scheduled

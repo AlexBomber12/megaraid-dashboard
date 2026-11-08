@@ -1,6 +1,6 @@
 # MegaRAID Dashboard — maintenance roadmap
 
-Updated: **2026-11-08**. Installed application: `211dfb2` (#153) on SERVER.
+Updated: **2026-11-08**. Installed application: `8da1a93` (#155) on SERVER.
 [CURRENT_STATE.md](CURRENT_STATE.md) records the production verification boundary.
 This plan grants no controller mutation, notification, deployment or recurring automation.
 
@@ -40,17 +40,25 @@ This plan grants no controller mutation, notification, deployment or recurring a
   mapping/sort and Observed refresh were verified without controller writes.
 
 - Design audit A1-A5 (#151), shared design rules (#152) and the acceptance-discovered
-  chart/Drive Observed regressions (#153) are closed by installed `211dfb2`.
+  chart/Drive Observed regressions (#153) remain fixed in current #155; the following
+  11:20 checkpoint describes historical #153 acceptance.
   Managed verification: 2026-11-08 11:20:15 UTC; two normal Collector runs, both charts
   after range swaps, automatic/manual Observed, mapping/sort and preserved settings.
-  Latest release checks: 3416 default (one existing skip), 100% statement/branch coverage,
+  Historical #153 release checks: 3416 default (one existing skip), 100% statement/branch coverage,
   515 safety and 305 Chromium cases; fresh +1 and all green CI.
+
+- #154 reduces duplicate UI signals; #155 fixes live filtered Events categories/counts
+  and close threshold label overlap. Installed `8da1a93` verified at 2026-11-08
+  14:04:55 UTC; production graphs/filter polling/automatic and manual Observed passed.
+  Latest release: 3430 default (one existing skip), 100% statement/branch coverage,
+  515 safety and 315 Chromium; all three CI jobs and fresh +1. [Acceptance](RELEASE_155_ACCEPTANCE.md).
+- Previous documentation PR #147 and knowledge-vault #4 merged on 2026-11-08.
 
 ## Remaining work
 
 | Priority | Work | Required evidence |
 | --- | --- | --- |
-| 0 | Review/merge the updated documentation PRs and accept handoff | PR #147 and knowledge-vault #4; current-head CI/review; owner records open operational gates or explicit deferrals |
+| 0 | Finalize this documentation follow-up and owner handoff acceptance | #147/vault #4 already merged; reconcile #154-155, distinguish local notes/publication/merge/sync, record operational evidence or explicit deferrals |
 | 1 | Inspect independent app/Collector monitoring; add only missing coverage | Observer independent of the failed app; incident-only failure/recovery tests without RAID faults |
 | 2 | Verify recurring backups, retention and separate-copy restore | Scheduled/off-host copy, SQLite integrity and history/delivery checks; live DB untouched |
 | 3 | Observe schedule rollover after a natural Patrol completion | Fresh read evidence; no guessed next date or forced operation |

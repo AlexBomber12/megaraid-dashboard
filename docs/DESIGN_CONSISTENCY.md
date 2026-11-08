@@ -64,7 +64,7 @@ Action help/disclosure affordances and destructive-confirmation styling should b
 by operation: navigation to a preview, progression through a workflow, and executing a write
 have different meanings. A blanket colour/icon rewrite must not blur those distinctions.
 
-The second audit PR therefore addresses confirmed consistency defects and verified cleanup,
+The delivered second audit PR (#152) addresses confirmed consistency defects and verified cleanup,
 preserving intentional differences rather than mechanically applying every B/C suggestion.
 
 ## Acceptance
@@ -79,11 +79,12 @@ Passing these tests does not claim physical LED or buzzer verification beyond ow
 
 ### Accepted deployment — 2026-11-08
 
-Installed #153 / `211dfb2` includes #151-152 after fresh review and green CI. #152's
-service verification was followed by real UI findings, not final acceptance. The
-corrective release passed both drawn charts on 7d/365d/30d, automatic/manual Drive
-Observed, two normal Collector runs, mapping/sort and 8 Healthy, without RAID writes.
-[CURRENT_STATE.md](CURRENT_STATE.md) records dated results and per-PR test counts.
+Current #155 / `8da1a93` includes the #151-153 fixes and #154 noise pass. #152's
+service receipt missed real UI failures, corrected by #153. #155 additionally closes
+stale filtered Events navigation and the pre-existing close-threshold overlap.
+Production normal collection, drawn charts, Events quiet filtering and automatic/manual
+Observed passed; excluded arrivals and near-edge threshold pairs stay isolated tests.
+[Release #155 acceptance](RELEASE_155_ACCEPTANCE.md) records the exact boundary/counts.
 
 ### Post-install browser regression checks
 

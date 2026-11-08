@@ -192,3 +192,14 @@ all eight physical Locate LEDs on 2026-11-06. #146 production UI checks verified
 one-row mapping and Drives sort/refresh; buzzer setting acceptance is a separate
 supervised check that passed on 2026-11-06. Acoustic effects, disk removal, replacement and media recovery remain
 unverified on production hardware.
+
+## #154-155 presentation follow-up — 2026-11-08
+
+Inapplicable drive actions share Other Actions; action eligibility and server-side
+refusals are unchanged. Technical/raw fields remain visible without duplicate
+one-value disclosures. Events global category counts update even when a new event
+is excluded by current category/severity/combined filters; quiet polls retain the
+navigation node and do not advance the cursor past hidden events. Close threshold
+labels fit measured boxes at both plot edges. These new-event/extreme-threshold
+scenarios use disposable databases and FakeStorcli; production acceptance uses normal
+collection and existing saved data. [Current evidence](RELEASE_155_ACCEPTANCE.md).

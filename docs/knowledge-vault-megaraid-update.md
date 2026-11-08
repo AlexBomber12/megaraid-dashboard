@@ -1,24 +1,30 @@
 # Obsidian maintenance handoff — 2026-11-08
 
-Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed `211dfb2` (#153)
-includes #148 shared drive assessment, #149 critical/component/metric/freshness fixes
-and #150 Healthy / Attention / Critical / Unknown presentation. The green 8 Healthy
-count, fault counts and numerical error badges remain; firmware codes stay diagnostic.
+Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed `8da1a93` (#155)
+includes #154 noise reduction, live filtered Events category/count revision and
+measured non-overlapping threshold labels. [Acceptance](RELEASE_155_ACCEPTANCE.md)
+records exact historical and current boundaries. Health remains Healthy / Attention /
+Critical / Unknown. Aggregate counts, fault reasons, table/detail counters and Error
+Counter History remain; the bare tile number and duplicate sparkline are removed.
 
-Managed #153 acceptance finished verified on 2026-11-08 at 11:20:15 UTC (12:20:15 Europe/Rome).
-#151-153 add signal colours, fault-row wrapping, shared chart/time/unit rules and
-correct the #152 chart lifecycle/Drive Observed findings. Two ordinary Collector polls,
-both charts after 7d/365d/30d, mapping/sort, 8 Healthy and Buzzer Enabled passed.
-Observed changed 12:10 -> 12:20 automatically and 12:20 -> 12:25 manually, Europe/Rome.
-Latest release evidence: 3416 default tests (one existing skip), 100% statement/branch
-coverage, 515 safety and 305 Chromium cases; fresh +1 and all three CI jobs green.
-No controller write, forced collection, new Telegram test or live DB restore.
+Managed verification: 2026-11-08 14:04:55 UTC (15:04:55 Europe/Rome), from `211dfb2`.
+Initial acceptance saw one normal Collector completion; documentation follow-up saw two.
+Health/metrics/settings/policy/configuration and process warning/error/traceback checks
+passed. Drive Observed advanced automatically 14:55 -> 15:04 Europe/Rome; completed
+manual refresh read the same latest saved sample. Drawn charts/ranges and Events
+combined/empty filters with quiet polling passed. Excluded new events and close
+thresholds were tested only with disposable data. No production injections or RAID writes.
 
-The owner confirmed all eight physical Locate LEDs on 2026-11-06. Buzzer setting/audit
-round-trip acceptance passed separately that day; the later chosen Enabled state is
-retained. Silence/acoustic output and a real production rollback remain unverified.
-The owner authorized publication in project PR #147 and knowledge-vault PR #4 on
-2026-11-08; merging and cross-device synchronization remain separate steps.
+Latest release evidence: 3430 default tests (one existing skip), 100% statement/branch
+coverage, 515 safety and 315 Chromium; fresh +1 and all three CI jobs green. Historical
+#151-153 chart/Observed and physical mapping/sort evidence remains dated.
+
+All eight physical Locate LEDs are owner-confirmed. Buzzer setting/audit round trip
+passed previously; owner-selected Enabled and closed maintenance are retained.
+Silence/acoustic output and a real production rollback remain unverified.
+Project documentation #147 and knowledge-vault #4 were merged on 2026-11-08.
+They are no longer pending. This follow-up's publication/merge, local note update
+and cross-device sync are distinct results; no cross-device sync is claimed.
 
 Maintain these `AlexBomber12/knowledge-vault` notes together:
 
