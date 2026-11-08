@@ -650,9 +650,11 @@ def test_initial_drive_charts_match_same_range_fragment(sample_snapshot: Storcli
     fragment_payloads = _json_scripts(fragment.text)
     for name in ("temperature-history-data", "error-history-data"):
         assert initial_payloads[name] == fragment_payloads[name]
-    for name in ("temperature-history-heading", "error-history-heading"):
-        assert initial.text.count(f'id="{name}"') == 1
-        assert fragment.text.count(f'id="{name}"') == 1
+    # The stable title and range controls stay outside the swapped chart area.
+    assert initial.text.count('id="temperature-history-heading"') == 1
+    assert 'id="temperature-history-heading"' not in fragment.text
+    for response in (initial, fragment):
+        assert response.text.count('id="error-history-heading"') == 1
 
 
 def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(

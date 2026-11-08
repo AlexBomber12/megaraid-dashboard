@@ -76,3 +76,16 @@ summary counts and error badges at 1440/1024/390 px, chart swaps and instance co
 times across time zones, and action refusals. Keep the project's 100% statement/branch gate,
 isolated safety integration, full Chromium suite, green remote CI and fresh-head review.
 Passing these tests does not claim physical LED or buzzer verification beyond owner evidence.
+
+### Post-install browser regression checks
+
+Keep history titles and range controls outside the HTMX swap target. Moving a sibling during
+an outerHTML swap can detach lifecycle-event targets; do not relocate range controls during
+that transaction. Create swapped Chart.js canvases only after `htmx:afterSettle`, after HTMX
+has finished restoring style/width/height attributes. Otherwise a valid Chart instance can
+remain while its canvas bitmap is blank. Regression tests must inspect painted pixels and
+native canvas dimensions after settling, without calling resize/update to repair the result.
+
+Drive Observed must refresh in the same live cycle as its health values, using the saved
+snapshot timestamp. The drive header is therefore an identified live region, subject to the
+same identity, focus, dialog and workflow pause rules as the other drive regions.

@@ -1,9 +1,5 @@
 <div id="chart-area" class="chart-area" data-range-days="{{ view_model.active_range_days }}">
-  <section class="section" aria-labelledby="temperature-history-heading">
-    <div class="section-heading" data-drive-chart-heading>
-      <h2 id="temperature-history-heading">Temperature History</h2>
-    </div>
-    <div class="card chart-card">
+  <div class="card chart-card">
     <canvas class="chart-canvas-v2" id="temperature-history-chart"></canvas>
     <script id="temperature-history-data" type="application/json">{{ view_model.temperature_chart | tojson }}</script>
     <noscript>
@@ -34,8 +30,7 @@
         <p class="chart-empty">No temperature samples in this range.</p>
       {% endif %}
     </noscript>
-    </div>
-  </section>
+  </div>
 
   <section class="section" aria-labelledby="error-history-heading">
     <div class="section-heading">
@@ -222,19 +217,16 @@
         renderErrorChart();
       }
 
-      const rangeTabs = document.querySelector('[data-drive-detail-section="temperature-chart"] > .range-tabs')
-        || document.querySelector('[data-drive-detail-section="temperature-chart"] .range-tabs');
-      const heading = chartArea.querySelector('[data-drive-chart-heading]');
-      if (rangeTabs && heading) heading.append(rangeTabs);
       syncRangeTabs();
       chartArea.addEventListener("htmx:beforeSwap", () => {
-        if (rangeTabs) chartArea.parentElement.insertBefore(rangeTabs, chartArea);
         destroyChartsIn(chartArea);
       });
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initializeCharts, { once: true });
       } else {
-        initializeCharts();
+        // HTMX settles style/width/height attributes after insertion. Drawing earlier
+        // lets it reset the canvas bitmap after Chart.js has already painted it.
+        chartArea.addEventListener("htmx:afterSettle", initializeCharts, { once: true });
       }
     }());
   </script>
