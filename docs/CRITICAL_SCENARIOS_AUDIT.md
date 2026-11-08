@@ -1,14 +1,15 @@
 # Critical alerts and operator scenarios
 
-Audit date: 2026-11-07. Production baseline: #148 / `510ce9b`. This audit uses
-isolated saved snapshots, fake StorCLI and mocked Telegram/SMTP. SERVER inspection
-was limited to release status and health. No controller operation or real message
-was used to manufacture a fault. Candidate corrections require their own review,
-green CI and explicit deployment authorization.
+Audit date: 2026-11-07. Pre-update production baseline: #148 / `510ce9b`.
+Corrections shipped in [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149),
+installed as `9f2693eb3000cc908cb1393f127fe98730ec8abc`. Fault scenarios use
+isolated saved snapshots, fake StorCLI and mocked Telegram/SMTP. Deployment acceptance
+used normal collection and production reads only; no controller operation or real
+message manufactured a fault.
 
 ## Corrections found by following the user journey
 
-| Trigger | Previous behavior | Candidate behavior |
+| Trigger | Previous behavior | Delivered behavior |
 | --- | --- | --- |
 | UBad on the first poll or after a state change | Critical in the UI, warning event excluded from Telegram | Critical event, explicit UBad Telegram wording, normal relevance/dedup gates |
 | First reliable poll confirms CacheVault absence | No baseline absence event | Critical absence event; unknown or failed probes still do not prove absence |
@@ -102,8 +103,28 @@ Final local acceptance passed 3404 default tests (one existing skip), 515 isolat
 safety cases and 291 Chromium cases. Ruff, formatting, strict mypy and shell checks
 passed; statement/branch coverage stays at 100%.
 The catalog contains all 20 action types, including the unavailable Mark Bad path.
-Fresh GitHub CI/review are separate merge gates; these local results do not authorize
-deployment.
+Fresh current-head Codex +1 and all three green GitHub checks passed before merge
+([run 42316293906](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42316293906)).
+Reviewed `bf34ee922a418d9643a06c9f8a02273a6034da55` and squash-release trees match.
+
+## Production acceptance — 2026-11-07
+
+Managed activation finished `verified` at 16:55:45 UTC after a new normal sample.
+Application/database/Collector, preserved settings/policy/configuration, eight healthy
+drive details, horizontal physical mapping, retained Drives sort and automatic/manual
+Observed refresh passed. Loopback 8092 exporter reported optimal 1 controller / 8 PD /
+1 VD and a fresh Collector timestamp. The checked process journal contained one
+normal completion, no warning/error or traceback; browser warnings/errors were absent.
+Buzzer stayed Enabled. Existing running Consistency Check was observed only.
+No forced poll, controller write, Telegram test or real fault drill was performed.
+Private receipts and actual SERVER screenshots are in ignored deployment-9f2693e artifacts.
+
+The shared health-vocabulary follow-up shipped as #150 / `f9e736f` and was verified
+on 2026-11-07 at 22:38:55 UTC. Healthy labels, retained counters, normal Collector,
+mapping/sort and Observed refresh passed. Two extra isolated cases preserved
+Attention/Critical and numerical error badges plus recovery; no production fault.
+#150 CI passed 3411 default tests (one existing skip), 100% coverage, 515 safety and
+292 browser cases. The earlier #149 audit numbers above remain historical evidence.
 
 The owner already confirmed physical identification for all eight LEDs. Buzzer's
 Enabled setting is verified separately from audible output. No array degradation,
@@ -115,3 +136,14 @@ alert; independent availability monitoring remains a separate operational item.
 `/healthz` reports application/database/collector ownership, not snapshot freshness.
 The page notice and Telegram relevance explicitly check saved evidence. No recurring
 automation or new monitoring service is introduced by this audit.
+
+## Design acceptance through #153 — 2026-11-08
+
+#151 preserves warning/critical field colours and wraps fault reasons without page
+overflow. #152 shares neutral Unknown presentation/counts and normal-temperature styling;
+unrecognized firmware drive states remain Attention. #153 closes the subsequent
+chart-swap/Drive Observed findings. Fault colours, numeric badges and recovery cases
+passed in isolated snapshots at 1440/1024/390 px; healthy RAID was not faulted.
+Latest release checks are 3416 default tests (one existing skip), 100% statement/branch
+coverage, 515 safety and 305 Chromium cases. These extend, not replace, the historical
+incident and physical-acceptance limits above. [Current evidence](CURRENT_STATE.md).

@@ -1,6 +1,86 @@
 # Changelog
 
-## [Unreleased] - Maintenance handoff and versioned deployment
+## Production checkpoint — 2026-11-08 (#151-153)
+
+Installed `211dfb269b6e662da57e6432a59212a328071904` (#153), from `76ebf1f` (#152),
+after fresh current-head +1 and all three green CI jobs. Managed verification finished
+at 11:20:15 UTC (12:20:15 Europe/Rome). Post-install acceptance checked two normal
+Collector polls, healthy 1 controller / 8 PD / 1 VD, preserved settings/policy/config,
+and no new process warning/error or traceback. RAID was not changed.
+
+- #151 fixes A1 fault-signal colours, A2 fault-row overflow, A3 shared initial/range
+  chart structure/data, A4 local 24-hour time and A5 consistent Celsius text.
+- #152 shares health summaries, Unknown counts/neutral modes, normal-temperature
+  presentation, tokens/chart theme and scoped CSS cleanup. Its service installation
+  verified, but UI acceptance found intermittent blank swapped canvases and stale
+  Drive Observed; those findings were not accepted as ready.
+- #153 keeps controls outside the swap target, initializes charts after HTMX settles
+  and refreshes Drive Observed with guarded health regions. Four new tests fail on
+  the old code and pass with the fix, inspecting real paint without repair redraws.
+- Production 7d/365d/30d swaps keep both charts; Observed advances automatically
+  11:10:28 -> 11:20:10 UTC and manually 11:20:10 -> 11:25:10 UTC. Selected range,
+  S0-S7 mapping, both Drives sort directions, 8 Healthy and Buzzer Enabled remain.
+- Release checks: #151 3412/515/299; #152 3416/515/301; #153 3416/515/305
+  default/safety/Chromium tests, one existing default skip and 100% statement/branch
+  coverage each. All three CI jobs and fresh review passed for each PR.
+- No dependency, DB schema, auth/CSRF, StorCLI command contract/policy, controller
+  setting or Telegram transport change. Historical events and delivery state retained.
+- Independent monitoring and scheduled/off-host backup with separate-copy restore
+  remain unverified handoff gates; docs PR #147 and vault #4 still need merge/acceptance.
+  TB/TiB semantic conversion and broad cosmetic renaming remain optional follow-ups.
+
+## Production checkpoint — 2026-11-07 (#150)
+
+Installed `f9e736fab4f9b78718d7db9e0774ef0f41ed8f38`, from #149 / `9f2693e`, after
+fresh current-head review without findings and all green CI. Managed verification
+finished at 22:38:55 UTC (23:38:55 Europe/Rome) after a new normal Collector sample.
+Application/database/Collector, settings/policy/configuration, fresh 1/8/1 exporter
+grades, all eight cards, mapping/sort and both Observed refresh paths passed.
+
+- Use Healthy / Attention / Critical / Unknown consistently across health views.
+- Retain 8 Healthy, fault counters and numerical error badges; two additional
+  disposable-DB badge/recovery checks passed. Keep raw controller codes in details.
+- #150 CI: 3411 default tests (one existing skip), 100% statement/branch coverage,
+  515 isolated safety and 292 Chromium cases. No controller write or production fault.
+- Read-only follow-up on 2026-11-08 confirmed the current healthy release, fresh
+  metrics and normal collection. Documentation/vault publication is authorized;
+  independent monitoring and recurring backup/restore proof remain open.
+
+The following #149/#146 checkpoints retain their original release-specific evidence.
+
+## Production checkpoint — 2026-11-07 (#149)
+
+Installed `9f2693eb3000cc908cb1393f127fe98730ec8abc` from #148 / `510ce9b` after
+fresh current-head +1 and all green CI. Managed verification finished at 16:55:45 UTC
+with preserved settings/policy/configuration and a newer normal Collector sample.
+UI checks covered Overview, Drives, all eight detail pages, mapping/sort and both
+Observed refresh paths. Buzzer remains Enabled. Loopback exporter 8092 reports
+healthy 1 controller / 8 PD / 1 VD. No controller writes or induced fault.
+
+- #148 shares drive-health assessment across tiles, list, detail and position diagram.
+- #149 corrects new UBad/initial confirmed CV-absence incidents, shared CV/configured
+  temperature/empty-inventory grades, healthy spares, PD/VD metrics and the
+  Partially-Degraded alias; shows live monitoring uncertainty without inventing faults.
+- 3404 default tests (one existing skip), 100% statement/branch coverage, 515 isolated
+  safety cases and 291 Chromium cases; 51 saved-data incident chains with mocked delivery.
+- Raw firmware vocabulary is still visible in #149. The requested common health
+  vocabulary is a separate follow-up, not part of this deployed checkpoint.
+
+The #146 checkpoint below is historical; its physical LED and supervised buzzer-setting
+evidence remains valid within those separate acceptance boundaries.
+
+## Production checkpoint — 2026-11-06 (#146)
+
+Installed `8b60b7242c0b908ff4fc86a8f07a8aa983288109` after fresh +1 and all green CI.
+Managed activation reached verified with a newer normal Collector sample and preserved
+settings/policy/configuration. Production UI verified all cage labels, eight detail pages,
+physical navigation and Drives sort/refresh. Owner confirmed all eight physical Locate LEDs.
+Real Buzzer Disable -> On -> Disable setting/audit acceptance passed with normal samples;
+initial Disabled restored after the test. The later owner-selected Enabled setting
+was confirmed by the 2026-11-06 18:13 UTC normal sample, maintenance closed; no extra
+follow-up write needed. Silence/acoustic alarm and real rollback unverified.
+
+### Delivered through #146
 
 - Label SERVER cages in one horizontal row S0-S7: S0-S3 map to 252:4-7,
   S4-S7 map to 252:0-3. Show controller addresses alongside labels;
@@ -10,7 +90,7 @@
 
 - Add an explicit, audited root-only Locate activity configuration procedure with
   pinned help/binary, UI maintenance, readback and preserved array/settings checks;
-  physical LED acceptance remains pending and application grants stay unchanged.
+  all eight physical Locate LEDs are now owner-confirmed; application grants stay unchanged.
 - Correct release readiness records after physical Locate failure; distinguish
   fake software tests, observed controller state and physical acceptance.
 
@@ -27,11 +107,11 @@
 
 ## Production checkpoint — 2026-11-01
 
-Installed application: `27af3da` (#141), including #139 readable times/control simplification,
+Historical installed application: `27af3da` (#141), including #139 readable times/control simplification,
 #140 compact scheduling/observed state and #141 Reported schedule/live Observed header.
 Fresh review and CI passed before activation. Production GET checks exercised manual and
 automatic refresh using normal samples; settings/grants preserved and no controller writes.
-Tooling above is separate from this already-installed application checkpoint.
+This historical checkpoint was superseded by the managed #146 activation on 2026-11-06.
 
 ## Delivered in #139 - Readable chart times and observed mode labels
 

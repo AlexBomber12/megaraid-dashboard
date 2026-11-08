@@ -1,9 +1,24 @@
-# Obsidian maintenance handoff — 2026-11-01
+# Obsidian maintenance handoff — 2026-11-08
 
-Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed application is
-`27af3da` (#141), including #139 chart/control simplification, #140 saved-operation
-and compact-schedule corrections, and #141 Reported schedule/live Observed refresh.
-The owner requested a handoff and plan, without recurring automatic checks.
+Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed `211dfb2` (#153)
+includes #148 shared drive assessment, #149 critical/component/metric/freshness fixes
+and #150 Healthy / Attention / Critical / Unknown presentation. The green 8 Healthy
+count, fault counts and numerical error badges remain; firmware codes stay diagnostic.
+
+Managed #153 acceptance finished verified on 2026-11-08 at 11:20:15 UTC (12:20:15 Europe/Rome).
+#151-153 add signal colours, fault-row wrapping, shared chart/time/unit rules and
+correct the #152 chart lifecycle/Drive Observed findings. Two ordinary Collector polls,
+both charts after 7d/365d/30d, mapping/sort, 8 Healthy and Buzzer Enabled passed.
+Observed changed 12:10 -> 12:20 automatically and 12:20 -> 12:25 manually, Europe/Rome.
+Latest release evidence: 3416 default tests (one existing skip), 100% statement/branch
+coverage, 515 safety and 305 Chromium cases; fresh +1 and all three CI jobs green.
+No controller write, forced collection, new Telegram test or live DB restore.
+
+The owner confirmed all eight physical Locate LEDs on 2026-11-06. Buzzer setting/audit
+round-trip acceptance passed separately that day; the later chosen Enabled state is
+retained. Silence/acoustic output and a real production rollback remain unverified.
+The owner authorized publication in project PR #147 and knowledge-vault PR #4 on
+2026-11-08; merging and cross-device synchronization remain separate steps.
 
 Maintain these `AlexBomber12/knowledge-vault` notes together:
 

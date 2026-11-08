@@ -15,8 +15,8 @@ confirmation, cancellation and wizard progression are included.
 Historical audit boundary: no production deployment or controller mutation was
 performed during the audit itself, and the healthy array was not a test fixture.
 The withdrawn pre-audit helper must not be reused. The audit fixes subsequently
-shipped in #134 (`25c2b74`) and remain in the deployed `27af3da` release.
-See [CURRENT_STATE.md](CURRENT_STATE.md) for the 2026-11-01 production evidence.
+shipped in #134 (`25c2b74`) and remain in the deployed `211dfb2` (#153) release.
+See [CURRENT_STATE.md](CURRENT_STATE.md) for accepted #153 on 2026-11-08; historical action/hardware evidence below retains its original scope.
 The test counts below belong to the audit revision, not the current release.
 
 ## Findings and fixes
@@ -40,6 +40,14 @@ failure and a buzzer live-preflight alias defect on SERVER. Historical fake-test
 results below do not override those failures. Use the updated
 [hardware acceptance ledger](LOCATE_ACTIVITY_VERIFICATION.md) for release decisions.
 
+**2026-11-06 acceptance:** #146 is installed and verified. The owner confirmed all
+eight physical Locate LEDs. The buzzer alias/result correction is installed; its
+real Disable -> On -> Disable round trip and success/observed-change events passed
+with normal samples on 2026-11-06. Initial Disabled restored, maintenance closed;
+Silence and acoustic alarm behavior remain unverified. The owner later selected
+Enabled; the 2026-11-06 18:13 UTC normal sample confirmed it with maintenance closed,
+so no additional controller write was necessary for that follow-up.
+
 “Software verified” below means browser/API/command/audit behavior against isolated
 fake StorCLI, including relevant refusal and failure paths. It never certifies a
 physical action on the target controller. Controller writes remain conditional on
@@ -53,9 +61,9 @@ and the action-specific state gates.
 | ROC and drive chart ranges; Refresh now/live refresh | Software verified | Read-only; identity changes block stale actions |
 | Disclosure panels and confirmation Cancel | Software verified | No mutation on cancellation |
 | Start Maintenance, duration/reason; both Stop buttons | Software verified | Persisted window and audit only; no StorCLI |
-| Locate Start | Software verified | Controller acceptance checked; physical LED unverified |
-| Locate Stop, including expired-maintenance recovery | Software verified | Exact Stop approval still required; physical LED unverified |
-| Buzzer Enable, Disable, Silence | Software verified | Correct exact command/result/audit; audible effect unverified |
+| Locate Start | Software verified | Controller acceptance checked; all eight physical LEDs owner-confirmed 2026-11-06 |
+| Locate Stop, including expired-maintenance recovery | Software verified | Exact Stop approval still required; physical Locate operation owner-confirmed |
+| Buzzer Enable, Disable, Silence | Software verified | Enable/Disable and normal-sample/audit round trip verified on SERVER 2026-11-06; Silence/audible effect unverified |
 | Patrol Read Start, Stop, Auto/Manual (API Disable) | Software verified | Fresh operation-state gates; scheduling/pass on hardware unverified |
 | CC Start, Stop, Concurrent/Sequential; API selected VD | Software verified | Exact selected target/mode approval; actual pass unverified |
 | Mark UGood | Software verified | Matching live UBad identity required; physical state change unverified |
@@ -105,9 +113,10 @@ remains skipped because that UI was removed in #88a.
 
 ## Remaining limits
 
-Physical LED, buzzer, spin-down, foreign recovery, replacement and rebuild behavior
-on this firmware cannot be certified without exercising the hardware. Such tests
-were explicitly excluded on the healthy array. Foreign/unconfigured-drive rebuild
+The owner confirmed all eight physical Locate LEDs on 2026-11-06. Acoustic buzzer,
+spin-down, foreign recovery, replacement and rebuild effects remain unverified;
+the historical audit above did not exercise these on the healthy array. The real
+buzzer setting acceptance is recorded separately. Foreign/unconfigured-drive rebuild
 response shapes still require real read-only evidence; unsupported or ambiguous
 responses fail closed. Mark UBad remains unavailable. Readiness of this code does
 not activate controller writes or replace the production approval procedure.

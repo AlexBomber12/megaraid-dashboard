@@ -77,6 +77,14 @@ times across time zones, and action refusals. Keep the project's 100% statement/
 isolated safety integration, full Chromium suite, green remote CI and fresh-head review.
 Passing these tests does not claim physical LED or buzzer verification beyond owner evidence.
 
+### Accepted deployment — 2026-11-08
+
+Installed #153 / `211dfb2` includes #151-152 after fresh review and green CI. #152's
+service verification was followed by real UI findings, not final acceptance. The
+corrective release passed both drawn charts on 7d/365d/30d, automatic/manual Drive
+Observed, two normal Collector runs, mapping/sort and 8 Healthy, without RAID writes.
+[CURRENT_STATE.md](CURRENT_STATE.md) records dated results and per-PR test counts.
+
 ### Post-install browser regression checks
 
 Keep history titles and range controls outside the HTMX swap target. Moving a sibling during

@@ -21,8 +21,11 @@ in Controller details. Healthy spare/unconfigured drives keep an explicit **Role
 label, not another competing health grade. Health-column sorting uses the displayed
 assessment; physical S ordering and real-address action targets are preserved.
 
-This wording change is a separate, undeployed follow-up to #149. Installed #149 and
-its accepted software/hardware boundaries are recorded in [PR #149](https://github.com/AlexBomber12/megaraid-dashboard/pull/149).
+This wording change shipped in [PR #150](https://github.com/AlexBomber12/megaraid-dashboard/pull/150),
+installed as `f9e736f` and verified on 2026-11-07 at 22:38:55 UTC. The retained 8 Healthy
+count and two isolated Attention/Critical/numerical-error/recovery cases passed.
+Production reads checked normal collection, all eight cards and both Observed refresh
+paths. [Current state](CURRENT_STATE.md) records the acceptance boundary.
 
 | Observed evidence | Assessment | Explanation |
 | --- | --- | --- |
@@ -63,3 +66,14 @@ and collection-freshness notices. It does not alter command eligibility or raw s
   fake StorCLI receives no calls.
 - Existing safety suites remain required. No production fault or hardware mutation
   is used for acceptance. Deployment requires separate authorization.
+
+## Design acceptance through #153 — 2026-11-08
+
+#151 preserves warning/critical field colours and wraps fault reasons without page
+overflow. #152 shares neutral Unknown presentation/counts and normal-temperature styling;
+unrecognized firmware drive states remain Attention. #153 closes the subsequent
+chart-swap/Drive Observed findings. Fault colours, numeric badges and recovery cases
+passed in isolated snapshots at 1440/1024/390 px; healthy RAID was not faulted.
+Latest release checks are 3416 default tests (one existing skip), 100% statement/branch
+coverage, 515 safety and 305 Chromium cases. These extend, not replace, the historical
+incident and physical-acceptance limits above. [Current evidence](CURRENT_STATE.md).

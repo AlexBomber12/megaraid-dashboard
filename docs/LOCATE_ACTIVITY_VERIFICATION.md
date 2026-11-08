@@ -10,7 +10,8 @@ whole product hardware-verified from a successful command or passing fake tests.
 The supervised change completed verified on 2026-11-01 at 17:52:02 UTC: Off -> On,
 audit ID 1, with array state and other settings preserved. Live buzzer Enable
 preflight also passed without any buzzer write. On 2026-11-05 the owner confirmed
-that physical Locate identification works. This owner observation is separate
+that physical Locate identification works. On 2026-11-06 the owner confirmed all
+eight cage LEDs checked. This owner observation is separate
 from command acceptance; it does not certify unrelated hardware actions.
 
 ## Physical cage labels
@@ -90,11 +91,15 @@ The CLI actions are `prepare`, `plan`, `apply`, `status` and `restore`:
 
 This tool never starts/stops Locate, Patrol, CC or rebuild, changes array
 membership, restarts the application, changes schedules/clocks or migrates the DB.
-The application remains on #141 until a separately authorized release.
+The supervised property change used the #141 baseline on 2026-11-01. Application
+release #146 was separately authorized and installed verified on 2026-11-06. Do not
+rerun this historical baseline-specific property procedure on a newer release.
 
-## Physical acceptance still required
+## Physical acceptance procedure and completed owner check
 
-After `apply` finishes verified, use a single known drive in the existing UI:
+The owner confirmed all eight cage LEDs checked on 2026-11-06. The following is the
+procedure used to distinguish physical observation from command acceptance; it does
+not request a repeat test. After a separately authorized change finishes verified:
 
 1. Send Locate Stop to clear the previously accepted Start.
 2. Send Locate Start and have the owner identify the visible LED change on that
@@ -112,14 +117,14 @@ further hardware configuration. A command response cannot replace observation.
 
 | Scenario | Software evidence | Real SERVER evidence / remaining acceptance |
 | --- | --- | --- |
-| Views, charts, Observed and normal Collector refresh | Browser/API regressions | #141 production read-only checks passed |
+| Views, charts, Observed and normal Collector refresh | Browser/API regressions | #153 managed activation, real range swaps and automatic/manual Observed passed on 2026-11-08; see CURRENT_STATE.md |
 | Telegram transport | Delivery contract and fake incidents | One neutral test received by owner; no fault induced |
-| Buzzer Disable -> sample `Disable` -> Enable | Full fake UI/API/wrapper/SQL round trip in this candidate | Disable observed; live Enable on fixed candidate and acoustic effect still unverified |
-| Locate Start -> visible identification -> Stop | Exact commands, identity and persisted audits checked in software | Activity mode verified On; owner confirmed physical identification on 2026-11-05 |
+| Buzzer Disable -> sample `Disable` -> Enable | Full fake UI/API/wrapper/SQL round trip shipped in #146; retained through #153 | Real Disable -> On -> Disable and success/observed-change events confirmed by normal samples on 2026-11-06; initial Disabled restored after the test; later owner-selected Enabled confirmed by the 2026-11-06 18:13 UTC normal sample, maintenance closed; Silence/acoustic effect unverified |
+| Locate Start -> visible identification -> Stop | Exact commands, identity and persisted audits checked in software | Activity mode verified On; owner confirmed all eight LEDs on 2026-11-06 |
 | Patrol and CC status/schedules | Saved/live response parsing and browser scenarios | Natural operation observed; no start/stop drill on healthy array |
 | Maintenance, expiry and refusals | Persisted-window and late-revocation tests | Required for the approved one-property operation |
 | Replacement, UGood, spin down, spare and foreign operations | Fake-hardware success/refusal/recovery scenarios | No destructive physical drill; not hardware-certified |
-| Versioned install and rollback | Isolated filesystem, permissions and failure tests | Existing release adopted; managed update/rollback not yet exercised on SERVER |
+| Versioned install and rollback | Isolated filesystem, permissions and failure tests | Historical #141 adopted; managed updates through #153 verified; real rollback not drilled |
 
 These are separate acceptance boundaries. Keep unresolved physical behavior visible
 in release notes and handoff; do not describe the dashboard as all buttons fully

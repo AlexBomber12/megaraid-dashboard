@@ -1,6 +1,6 @@
 # MegaRAID Dashboard
 
-Production checkpoint (2026-11-01): SERVER runs `27af3da` (#141) after review and green CI.
+Production checkpoint (2026-11-08): SERVER runs `211dfb2` (#153) after review and green CI.
 Read [current state and verification limits](docs/CURRENT_STATE.md),
 [the operational runbook](docs/RUNBOOK.md) and [the remaining plan](docs/roadmap.md).
 Installer defaults and historical screenshots are not SERVER's current deployment inventory.
@@ -91,9 +91,11 @@ audit event.
 
 The drive detail page includes advanced operations for maintenance workflows:
 
-- `Mark as UBad` is valid only when the latest live drive state is `UGood`.
+- `Mark as UBad` is unavailable for the reviewed StorCLI 1.23.02 profile; its panel
+  control is removed and an unsupported/unapproved API request is refused.
 - `Mark as UGood` is valid only when the latest live drive state is `UBad`.
-- `Spin Down` is valid for `Onln`, `UGood`, or `UBad` drives.
+- `Spin Down` is restricted to unconfigured `UGood`/`UBad` drives; online RAID members
+  are refused. A healthy array must not be used as a physical testbed.
 - `Make Hot Spare` is valid for a `UGood` drive and requires a real disk group id.
 
 The route layer validates the persisted snapshot first, rechecks live drive state through

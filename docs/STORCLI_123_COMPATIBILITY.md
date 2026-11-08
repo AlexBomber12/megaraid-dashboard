@@ -1,9 +1,15 @@
+> Current application: #153, verified on 2026-11-08; documentation updated 2026-11-08.
+> The owner confirmed all eight physical Locate LEDs on 2026-11-06. Historical unverified-effect statements below describe
+> their original checkpoint. Buzzer Enable/Disable settings are verified separately;
+> Silence and audible effects remain unverified.
+> See [current state](CURRENT_STATE.md) and [hardware acceptance](LOCATE_ACTIVITY_VERIFICATION.md).
+
 # StorCLI 1.23.02 compatibility on the 9270CV-8i
 
 Target: production LSI MegaRAID SAS 9270CV-8i, SAS 2208, firmware
 23.34.0-0019. **Current selection:** pinned 1.23.02 at
 `/usr/local/libexec/megaraid-dashboard/storcli-1.23.02/storcli64`, service account
-`megaraid`, with the protected exact-command policy. Application release is `27af3da`.
+`megaraid`, with the protected exact-command policy. Application release is `211dfb2` (#153).
 See [CURRENT_STATE.md](CURRENT_STATE.md) for verified deployment evidence.
 
 The following is the **historical pre-rollout inventory**, retained to explain why

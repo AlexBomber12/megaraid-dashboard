@@ -1,7 +1,13 @@
+> Current application: #153, verified on 2026-11-08; documentation updated 2026-11-08.
+> The owner confirmed all eight physical Locate LEDs on 2026-11-06. Historical unverified-effect statements below describe
+> their original checkpoint. Buzzer Enable/Disable settings are verified separately;
+> Silence and audible effects remain unverified.
+> See [current state](CURRENT_STATE.md) and [hardware acceptance](LOCATE_ACTIVITY_VERIFICATION.md).
+
 # One-shot production rollout: all approved supported actions
 
 The combined rollout and later audit/UI/compatibility fixes have been deployed.
-SERVER now runs `27af3da`; see [the dated inventory and evidence](CURRENT_STATE.md).
+SERVER now runs `211dfb2` (#153); see [the dated inventory and evidence](CURRENT_STATE.md).
 The [button-chain audit](OPERATOR_ACTION_READINESS.md) documents software verification
 and physical limits. Its original deployment hold is historical and has been satisfied.
 
@@ -216,7 +222,7 @@ is used to test permission. Repeat checks after any contract/sudoers change.
 
 ## Physical verification limits
 
-All controller effects remain unverified: intended-bay LED start/stop, audible
+At the original rollout checkpoint, controller effects were unverified: intended-bay LED start/stop, audible
 buzzer output, patrol/CC execution and scheduling, offline/missing transitions,
 UGood conversion, motor spin down, hot-spare assignment, foreign metadata changes,
 replacement insertion and rebuild initiation/completion. Fault/replacement-only
@@ -225,3 +231,7 @@ authorized incident. Software tests never manufacture such evidence from a healt
 production array. Missing current approved VD/DG/replacement topology (and any remaining family-specific
 exact-binary help) is an **authorization blocker**, distinct from these physical-effect limits; keep the affected control
 unavailable until reviewed evidence exists.
+
+Later acceptance: the owner confirmed all eight physical Locate LEDs on 2026-11-06;
+the installed #146 buzzer setting round trip is checked separately from audible
+output. The remaining fault/replacement effects above are not certified by that check.
