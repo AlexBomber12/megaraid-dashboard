@@ -10,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from megaraid_dashboard.db import Event, get_engine, get_sessionmaker
+from megaraid_dashboard.services.events import category_label
 
 
 def test_events_page_renders_with_authenticated_user(
@@ -137,10 +138,18 @@ def test_operator_actions_preserve_filters_records_pagination_and_polling(
     expect(page.locator("#events-list")).not_to_contain_text("Unrelated drive event")
     expect(page.locator("#events-list")).not_to_contain_text("Info action")
 
+    new_category = OPERATOR_CATEGORIES[57 % len(OPERATOR_CATEGORIES)]
+    counted_chip = page.locator("#events-filters .filter-chip:has(.filter-chip__count)").filter(
+        has_text=category_label(new_category)
+    )
+    count_before = int(counted_chip.locator(".filter-chip__count").inner_text())
     _add_events(snapshot_with_drives, start=57, count=1)
     # Exercise the actual HTMX every-30s poll without a wall-clock sleep.
     with page.expect_response(lambda r: "/partials/events?" in r.url and "since=" in r.url) as poll:
         page.clock.fast_forward(30_000)
+    # The poll also replaces the filters: counts stay current and the preset stays pressed.
+    expect(counted_chip.locator(".filter-chip__count")).to_have_text(str(count_before + 1))
+    expect(quick_filter).to_have_attribute("aria-pressed", "true")
     query = parse_qs(urlsplit(poll.value.url).query)
     for key, values in expected_filters.items():
         assert query[key] == values

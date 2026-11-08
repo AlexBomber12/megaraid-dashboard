@@ -350,6 +350,34 @@ def test_events_since_poll_returns_oob_newer_events_only() -> None:
     assert 'id="events-poller"' in response.text
 
 
+def test_events_since_poll_refreshes_filters_for_a_new_category() -> None:
+    test_app = create_app()
+    base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        first = _insert_app_event(test_app, occurred_at=base_time, category="pd_state")
+        quiet = client.get(
+            "/events", params={"since": str(first.id)}, headers={"HX-Request": "true"}
+        )
+        _insert_app_event(
+            test_app, occurred_at=base_time + timedelta(minutes=1), category="smart_alert"
+        )
+        _insert_app_event(
+            test_app, occurred_at=base_time + timedelta(minutes=2), category="pd_state"
+        )
+        polled = client.get(
+            "/events", params={"since": str(first.id)}, headers={"HX-Request": "true"}
+        )
+
+    # Nothing new: the filters stay as rendered.
+    assert 'id="events-filters"' not in quiet.text
+    # New events: the filters are replaced so the new category and counts are current.
+    assert '<nav id="events-filters" class="filter-chips"' in polled.text
+    assert 'data-filter-state hx-swap-oob="outerHTML"' in polled.text
+    assert 'href="/events?category=smart_alert"' in polled.text
+    assert '>SMART Alert <span class="filter-chip__count">1</span></a>' in polled.text
+    assert '>Drive State <span class="filter-chip__count">2</span></a>' in polled.text
+
+
 def test_events_since_poll_replaces_empty_state_when_first_events_arrive() -> None:
     test_app = create_app()
     base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)

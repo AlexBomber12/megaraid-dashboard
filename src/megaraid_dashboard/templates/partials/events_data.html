@@ -53,11 +53,51 @@
   ></div>
 {%- endmacro %}
 
+{# Filters carry live counts, so the polling response refreshes them with new events. #}
+{% macro filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips, swap_oob=false) -%}
+<nav id="events-filters" class="filter-chips" aria-label="Event filters" data-filter-state{% if swap_oob %} hx-swap-oob="outerHTML"{% endif %}>
+    <div class="filter-chips__group" aria-label="Quick filters">
+      {% for chip in quick_filter_chips %}
+        <a
+          class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+          href="{{ chip.href }}"
+          aria-pressed="{{ 'true' if chip.active else 'false' }}"
+        >{{ chip.label }}</a>
+      {% endfor %}
+    </div>
+    <div class="filter-chips__group">
+      <span class="filter-chips__label">Severity</span>
+      {% for chip in severity_filter_chips %}
+        <a
+          class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+          href="{{ chip.href }}"
+          aria-pressed="{{ 'true' if chip.active else 'false' }}"
+        >{{ chip.label }}</a>
+      {% endfor %}
+    </div>
+    {% if category_filter_chips %}
+    <div class="filter-chips__group">
+      <span class="filter-chips__label">Category</span>
+      {% for chip in category_filter_chips %}
+        <a
+          class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+          href="{{ chip.href }}"
+          aria-pressed="{{ 'true' if chip.active else 'false' }}"
+        >{{ chip.label }}{% if chip.count %} <span class="filter-chip__count">{{ chip.count }}</span>{% endif %}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+</nav>
+{%- endmacro %}
+
 {% if render_events_since_oob | default(false) %}
   <ol id="events-list" hx-swap-oob="afterbegin:#events-list">
     {{ event_items(view_model.events, icons) }}
   </ol>
   {{ events_poller(events_poll_since | default(view_model.latest_event_id), swap_oob=true) }}
+  {% if view_model.events %}
+    {{ filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips, swap_oob=true) }}
+  {% endif %}
 {% elif render_events_page_items | default(false) %}
   {% if view_model.events %}
     {{ event_items(view_model.events, icons) }}
@@ -83,39 +123,7 @@
       {% endif %}
     </section>
 
-    <nav class="filter-chips" aria-label="Event filters" data-filter-state>
-      <div class="filter-chips__group" aria-label="Quick filters">
-        {% for chip in quick_filter_chips %}
-          <a
-            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
-            href="{{ chip.href }}"
-            aria-pressed="{{ 'true' if chip.active else 'false' }}"
-          >{{ chip.label }}</a>
-        {% endfor %}
-      </div>
-      <div class="filter-chips__group">
-        <span class="filter-chips__label">Severity</span>
-        {% for chip in severity_filter_chips %}
-          <a
-            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
-            href="{{ chip.href }}"
-            aria-pressed="{{ 'true' if chip.active else 'false' }}"
-          >{{ chip.label }}</a>
-        {% endfor %}
-      </div>
-      {% if category_filter_chips %}
-      <div class="filter-chips__group">
-        <span class="filter-chips__label">Category</span>
-        {% for chip in category_filter_chips %}
-          <a
-            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
-            href="{{ chip.href }}"
-            aria-pressed="{{ 'true' if chip.active else 'false' }}"
-          >{{ chip.label }}{% if chip.count %} <span class="filter-chip__count">{{ chip.count }}</span>{% endif %}</a>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </nav>
+    {{ filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips) }}
 
     {% if view_model.events %}
       <section class="timeline events-timeline" aria-label="Events timeline">
