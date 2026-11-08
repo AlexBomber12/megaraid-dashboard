@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -227,6 +230,12 @@ def list_recent_events(session: Session, *, limit: int) -> list[Event]:
 def count_events_by_category(session: Session) -> dict[str, int]:
     rows = session.execute(select(Event.category, func.count()).group_by(Event.category))
     return {str(category): int(count) for category, count in rows}
+
+
+def event_filter_revision(counts: Mapping[str, int]) -> str:
+    """Presentation revision of global counts, independent of the event-list cursor."""
+    payload = json.dumps(dict(counts), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def event_severity_to_status(severity: str) -> str:
