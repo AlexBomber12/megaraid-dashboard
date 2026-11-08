@@ -120,6 +120,7 @@ from megaraid_dashboard.services.events import (
     EventsPageViewModel,
     category_label,
     count_events_by_category,
+    event_filter_revision,
     load_events_fragment,
     load_events_page,
 )
@@ -4013,6 +4014,7 @@ def events(
     before_occurred_at: str | None = None,
     before_id: str | None = None,
     since: str | None = None,
+    filters_revision: str | None = None,
 ) -> Response:
     started_at = perf_counter()
     if (
@@ -4027,6 +4029,7 @@ def events(
             before_occurred_at=before_occurred_at,
             before_id=before_id,
             since=since,
+            filters_revision=filters_revision,
         )
 
     categories, severities = _event_filter_values(request)
@@ -4065,6 +4068,7 @@ def events_partial(
     before_occurred_at: str | None = None,
     before_id: str | None = None,
     since: str | None = None,
+    filters_revision: str | None = None,
 ) -> Response:
     started_at = perf_counter()
     return _events_fragment_response(
@@ -4073,6 +4077,7 @@ def events_partial(
         before_occurred_at=before_occurred_at,
         before_id=before_id,
         since=since,
+        filters_revision=filters_revision,
     )
 
 
@@ -4083,6 +4088,7 @@ def _events_fragment_response(
     before_occurred_at: str | None,
     before_id: str | None,
     since: str | None,
+    filters_revision: str | None,
 ) -> Response:
     cursor = _parse_events_cursor(
         before_occurred_at=before_occurred_at,
@@ -4147,6 +4153,9 @@ def _events_fragment_response(
                 severities=severities,
             )
             template_name = "partials/events_data.html"
+    filters_context = _events_filter_context(
+        request=request, categories=categories, severities=severities
+    )
     response = TEMPLATES.TemplateResponse(
         request=request,
         name=template_name,
@@ -4157,10 +4166,13 @@ def _events_fragment_response(
             "render_events_load_more_oob": render_events_load_more_oob,
             "render_events_poller_oob": render_events_poller_oob,
             "render_events_since_oob": render_events_since_oob,
+            "render_events_filters_oob": (
+                filters_revision != filters_context["events_filter_revision"]
+            ),
             "render_events_page_fragment": cursor is None and since_id is None,
             "render_events_page_items": render_events_page_items,
             "view_model": view_model,
-            **_events_filter_context(request=request, categories=categories, severities=severities),
+            **filters_context,
             **_events_empty_context(request=request, view_model=view_model),
         },
     )
@@ -4476,6 +4488,7 @@ def _events_filter_context(
     with _session(request) as session:
         category_counts = count_events_by_category(session)
     return {
+        "events_filter_revision": event_filter_revision(category_counts),
         "event_filter_state": _events_query_path(
             request=request,
             route_name="events",

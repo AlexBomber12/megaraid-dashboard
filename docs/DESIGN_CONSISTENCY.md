@@ -128,3 +128,15 @@ Every fact appears once per screen, where it is acted on. Healthy is quiet; prob
   are unchanged. A reason shared by several Actions rows is stated once above them.
 - Threshold labels sit inside the plot at the right edge and never overlap. Chart series
   differ in lightness and dash, not hue alone.
+
+### Live filter and threshold regression checks
+
+Events category/count navigation follows a presentation revision of the global category
+counts, independently of the filtered event-list cursor. A new excluded category or an
+excluded severity must still refresh the navigation; an unchanged revision leaves its
+DOM node intact. Polling retains selected filters and does not consume hidden event rows.
+The opaque revision is presentation metadata, not an authorization token.
+
+Temperature threshold labels reserve their measured text boxes, with spacing and plot
+bounds applied together. Browser tests cover close thresholds near both plot edges on
+desktop and narrow views; instance counts alone do not prove that labels remain legible.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -355,8 +356,11 @@ def test_events_since_poll_refreshes_filters_for_a_new_category() -> None:
     base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         first = _insert_app_event(test_app, occurred_at=base_time, category="pd_state")
+        revision = _filter_revision(client.get("/events").text)
         quiet = client.get(
-            "/events", params={"since": str(first.id)}, headers={"HX-Request": "true"}
+            "/events",
+            params={"since": str(first.id), "filters_revision": revision},
+            headers={"HX-Request": "true"},
         )
         _insert_app_event(
             test_app, occurred_at=base_time + timedelta(minutes=1), category="smart_alert"
@@ -376,6 +380,58 @@ def test_events_since_poll_refreshes_filters_for_a_new_category() -> None:
     assert 'href="/events?category=smart_alert"' in polled.text
     assert '>SMART Alert <span class="filter-chip__count">1</span></a>' in polled.text
     assert '>Drive State <span class="filter-chip__count">2</span></a>' in polled.text
+
+
+def _filter_revision(html: str) -> str:
+    match = re.search(r"filters_revision=([0-9a-f]{64})", html)
+    assert match is not None
+    return match[1]
+
+
+@pytest.mark.parametrize("path", ["/events", "/partials/events"])
+@pytest.mark.parametrize(
+    ("filters", "incoming_category"),
+    [
+        ({"category": "pd_state"}, "smart_alert"),
+        ({"severity": "warning"}, "smart_alert"),
+        ({"category": "pd_state", "severity": "warning"}, "pd_state"),
+        ({"category": "temperature"}, "smart_alert"),
+    ],
+)
+def test_filtered_poll_refreshes_global_counts_without_consuming_hidden_events(
+    path: str, filters: dict[str, str], incoming_category: str
+) -> None:
+    app = create_app()
+    now = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
+    with TestClient(app, headers=TEST_AUTH_HEADER) as client:
+        first = _insert_app_event(app, occurred_at=now, category="pd_state", severity="warning")
+        revision = _filter_revision(client.get("/events", params=filters).text)
+        _insert_app_event(
+            app,
+            occurred_at=now + timedelta(seconds=1),
+            category=incoming_category,
+            severity="critical",
+            subject="excluded-event",
+        )
+        params = {**filters, "since": str(first.id), "filters_revision": revision}
+        polled = client.get(path, params=params, headers={"HX-Request": "true"})
+        next_revision = _filter_revision(polled.text)
+        quiet = client.get(
+            path,
+            params={**params, "filters_revision": next_revision},
+            headers={"HX-Request": "true"},
+        )
+
+    assert 'id="events-filters"' in polled.text
+    assert 'data-filter-state hx-swap-oob="outerHTML"' in polled.text
+    assert "excluded-event" not in polled.text
+    assert next_revision != revision
+    assert f"since={first.id}&" in polled.text
+    assert 'id="events-filters"' not in quiet.text
+    if incoming_category == "smart_alert":
+        assert '>SMART Alert <span class="filter-chip__count">1</span></a>' in polled.text
+    else:
+        assert '>Drive State <span class="filter-chip__count">2</span></a>' in polled.text
 
 
 def test_events_since_poll_replaces_empty_state_when_first_events_arrive() -> None:

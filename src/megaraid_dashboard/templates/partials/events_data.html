@@ -46,7 +46,7 @@
 {% macro events_poller(latest_event_id, swap_oob=false) -%}
   <div
     id="events-poller"
-    hx-get="{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}since={{ latest_event_id }}"
+    hx-get="{{ events_partial_filter_state }}{{ events_query_separator(events_partial_filter_state) }}since={{ latest_event_id }}&filters_revision={{ events_filter_revision }}"
     hx-trigger="every 30s"
     hx-swap="none"
     {% if swap_oob %}hx-swap-oob="true"{% endif %}
@@ -95,7 +95,7 @@
     {{ event_items(view_model.events, icons) }}
   </ol>
   {{ events_poller(events_poll_since | default(view_model.latest_event_id), swap_oob=true) }}
-  {% if view_model.events %}
+  {% if render_events_filters_oob %}
     {{ filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips, swap_oob=true) }}
   {% endif %}
 {% elif render_events_page_items | default(false) %}

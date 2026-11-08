@@ -41,16 +41,36 @@
       if (!chart.scales.y || !options.levels) return;
       const ctx = chart.ctx;
       const area = chart.chartArea;
-      const lineHeight = 14;
+      const padding = 2;
+      const gap = 4;
       ctx.save();
       ctx.setLineDash([6, 6]);
       ctx.textAlign = 'right';
-      // Labels sit at the right edge, inside the plot, highest level first; a label that would
-      // touch the previous one, or leave the plot, moves below its line instead.
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '12px system-ui, sans-serif';
+      // Place measured text boxes from top to bottom, then back up from the plot bottom.
+      // A close pair at either edge must not be clamped to overlapping baselines.
       const levels = options.levels
-        .map((level) => ({ ...level, y: chart.scales.y.getPixelForValue(level.value) }))
+        .map((level) => {
+          const metrics = ctx.measureText(level.label);
+          return {
+            ...level, y: chart.scales.y.getPixelForValue(level.value),
+            ascent: Math.ceil(metrics.actualBoundingBoxAscent),
+            descent: Math.ceil(metrics.actualBoundingBoxDescent),
+          };
+        })
         .sort((a, b) => a.y - b.y);
-      let previousBottom = -Infinity;
+      let previousBottom = area.top + padding - gap;
+      for (const level of levels) {
+        level.baseline = Math.max(level.y - 4, previousBottom + gap + level.ascent);
+        previousBottom = level.baseline + level.descent;
+      }
+      let nextTop = area.bottom - padding + gap;
+      for (let index = levels.length - 1; index >= 0; index -= 1) {
+        const level = levels[index];
+        level.baseline = Math.min(level.baseline, nextTop - gap - level.descent);
+        nextTop = level.baseline - level.ascent;
+      }
       for (const level of levels) {
         ctx.strokeStyle = level.color;
         ctx.fillStyle = level.color;
@@ -58,11 +78,7 @@
         ctx.moveTo(area.left, level.y);
         ctx.lineTo(area.right, level.y);
         ctx.stroke();
-        let baseline = level.y - 4;
-        if (baseline - lineHeight < Math.max(area.top, previousBottom)) baseline = level.y + lineHeight;
-        baseline = Math.min(baseline, area.bottom - 2);
-        ctx.fillText(level.label, area.right - 6, baseline);
-        previousBottom = baseline;
+        ctx.fillText(level.label, area.right - 6, level.baseline);
       }
       ctx.restore();
     },

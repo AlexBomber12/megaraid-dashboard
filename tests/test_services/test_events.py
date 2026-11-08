@@ -11,6 +11,7 @@ from megaraid_dashboard.services.events import (
     EventRow,
     category_label,
     count_events_by_category,
+    event_filter_revision,
     event_severity_to_status,
     load_events_fragment,
     load_events_page,
@@ -84,6 +85,15 @@ def test_count_events_by_category_groups_stored_events(session: Session) -> None
     session.commit()
 
     assert count_events_by_category(session) == {"pd_state": 2, "vd_state": 1}
+
+
+def test_filter_revision_tracks_counts_without_depending_on_mapping_order() -> None:
+    revision = event_filter_revision({"pd_state": 2, "smart_alert": 1})
+    assert len(revision) == 64
+    assert revision == event_filter_revision({"smart_alert": 1, "pd_state": 2})
+    assert revision != event_filter_revision({"pd_state": 2, "smart_alert": 2})
+    assert revision != event_filter_revision({"pd_state": 2})
+    assert event_filter_revision({}) != event_filter_revision({"pd_state": 0})
 
 
 def test_cursor_pagination_emits_cursor_then_none_on_last_page(session: Session) -> None:
