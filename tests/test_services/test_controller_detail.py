@@ -41,7 +41,7 @@ def test_controller_detail_smoke_populates_all_sections(
     )
 
     assert view_model.page_title == "Controller"
-    assert view_model.page_subtitle.startswith("SN SV00000001. Observed ")
+    assert view_model.page_subtitle == "SN SV00000001."
     assert view_model.observed_at == _optimal_snapshot(sample_snapshot).captured_at
     assert view_model.health.state == "OPTIMAL"
     assert view_model.health.roc_temperature_celsius == 70

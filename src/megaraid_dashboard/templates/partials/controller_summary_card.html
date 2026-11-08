@@ -2,11 +2,17 @@
 <a href="{{ request.url_for('controller_detail').path }}" class="controller-card controller-card--{{ controller.state | lower }}">
   <div class="controller-card-row1">
     <div class="controller-state">{{ controller.state | health_label }}</div>
-    <div class="controller-model">{{ controller.model }} &middot; SN {{ controller.serial }} &middot; {{ controller.raid_summary }}</div>
+    <div class="controller-model">{{ controller.model }} &middot; SN <span class="mono">{{ controller.serial }}</span> &middot; {{ controller.raid_summary }}</div>
   </div>
+  {% if view_model.observed_at %}
+    <p class="controller-observed muted">Observed
+      <noscript>{{ view_model.observed_at | iso_utc }} UTC</noscript>
+      <time datetime="{{ view_model.observed_at | iso_utc }}" data-local-time hidden>{{ view_model.observed_at | iso_utc }} UTC</time>
+    </p>
+  {% endif %}
   <div class="controller-card-row2">
     <div class="metric-item">
-      <span class="metric-label">RoC</span>
+      <span class="metric-label">RoC Temp</span>
       <span class="metric-value">{% if controller.roc_temperature_celsius is not none %}{{ controller.roc_temperature_celsius }}&deg;C{% else %}N/A{% endif %}</span>
     </div>
     <div class="metric-item">

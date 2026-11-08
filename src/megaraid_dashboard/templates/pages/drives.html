@@ -9,15 +9,11 @@
       <header class="page-header">
         <div class="page-header__row">
           <h1>Drives</h1>
-          <div class="summary-chips">
-            {% if summary.critical %}<span class="status-badge status-badge--critical">{{ summary.critical }} Critical</span>{% endif %}
-            {% if summary.warning %}<span class="status-badge status-badge--warning">{{ summary.warning }} Attention</span>{% endif %}
-            <span class="status-badge status-badge--optimal">{{ summary.optimal }} Healthy</span>
-            <span class="muted">of {{ summary.total }}</span>
-          </div>
+          {% from "partials/_health.html" import drive_summary %}
+          {{ drive_summary(view_model.physical_drives, 'row_state') }}
         </div>
         <p>
-          {{ view_model.controller_label }} &middot; Snapshot
+          {{ view_model.controller_label }} &middot; Observed
           <noscript>{{ view_model.captured_at | iso_utc }} UTC</noscript>
           <time datetime="{{ view_model.captured_at | iso_utc }}" data-local-time hidden>{{ view_model.captured_at | iso_utc }} UTC</time>
         </p>

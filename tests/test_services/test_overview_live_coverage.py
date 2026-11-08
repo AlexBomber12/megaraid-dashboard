@@ -144,12 +144,24 @@ def test_drive_temperature_badge_preserves_unknown_when_no_temperature() -> None
 def test_drive_temperature_badge_is_neutral_when_row_state_already_warning() -> None:
     assert (
         _drive_temperature_badge(
-            _drive(temperature=56),
+            _drive(temperature=35),
             temp_warning=55,
             temp_critical=60,
             row_state="warning",
         )
         == "neutral"
+    )
+
+
+@pytest.mark.parametrize("temperature, expected", [(56, "warning"), (61, "critical")])
+def test_drive_temperature_badge_keeps_fault_colour_under_critical_row(
+    temperature: int, expected: str
+) -> None:
+    assert (
+        _drive_temperature_badge(
+            _drive(temperature=temperature), temp_warning=55, temp_critical=60, row_state="critical"
+        )
+        == expected
     )
 
 

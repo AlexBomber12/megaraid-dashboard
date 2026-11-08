@@ -40,7 +40,7 @@
         {% endif %}
       </div>
       <div class="action-row__now">
-        <span class="status-badge status-badge--{{ 'warning' if operation.status_text in ['Unknown', 'Paused'] else 'info' if operation.status_text == 'Running' else 'neutral' }}" data-operation-state>{{ operation.status_text }}</span>
+        <span class="status-badge status-badge--{{ 'unknown' if operation.status_text == 'Unknown' else 'warning' if operation.status_text == 'Paused' else 'info' if operation.status_text == 'Running' else 'neutral' }}" data-operation-state>{{ operation.status_text }}</span>
         {% if mode_detail and (show_mode_controls or not operation.mode_url) %}<span>{{ mode_detail }}</span>{% endif %}
         {% if operation.name == 'Patrol Read' %}
           {% for task in view_model.scheduled_tasks if task.name == 'Patrol Read' %}

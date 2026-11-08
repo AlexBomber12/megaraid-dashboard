@@ -106,7 +106,13 @@ def fake_foreign_config(monkeypatch: pytest.MonkeyPatch) -> None:
         ("/drives", {"drives-live"}),
         (
             "/drives/252/4",
-            {"drive-live-status", "drive-live-details", "drive-live-actions", "maintenance"},
+            {
+                "drive-live-header",
+                "drive-live-status",
+                "drive-live-details",
+                "drive-live-actions",
+                "maintenance",
+            },
         ),
     ],
 )

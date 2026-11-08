@@ -554,6 +554,15 @@ def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
         slot_id=slot_id,
         range_days=30,
     )
+    with _session(request) as session:
+        charts_view_model = _drive_charts_view_model(
+            session=session,
+            enclosure_id=enclosure_id,
+            slot_id=slot_id,
+            serial_number=view_model.identity.serial_number,
+            range_days=30,
+            now_utc=view_model.updated_at,
+        )
     _log_drive_detail_rendered(
         enclosure_id=enclosure_id,
         slot_id=slot_id,
@@ -571,6 +580,7 @@ def drive_detail(request: Request, enclosure_id: int, slot_id: int) -> Response:
             "current_utc_label": _current_utc_label(),
             "static_asset_version": _static_asset_version(),
             "view_model": view_model,
+            "charts_view_model": charts_view_model,
             "replacement_resume": _replacement_resume_context(
                 request, enclosure_id, slot_id, view_model.identity.serial_number
             ),
@@ -4792,8 +4802,6 @@ def _temperature_chart_data(
             {
                 "label": "Average Temperature",
                 "data": values,
-                "borderColor": "#37d6ff",
-                "backgroundColor": "rgba(55, 214, 255, 0.16)",
                 "pointRadius": 2,
                 "spanGaps": True,
                 "tension": 0.2,
@@ -4832,7 +4840,6 @@ def _threshold_dataset(
     return {
         "label": label,
         "data": tuple(value for _ in range(point_count)),
-        "borderColor": color,
         "borderDash": (6, 6),
         "borderWidth": 1,
         "pointRadius": 0,
@@ -4855,7 +4862,6 @@ def _error_chart_data(
             {
                 "label": "Media Errors",
                 "data": media_errors,
-                "borderColor": "#ff5c6c",
                 "pointRadius": 2,
                 "spanGaps": True,
                 "tension": 0.2,
@@ -4863,7 +4869,6 @@ def _error_chart_data(
             {
                 "label": "Other Errors",
                 "data": other_errors,
-                "borderColor": "#f0b44d",
                 "pointRadius": 2,
                 "spanGaps": True,
                 "tension": 0.2,
@@ -4871,7 +4876,6 @@ def _error_chart_data(
             {
                 "label": "Predictive Failures",
                 "data": predictive_failures,
-                "borderColor": "#ff5c6c",
                 "borderDash": (6, 6),
                 "pointRadius": 2,
                 "spanGaps": True,

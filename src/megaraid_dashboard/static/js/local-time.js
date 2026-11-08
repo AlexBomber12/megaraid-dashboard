@@ -8,9 +8,9 @@
       return { year: "numeric", month: "short", day: "2-digit" };
     }
     if (el.dataset.localTimeFormat === "time") {
-      return { hour: "2-digit", minute: "2-digit", second: "2-digit" };
+      return { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" };
     }
-    return { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" };
+    return { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
   }
 
   function localizeAll(root) {
@@ -57,14 +57,15 @@
     });
     const day = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" });
     const year = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+    const theme = window.chartTheme.palette();
     return {
       title: {
         display: true,
         text: "Local time · " + Intl.DateTimeFormat().resolvedOptions().timeZone,
-        color: "#9aa5b1",
+        color: theme.muted,
       },
       ticks: {
-        color: "#9aa5b1",
+        color: theme.muted,
         maxRotation: 0,
         minRotation: 0,
         autoSkip: true,

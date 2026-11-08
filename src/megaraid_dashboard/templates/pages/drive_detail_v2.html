@@ -12,7 +12,7 @@
 {% block content %}
   {% set icons = request.url_for('static', path='icons.svg').path %}
   <div class="drive-detail-v2" data-live-identity="{{ view_model.identity.serial_number }}">
-    <header class="page-header">
+    <header class="page-header" id="drive-live-header" data-live-region>
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <a href="{{ request.url_for('overview').path }}">Overview</a>
         <span aria-hidden="true">/</span>
@@ -34,9 +34,9 @@
         </nav>
       </div>
       <p>
-        <span class="mono">{{ view_model.identity.model }}</span>
+        <span>{{ view_model.identity.model }}</span>
         &middot; SN <span class="mono">{{ view_model.identity.serial_number }}</span>
-        &middot; Snapshot
+        &middot; Observed
         <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
         <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
       </p>

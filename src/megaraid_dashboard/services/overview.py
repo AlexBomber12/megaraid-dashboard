@@ -25,6 +25,7 @@ from megaraid_dashboard.db.models import (
     VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.controller_health import assess_controller_components
+from megaraid_dashboard.services.display_format import celsius
 from megaraid_dashboard.services.drive_actions import ConsistencyCheckStatus, PatrolReadStatus
 from megaraid_dashboard.services.drive_health import assess_drive_health
 from megaraid_dashboard.services.drive_position import physical_slot_label, physical_slot_number
@@ -159,6 +160,7 @@ class MainPageViewModel:
     system_health: SystemHealthViewModel
     updated_at: datetime
     auto_refresh_seconds: int
+    observed_at: datetime | None = None
 
 
 class _SchedulerJob(Protocol):
@@ -210,6 +212,7 @@ def load_main_page_view_model(
             now=now,
         ),
         updated_at=now if snapshot is None else snapshot.captured_at,
+        observed_at=None if snapshot is None else snapshot.captured_at,
         auto_refresh_seconds=getattr(
             settings,
             "auto_refresh_seconds",
@@ -799,7 +802,7 @@ def _physical_drive_row(
         status_icon=_drive_status_icon(row_state),
         temperature="Unknown"
         if drive.temperature_celsius is None
-        else f"{drive.temperature_celsius} C",
+        else celsius(drive.temperature_celsius),
         temperature_sort=-1 if drive.temperature_celsius is None else drive.temperature_celsius,
         temperature_severity=_drive_temperature_badge(
             drive,
@@ -873,7 +876,7 @@ def _drive_temperature_badge(
     )
     if temp_status == "unknown":
         return "unknown"
-    if row_state in {"critical", "warning"}:
+    if temp_status == "optimal" and row_state in {"critical", "warning"}:
         return "neutral"
     return temp_status
 
@@ -974,7 +977,7 @@ def _temperature_tooltip(
 ) -> str | None:
     if value is None:
         return None
-    return f"Current {value} C / Warning {warning} C / Critical {critical} C"
+    return f"Current {celsius(value)} / Warning {celsius(warning)} / Critical {celsius(critical)}"
 
 
 def format_tb(size_bytes: int) -> str:

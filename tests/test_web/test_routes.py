@@ -387,15 +387,11 @@ def test_operator_pages_render_local_time_markup(
         response = client.get(path)
 
     assert response.status_code == 200
-    if path == "/":
-        assert re.search(r'<time datetime="[^"]+" data-local-time hidden>', response.text) is None
-        assert re.search(r"<noscript>[^<]+ UTC</noscript>", response.text) is None
-    else:
-        assert re.search(
-            r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
-            response.text,
-        )
-        assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
+    assert re.search(
+        r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
+        response.text,
+    )
+    assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
     assert "data-local-time-clock" not in response.text
     assert "data-live-status" in response.text
 
@@ -466,8 +462,8 @@ def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapsh
     assert '<span class="status-badge status-badge--critical">1 Critical</span>' in response.text
     assert '<span class="status-badge status-badge--warning">5 Attention</span>' in response.text
     assert '<span class="status-badge status-badge--optimal">2 Healthy</span>' in response.text
-    assert '<span class="muted">of 8</span>' in response.text
-    assert 'title="Current 61 C / Warning 55 C / Critical 60 C"' in response.text
+    assert '<span class="muted">8 Drives</span>' in response.text
+    assert 'title="Current 61°C / Warning 55°C / Critical 60°C"' in response.text
 
 
 def test_drive_detail_returns_404_when_no_snapshot_exists() -> None:
@@ -502,7 +498,7 @@ def test_drive_detail_renders_attributes_and_chart_area(
 
     assert response.status_code == 200
     assert '<span aria-current="page">S0 · Slot 252:4</span>' in response.text
-    assert '<span class="mono">WDC WD30EFRX-68EUZN0</span>' in response.text
+    assert "<span>WDC WD30EFRX-68EUZN0</span>" in response.text
     assert "WD-WM00000005" in response.text
     assert 'id="chart-area"' in response.text
     assert "/static/vendor/chart.min.js" in response.text
@@ -640,6 +636,25 @@ def test_drive_charts_aligns_duplicate_points_when_temperature_is_missing(
     assert temperature_payload["labels"] == ["2026-04-25 12:00", "2026-04-25 12:00"]
     assert temperature_payload["datasets"][0]["data"] == [None, 45.0]
     assert error_payload["datasets"][0]["data"] == [11, 22]
+
+
+def test_initial_drive_charts_match_same_range_fragment(sample_snapshot: StorcliSnapshot) -> None:
+    test_app = create_app()
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        _insert_app_snapshot(test_app, sample_snapshot)
+        initial = client.get("/drives/252:4")
+        fragment = client.get("/drives/252/4/charts?range_days=30")
+
+    assert initial.status_code == fragment.status_code == 200
+    initial_payloads = _json_scripts(initial.text)
+    fragment_payloads = _json_scripts(fragment.text)
+    for name in ("temperature-history-data", "error-history-data"):
+        assert initial_payloads[name] == fragment_payloads[name]
+    # The stable title and range controls stay outside the swapped chart area.
+    assert initial.text.count('id="temperature-history-heading"') == 1
+    assert 'id="temperature-history-heading"' not in fragment.text
+    for response in (initial, fragment):
+        assert response.text.count('id="error-history-heading"') == 1
 
 
 def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(

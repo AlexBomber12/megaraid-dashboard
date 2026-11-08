@@ -1,6 +1,6 @@
 <section class="section" data-controller-section="roc-history" aria-labelledby="roc-history-heading">
-  <div class="card chart-card" data-roc-history-url="{{ view_model.roc_history_chart_url }}">
-    <div class="card-header">
+  <div class="chart-section" data-roc-history-url="{{ view_model.roc_history_chart_url }}">
+    <div class="section-heading">
       <h2 id="roc-history-heading">RoC Temperature History</h2>
       <div class="range-tabs" role="tablist" aria-label="RoC history range">
         <button type="button" class="range-tabs__button" data-range-hours="1" role="tab" aria-selected="false">1h</button>
@@ -9,8 +9,10 @@
         <button type="button" class="range-tabs__button" data-range-hours="720" role="tab" aria-selected="false">30d</button>
       </div>
     </div>
+    <div class="card chart-card">
     <canvas id="roc-history-chart" class="chart-canvas-v2"></canvas>
     <p class="chart-empty" data-roc-chart-empty hidden>No RoC temperature samples in this range.</p>
+    </div>
   </div>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -22,30 +24,6 @@
 
       let chart = null;
       const emptyState = card.querySelector("[data-roc-chart-empty]");
-      const thresholdLinePlugin = {
-        id: "rocThresholdLines",
-        afterDraw(activeChart, _args, options) {
-          if (!activeChart.scales.y || !options.thresholds) {
-            return;
-          }
-          const ctx = activeChart.ctx;
-          const area = activeChart.chartArea;
-          ctx.save();
-          ctx.setLineDash([6, 6]);
-          options.thresholds.forEach((threshold) => {
-            const y = activeChart.scales.y.getPixelForValue(threshold.value);
-            ctx.strokeStyle = threshold.color;
-            ctx.fillStyle = threshold.color;
-            ctx.beginPath();
-            ctx.moveTo(area.left, y);
-            ctx.lineTo(area.right, y);
-            ctx.stroke();
-            ctx.fillText(threshold.label, area.left + 8, y - 6);
-          });
-          ctx.restore();
-        },
-      };
-
       function setActiveRange(rangeHours) {
         card.querySelectorAll("[data-range-hours]").forEach((button) => {
           const active = button.dataset.rangeHours === String(rangeHours);
@@ -55,6 +33,7 @@
       }
 
       function render(payload, rangeHours) {
+        const theme = window.chartTheme.palette();
         const points = payload.points || [];
         const labels = points.map((point) => point.captured_at);
         const values = points.map((point) => point.temperature_celsius);
@@ -71,34 +50,29 @@
             datasets: [{
               label: "RoC °C",
               data: values,
-              borderColor: "#37d6ff",
-              backgroundColor: "rgba(55, 214, 255, 0.12)",
+              borderColor: theme.accent,
+              backgroundColor: theme.fill,
               pointRadius: 2,
               tension: 0.22,
             }],
           },
-          plugins: [thresholdLinePlugin],
+          plugins: [window.chartTheme.thresholdPlugin],
           options: {
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: "index", intersect: false },
             plugins: {
-              legend: { labels: { color: "#f6f8fb" } },
+              legend: { display: false },
               tooltip: window.localTime.chartTooltip(labels),
-              rocThresholdLines: {
-                thresholds: [
-                  { label: "Warning", value: payload.warning_threshold, color: "#f0b44d" },
-                  { label: "Critical", value: payload.critical_threshold, color: "#ff5c6c" },
-                ],
-              },
+              temperatureThresholds: window.chartTheme.thresholds(payload.warning_threshold, payload.critical_threshold),
             },
             scales: {
               x: window.localTime.chartAxis(labels, rangeHours),
               y: {
                 suggestedMin: payload.min_celsius,
                 suggestedMax: payload.critical_threshold,
-                ticks: { color: "#9aa5b1" },
-                grid: { color: "rgba(154, 165, 177, 0.15)" },
+                ticks: { color: theme.muted },
+                grid: { color: theme.grid },
               },
             },
           },
