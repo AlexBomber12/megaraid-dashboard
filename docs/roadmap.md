@@ -1,6 +1,6 @@
 # MegaRAID Dashboard — maintenance roadmap
 
-Updated: **2026-11-08**. Installed application: `f9e736f` (#150) on SERVER.
+Updated: **2026-11-08**. Installed application: `211dfb2` (#153) on SERVER.
 [CURRENT_STATE.md](CURRENT_STATE.md) records the production verification boundary.
 This plan grants no controller mutation, notification, deployment or recurring automation.
 
@@ -39,6 +39,13 @@ This plan grants no controller mutation, notification, deployment or recurring a
   cases; two additional isolated badge/recovery checks passed. Normal collection,
   mapping/sort and Observed refresh were verified without controller writes.
 
+- Design audit A1-A5 (#151), shared design rules (#152) and the acceptance-discovered
+  chart/Drive Observed regressions (#153) are closed by installed `211dfb2`.
+  Managed verification: 2026-11-08 11:20:15 UTC; two normal Collector runs, both charts
+  after range swaps, automatic/manual Observed, mapping/sort and preserved settings.
+  Latest release checks: 3416 default (one existing skip), 100% statement/branch coverage,
+  515 safety and 305 Chromium cases; fresh +1 and all green CI.
+
 ## Remaining work
 
 | Priority | Work | Required evidence |
@@ -48,8 +55,14 @@ This plan grants no controller mutation, notification, deployment or recurring a
 | 2 | Verify recurring backups, retention and separate-copy restore | Scheduled/off-host copy, SQLite integrity and history/delivery checks; live DB untouched |
 | 3 | Observe schedule rollover after a natural Patrol completion | Fresh read evidence; no guessed next date or forced operation |
 
-Items 1 and 2 deliberately remain open. This handoff installs no observer or timer,
+Items 1 and 2 deliberately remain open; close them with evidence or explicit
+owner-accepted deferral before final handoff. Optional TB/TiB semantic verification and
+broad cosmetic renaming/cleanup remain deferred under [design rules](DESIGN_CONSISTENCY.md). This handoff installs no observer or timer,
 sends no Telegram test, restores no database and performs no OS maintenance.
+
+Item 3 is natural observation when needed for diagnosis, not a requirement to delay
+handoff or force a controller operation. Acoustic/Silence and real rollback/recovery
+effects remain explicit acceptance limits, not exercises to perform on healthy RAID.
 
 ## Maintenance boundaries
 

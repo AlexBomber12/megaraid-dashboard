@@ -5,11 +5,13 @@ profile, account `megaraid`. It replaces per-release executable helpers for futu
 compatible app updates. [Fresh installation](../INSTALL.md), schema migrations,
 account/security-policy changes, firmware and StorCLI upgrades are separate procedures.
 
-The installed application is [#150 / f9e736f](CURRENT_STATE.md). Its managed rollout
-finished verified on 2026-11-07 at 22:38:55 UTC with preserved settings/policy and normal collection.
+The installed application is [#153 / 211dfb2](CURRENT_STATE.md). Its managed rollout
+finished verified on 2026-11-08 at 11:20:15 UTC with preserved settings/policy and normal collection.
 The earlier #141 installation was adopted on 2026-11-01 without restart. Tool
 installation, adoption, managed activation and a real rollback remain distinct evidence;
-no production rollback drill has been performed.
+no production rollback drill has been performed. #152 service verification was
+followed by UI findings; #153 passed actual chart range swaps and automatic/manual
+Drive Observed checks. A verified receipt does not replace affected-view acceptance.
 The owner requested a maintenance handoff, not an automatic update/monitoring service.
 
 ## Commands and trust boundary
@@ -60,7 +62,7 @@ Example preparation, with operator-selected directories and the actual approved 
 
 ```bash
 candidate_sha="$(git rev-parse HEAD)"
-baseline_sha='f9e736fab4f9b78718d7db9e0774ef0f41ed8f38'
+baseline_sha='211dfb269b6e662da57e6432a59212a328071904'
 build_dir="$(mktemp -d)"
 mkdir "$build_dir/source" "$build_dir/wheels"
 git archive --format=tar --output="$build_dir/source.tar" "$candidate_sha"

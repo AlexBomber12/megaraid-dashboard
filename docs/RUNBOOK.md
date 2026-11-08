@@ -3,24 +3,28 @@
 This runbook is the operator reference for routine checks, common incidents, and recovery
 tasks. Generic command examples below use fresh-install defaults (`raid-monitor`,
 `/opt/megaraid-dashboard`, optional `/raid/` prefix). Existing SERVER instead uses
-`megaraid`, `/opt/megaraid-dashboard-ui-f9e736f` and the root HTTPS origin.
+`megaraid`, `/opt/megaraid-dashboard-ui-211dfb2` and the root HTTPS origin.
 Use [CURRENT_STATE.md](CURRENT_STATE.md) for the observed release, protected rollout
 configuration, test evidence and remaining work. Resolve the effective account and
 release before adapting generic commands; do not print secret environment values.
 
 ## Current production and safe verification
 
-Release `f9e736f` (#150) is deployed and verified. Physical S0-S7 cage labels and
+Release `211dfb2` (#153) is deployed and verified. Physical S0-S7 cage labels and
 Drives sorting retain real controller addresses; all eight LEDs are owner-confirmed. Compact Actions, drive DG/Span/Row, shared Collector
 ages, observed Patrol scheduling and CacheVault learn-date recovery are active.
 Health badges now use Healthy / Attention / Critical / Unknown; the 8 Healthy count
 and Attention/Critical/numerical error badges remain. Raw controller codes are in
 Controller details, not competing health labels. Observed automatic/manual refresh
-passed after the new normal sample.
+passed after two normal samples in #153: 12:10 -> 12:20 automatically and
+12:20 -> 12:25 manually, Europe/Rome. After a UI update, exercise 7d/365d/30d and
+inspect both actually drawn charts, not just response data or Chart.js instances.
+#153 corrected the chart lifecycle/Drive Observed defects found during #152 acceptance.
+Do not force a hardware poll or a RAID operation for this check.
 The Telegram transport test reached the owner; no real hardware failure was induced.
 
 After an SSH disconnect, check service WorkingDirectory/health and the matching
-rollout status before taking action. The #150 managed rollout finished `verified`;
+rollout status before taking action. The #153 managed rollout finished `verified`;
 current and future compatible updates use [versioned deployment](VERSIONED_DEPLOYMENT.md), whose durable receipt
 survives reboot and whose repeated verified request returns already_installed.
 See [the exact recovery checks](CURRENT_STATE.md#recovery-after-ssh-disconnect-or-repeated-activation).
@@ -435,7 +439,7 @@ monitoring uncertainty as healthy hardware.
 
 ## Existing megaraid production service
 
-For the installed `f9e736f` release, pinned StorCLI 1.23.02 and full-capability
+For the installed `211dfb2` release, pinned StorCLI 1.23.02 and full-capability
 policy, follow [the current checkpoint](CURRENT_STATE.md) and the
 [full rollout contract](STORCLI_FULL_ROLLOUT.md). Production runs as `megaraid`;
 installer `raid-monitor` defaults must not replace its service configuration.

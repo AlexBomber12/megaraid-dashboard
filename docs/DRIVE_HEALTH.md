@@ -66,3 +66,14 @@ and collection-freshness notices. It does not alter command eligibility or raw s
   fake StorCLI receives no calls.
 - Existing safety suites remain required. No production fault or hardware mutation
   is used for acceptance. Deployment requires separate authorization.
+
+## Design acceptance through #153 — 2026-11-08
+
+#151 preserves warning/critical field colours and wraps fault reasons without page
+overflow. #152 shares neutral Unknown presentation/counts and normal-temperature styling;
+unrecognized firmware drive states remain Attention. #153 closes the subsequent
+chart-swap/Drive Observed findings. Fault colours, numeric badges and recovery cases
+passed in isolated snapshots at 1440/1024/390 px; healthy RAID was not faulted.
+Latest release checks are 3416 default tests (one existing skip), 100% statement/branch
+coverage, 515 safety and 305 Chromium cases. These extend, not replace, the historical
+incident and physical-acceptance limits above. [Current evidence](CURRENT_STATE.md).

@@ -1,7 +1,7 @@
 # Observed status corrections — 2026-10-30
 
 Deployed through [PR #136](https://github.com/AlexBomber12/megaraid-dashboard/pull/136)
-as `8b166c6`; retained in current `f9e736f` (#150). Production GET-only checks confirmed
+as `8b166c6`; retained in current `211dfb2` (#153). Production GET-only checks confirmed
 eight observed rows, shared Collector ages and Auto/Enabled scheduling without an
 invented interval. Full evidence and physical verification limits:
 [CURRENT_STATE.md](CURRENT_STATE.md).

@@ -8,6 +8,10 @@
 > #150 acceptance on 2026-11-07 rechecked Overview, Drives, all eight details, mapping,
 > sort retention, shared Healthy labels/retained count and both Observed refresh paths; no new browser warnings/errors.
 > Normal Collector and loopback 8092 metrics passed; no forced poll/controller write.
+> #151-153 acceptance on 2026-11-08: both drive charts remain visible after
+> 7d/365d/30d swaps, with unique titles and saved range; Drive Observed advances
+> automatically and manually with two normal samples. #152's verified service receipt
+> alone had missed these UI regressions; #153 closes them. No controller write.
 > This manual procedure remains read-only even when production has action capability.
 
 This is a manual procedure for `https://megaraid.alexbomber.com/`, not a scheduled

@@ -10,6 +10,12 @@ Separately authorized physical LED and buzzer-setting acceptance is recorded in
 The [2026-11-07 critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md) follows hardware
 incidents through detection, saved health, delivery, recovery and operator safety.
 
+The 2026-11-08 #151-153 acceptance also covers alarm-colour/overflow/unit/time faults
+and actual chart painting after range swaps. #153 fixes the #152 lifecycle/Drive Observed
+findings. Automatic 12:10 -> 12:20 and manual 12:20 -> 12:25 Europe/Rome updates used
+ordinary Collector samples; controls, serial identity and action gates are unchanged.
+See [current state](CURRENT_STATE.md) and [design regression rules](DESIGN_CONSISTENCY.md).
+
 ## Information hierarchy
 
 On SERVER, S0-S7 identify physical cage positions, not controller slot numbers.

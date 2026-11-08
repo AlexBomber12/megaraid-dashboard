@@ -1,17 +1,18 @@
 # Obsidian maintenance handoff — 2026-11-08
 
-Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed `f9e736f` (#150)
+Canonical source: [CURRENT_STATE.md](CURRENT_STATE.md). Installed `211dfb2` (#153)
 includes #148 shared drive assessment, #149 critical/component/metric/freshness fixes
 and #150 Healthy / Attention / Critical / Unknown presentation. The green 8 Healthy
 count, fault counts and numerical error badges remain; firmware codes stay diagnostic.
 
-Managed acceptance finished verified on 2026-11-07 at 22:38:55 UTC (23:38:55 Europe/Rome).
-All eight cards, mapping/sort, normal Collector and automatic/manual Observed refresh
-passed. Fresh exporter grades on loopback 8092 were optimal for 1 controller / 8 PD /
-1 VD. Buzzer remains Enabled. #150 CI: 3411 default tests (one existing skip), 100%
-coverage, 515 safety and 292 Chromium; two extra isolated badge/recovery cases passed.
-No controller write or production fault drill. Read-only follow-up on 2026-11-08
-confirmed the same healthy current release, fresh metrics and normal collection.
+Managed #153 acceptance finished verified on 2026-11-08 at 11:20:15 UTC (12:20:15 Europe/Rome).
+#151-153 add signal colours, fault-row wrapping, shared chart/time/unit rules and
+correct the #152 chart lifecycle/Drive Observed findings. Two ordinary Collector polls,
+both charts after 7d/365d/30d, mapping/sort, 8 Healthy and Buzzer Enabled passed.
+Observed changed 12:10 -> 12:20 automatically and 12:20 -> 12:25 manually, Europe/Rome.
+Latest release evidence: 3416 default tests (one existing skip), 100% statement/branch
+coverage, 515 safety and 305 Chromium cases; fresh +1 and all three CI jobs green.
+No controller write, forced collection, new Telegram test or live DB restore.
 
 The owner confirmed all eight physical Locate LEDs on 2026-11-06. Buzzer setting/audit
 round-trip acceptance passed separately that day; the later chosen Enabled state is

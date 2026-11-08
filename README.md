@@ -1,6 +1,6 @@
 # MegaRAID Dashboard
 
-Production checkpoint (2026-11-08): SERVER runs `f9e736f` (#150) after review and green CI.
+Production checkpoint (2026-11-08): SERVER runs `211dfb2` (#153) after review and green CI.
 Read [current state and verification limits](docs/CURRENT_STATE.md),
 [the operational runbook](docs/RUNBOOK.md) and [the remaining plan](docs/roadmap.md).
 Installer defaults and historical screenshots are not SERVER's current deployment inventory.

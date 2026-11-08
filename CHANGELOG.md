@@ -1,5 +1,34 @@
 # Changelog
 
+## Production checkpoint — 2026-11-08 (#151-153)
+
+Installed `211dfb269b6e662da57e6432a59212a328071904` (#153), from `76ebf1f` (#152),
+after fresh current-head +1 and all three green CI jobs. Managed verification finished
+at 11:20:15 UTC (12:20:15 Europe/Rome). Post-install acceptance checked two normal
+Collector polls, healthy 1 controller / 8 PD / 1 VD, preserved settings/policy/config,
+and no new process warning/error or traceback. RAID was not changed.
+
+- #151 fixes A1 fault-signal colours, A2 fault-row overflow, A3 shared initial/range
+  chart structure/data, A4 local 24-hour time and A5 consistent Celsius text.
+- #152 shares health summaries, Unknown counts/neutral modes, normal-temperature
+  presentation, tokens/chart theme and scoped CSS cleanup. Its service installation
+  verified, but UI acceptance found intermittent blank swapped canvases and stale
+  Drive Observed; those findings were not accepted as ready.
+- #153 keeps controls outside the swap target, initializes charts after HTMX settles
+  and refreshes Drive Observed with guarded health regions. Four new tests fail on
+  the old code and pass with the fix, inspecting real paint without repair redraws.
+- Production 7d/365d/30d swaps keep both charts; Observed advances automatically
+  11:10:28 -> 11:20:10 UTC and manually 11:20:10 -> 11:25:10 UTC. Selected range,
+  S0-S7 mapping, both Drives sort directions, 8 Healthy and Buzzer Enabled remain.
+- Release checks: #151 3412/515/299; #152 3416/515/301; #153 3416/515/305
+  default/safety/Chromium tests, one existing default skip and 100% statement/branch
+  coverage each. All three CI jobs and fresh review passed for each PR.
+- No dependency, DB schema, auth/CSRF, StorCLI command contract/policy, controller
+  setting or Telegram transport change. Historical events and delivery state retained.
+- Independent monitoring and scheduled/off-host backup with separate-copy restore
+  remain unverified handoff gates; docs PR #147 and vault #4 still need merge/acceptance.
+  TB/TiB semantic conversion and broad cosmetic renaming remain optional follow-ups.
+
 ## Production checkpoint — 2026-11-07 (#150)
 
 Installed `f9e736fab4f9b78718d7db9e0774ef0f41ed8f38`, from #149 / `9f2693e`, after
