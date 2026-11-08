@@ -1,6 +1,6 @@
 # MegaRAID Dashboard
 
-Production checkpoint (2026-11-08): SERVER runs `211dfb2` (#153) after review and green CI.
+Production checkpoint (2026-11-08): SERVER runs `8da1a93` (#155) after review and green CI.
 Read [current state and verification limits](docs/CURRENT_STATE.md),
 [the operational runbook](docs/RUNBOOK.md) and [the remaining plan](docs/roadmap.md).
 Installer defaults and historical screenshots are not SERVER's current deployment inventory.
@@ -46,11 +46,15 @@ The redesigned dashboard is organized around the normal operator path: start wit
 page, drill into controller health when the controller needs attention, and drill into a
 single drive when a slot needs action.
 
+These screenshots are historical illustrations from before #154. Current layouts and
+acceptance are described in [release #155](docs/RELEASE_155_ACCEPTANCE.md); the removed
+sparkline and duplicate controls in older images are not current features.
+
 ![Main dashboard showing the controller card, drive grid, recent activity, and status bar](docs/images/main-dashboard.png)
 
 ![Controller detail page with health, RoC history, RAID config, hardware identity, and buzzer controls](docs/images/controller-detail.png)
 
-![Drive detail page with the backplane position diagram, error sparkline, fixed-height temperature chart, and advanced actions](docs/images/drive-detail.png)
+![Historical drive detail page before the #154 simplification](docs/images/drive-detail.png)
 
 ![Buzzer Control section with Silence, Disable, and Enable buttons](docs/images/buzzer-control.png)
 
@@ -67,10 +71,11 @@ single drive when a slot needs action.
    `/controller/roc-history?range_hours=24`; supported ranges are `1`, `24`, `168`, and
    `720` hours.
 3. Open a drive detail page from a grid tile, for example `/drives/252:0`. The page shows
-   the selected slot, a backplane position diagram, identity and connection fields, an error
-   sparkline, a fixed-height temperature history chart, locate controls, replacement entry,
-   and advanced drive actions. The backplane diagram is logical; physical bay order may need
-   per-deployment mapping before it exactly matches a chassis.
+   the selected physical slot and real controller address, a position diagram, identity
+   and connection fields, temperature and error-counter history, Locate controls and
+   replacement entry. Inapplicable drive actions share one Other Actions row. SERVER has
+   a verified horizontal S0-S7 mapping: S0-S3 -> 252:4-7, S4-S7 -> 252:0-3; other
+   deployments need their own physical mapping. The duplicate Error Trend sparkline is removed.
 
 ### Buzzer Control
 

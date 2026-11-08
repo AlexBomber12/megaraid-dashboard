@@ -6,17 +6,17 @@ in ignored recovery material. Do not publish credentials, serials or raw logs.
 
 ## Installed release
 
-**PR #153 is installed and verified; #151-152 are included.** The owner also confirmed on 2026-11-06 that
+**PR #155 is installed and verified; #154 and all earlier fixes are included.** The owner also confirmed on 2026-11-06 that
 physical Locate identification has been checked for all eight cages. The real Buzzer
 Enable/Disable setting round trip and audit also passed; acoustic alarm is not certified.
 
 | Item | Verified state |
 | --- | --- |
-| Application | `211dfb269b6e662da57e6432a59212a328071904`, merged [PR #153](https://github.com/AlexBomber12/megaraid-dashboard/pull/153) |
+| Application | `8da1a9369342212767c49af190e2e513aae988d7`, merged [PR #155](https://github.com/AlexBomber12/megaraid-dashboard/pull/155) |
 | Public origin | <https://megaraid.alexbomber.com/>; nginx HTTPS and Basic authentication |
 | Service | `megaraid-dashboard.service`, user/group `megaraid`, active/running at verification |
 | Hardening exception | `NoNewPrivileges=no` for the reviewed sudo-based rollout; fresh-install defaults differ |
-| Working directory | `/opt/megaraid-dashboard-ui-211dfb2` |
+| Working directory | `/opt/megaraid-dashboard-ui-8da1a93` |
 | Local application port | `8090`; application/database/Collector health verified |
 | Metrics | `127.0.0.1:8092/metrics`; 1 controller, 8 PD and 1 VD report optimal (0), Collector timestamp fresh |
 | Database | `/var/lib/megaraid-dashboard/megaraid.db`; migration `0009_event_deliveries` |
@@ -26,7 +26,7 @@ Enable/Disable setting round trip and audit also passed; acoustic alarm is not c
 | Binary SHA-256 | `642fff8a3976dbc85406d9f7e8f5f5ce4ceab2753ac68cab5245888b281c8547` |
 | Capability | `full-supported-actions`; `CONTROLLER_READ_ONLY=false` |
 | Maintenance / destructive mode | Both false after deployment acceptance and after the supervised buzzer check; maintenance closed |
-| Alarm Buzzer | Owner-selected Enabled retained and confirmed again at #153 acceptance; maintenance closed |
+| Alarm Buzzer | Owner-selected Enabled retained and confirmed again at #155 acceptance; maintenance closed |
 | Approval policy | 79 exact writes, 25 reads and 8 explicit replacement topologies; preserved |
 
 Capability is an authorization ceiling, not permission to exercise a healthy array.
@@ -49,54 +49,65 @@ Do not apply fresh-install `raid-monitor` defaults over this deployment.
 | Shared drive-health assessment | #148, `510ce9b` | SMART/predictive/temperature/error evidence across saved-data views; raw state and command gates preserved |
 | Critical alerts, component/metric grades and monitoring uncertainty | #149, `9f2693e` | 51 isolated incident chains, full action catalog, managed deployment and read-only production acceptance |
 | Shared health vocabulary and retained error badges | #150, `f9e736f` | Healthy labels across views, two isolated badge/recovery cases and production normal-Collector/UI acceptance |
-| Design audit A1-A5 | #151 | Isolated fault/overflow/time/unit scenarios; included in current #153 |
+| Design audit A1-A5 | #151 | Isolated fault/overflow/time/unit scenarios; included in current #155 |
 | Shared design rules | #152, `76ebf1f` | Service verified, but UI acceptance found chart/Observed defects; superseded by #153 |
 | Chart lifecycle and Drive Observed correction | #153, `211dfb2` | Real range swaps, automatic/manual saved-sample refresh and two normal Collector runs |
+| Reduced UI noise and clearer Events | #154, `970d16b` | Included in #155 deployment; technical values and actionable reasons retained, duplicate sparkline/tile badge removed |
+| Live filtered Events and threshold label geometry | #155, `8da1a93` | Isolated excluded-event/cursor and text-box regressions; production filter polling, drawn charts and normal Collector/UI acceptance |
 
-PR #153 had a fresh current-head Codex +1 without findings and all three green CI jobs
-before merge. Reviewed head `26cdd4a5747cd86c55a78d61f19a5e94bf858424` and installed
-merge release `211dfb2` have identical trees.
+PR #155 had a fresh current-head Codex +1 without findings and all three green CI jobs
+before merge. Reviewed head `fe73a0218728224fd026af4b91c2de8ca3e5c9bb` and installed
+merge release `8da1a93` have identical trees. [Release acceptance](RELEASE_155_ACCEPTANCE.md)
+records #154's changes and both independently reproduced #155 fixes.
 
 | PR | Delivered scope | Default tests | Isolated safety | Chromium |
 | --- | --- | --- | --- | --- |
-| [#151](https://github.com/AlexBomber12/megaraid-dashboard/pull/151) | A1 status colours, A2 fault-row overflow, A3 shared chart markup/data, A4 local 24-hour time, A5 Celsius formatting | 3412 + one existing skip | 515 | 299 |
-| [#152](https://github.com/AlexBomber12/megaraid-dashboard/pull/152) | Shared summaries/tokens/chart theme, Unknown counts, neutral normal temperatures and modes, scoped CSS cleanup | 3416 + one existing skip | 515 | 301 |
-| [#153](https://github.com/AlexBomber12/megaraid-dashboard/pull/153) | Stable chart controls, initialization after HTMX settles, Drive Observed in its guarded live refresh cycle | 3416 + one existing skip | 515 | 305 |
+| [#151](https://github.com/AlexBomber12/megaraid-dashboard/pull/151) | A1-A5 signal/layout/chart/time/Celsius fixes | 3412 + one existing skip | 515 | 299 |
+| [#152](https://github.com/AlexBomber12/megaraid-dashboard/pull/152) | Shared summaries/tokens/chart theme and Unknown counts | 3416 + one existing skip | 515 | 301 |
+| [#153](https://github.com/AlexBomber12/megaraid-dashboard/pull/153) | Chart lifecycle and guarded Drive Observed correction | 3416 + one existing skip | 515 | 305 |
+| [#154](https://github.com/AlexBomber12/megaraid-dashboard/pull/154) | Reduced duplicate signals, Events labels/counts, simpler technical/action rows | 3411 + one existing skip | 515 | 305 |
+| [#155](https://github.com/AlexBomber12/megaraid-dashboard/pull/155) | Global filter revisions independent of event cursor; non-overlapping measured threshold labels | 3430 + one existing skip | 515 | 315 |
 
-Each PR passed its fresh review and all three CI jobs, with the unchanged 100% statement
-and branch coverage gate. Latest [CI run 42432631243](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42432631243).
-These counts describe their respective release checks, not a new test run for this documentation.
+These are their respective release checks, not new tests for this documentation.
+All retained the 100% statement/branch gate. Latest released [CI run 42485484927](https://github.com/AlexBomber12/megaraid-dashboard/actions/runs/42485484927)
+passed all three jobs, with fresh head review. #155 also passed 60 focused checks.
 
-**The #152 deployment was not final UI acceptance.** `76ebf1f` reached service/Collector
-verification, but browser acceptance found intermittent blank drive charts after range
-replacement and a stale Drive Observed header. #153 fixes both. Four regression cases
-failed on the prior code and passed after the fix: actual painted canvases at DPR 1/1.5
-and automatic/manual header refresh. A private isolated replay also used 2014 captured
-history points. Chart instance/data counts alone are insufficient: do not resize/update
-the chart in a test to conceal a blank bitmap. See [design rules](DESIGN_CONSISTENCY.md).
+**Earlier acceptance findings remain historical evidence.** #152 reached service
+verification, but blank swapped canvases and stale Drive Observed were accepted only
+after #153. The subsequent #154 review found filtered Events categories/counts could
+remain stale for excluded events; a separate close-threshold overlap predated #154.
+#155 closes both without altering stored events or hardware behavior.
 
-Managed #153 activation from `76ebf1f` reached **verified on 2026-11-08 at 11:20:15 UTC**
-(12:20:15 Europe/Rome). Final production acceptance observed two ordinary Collector
-runs from the new process, healthy application/database/Collector, unchanged settings,
-exact policy and protected configuration, and no new warning/error events or traceback
+Managed #155 activation from `211dfb2` reached **verified on 2026-11-08 at 14:04:55 UTC**
+(15:04:55 Europe/Rome). The new process completed a normal Collector run; a read-only
+follow-up during this documentation update confirmed two completions, fresh healthy
+1 controller / 8 PD / 1 VD metrics, app/database/Collector ok, preserved settings,
+exact policy and protected configuration, with no new warning/error events or traceback
 in the checked process journal. No forced collection, controller write, migration,
 dependency change or extra Telegram test was used. Detailed receipts stay private.
 
-| Production scenario | Observed result on 2026-11-08 |
+| Production scenario | Observed result on 2026-11-08 after #155 |
 | --- | --- |
-| Drive history 7d -> 365d -> 30d | Both temperature/error charts stay drawn; one title each; threshold lines and selected range retained |
-| Automatic Drive Observed | Saved sample 11:10:28 -> 11:20:10 UTC (12:10 -> 12:20 Europe/Rome), without reload |
-| Manual Refresh now after next normal poll | Saved sample 11:20:10 -> 11:25:10 UTC (12:20 -> 12:25 Europe/Rome); 7d range and both charts preserved |
-| Focus pause | Range control focus shows Paused while focused; manual refresh reads the next saved sample |
-| Drive summary/list | 8 Healthy; S0-S7 and reverse sort work, ascending order restored; no whole-page overflow |
-| Hardware/control view | Controller and VD healthy, Buzzer Enabled, maintenance closed; existing Patrol Running and CC Stopped observed only |
+| Drive/Controller history | Both drive charts drawn with unique titles; 7d/30d drive and 1h/24h RoC ranges work; threshold labels readable |
+| Automatic Drive Observed | Saved sample 13:55:10 -> 14:04:50 UTC (14:55 -> 15:04 Europe/Rome), without reload |
+| Manual Refresh now | Completed Live state reads the same latest saved 14:04:50 UTC sample; both charts remain drawn; no forced hardware poll |
+| Events category/severity/combined filters | Query, counts and correct visible/empty result retained; quiet poll advanced Live 15:06:16 -> 15:07:17 Europe/Rome without filter change |
+| Overview and controls | 8 Healthy, S0-S7 mapping retained, Buzzer Enabled and maintenance closed; existing Patrol Running/CC Stopped observed only |
+
+New excluded-category arrivals and close-threshold extremes were tested only with
+disposable data, at 1440/390 px; no events were injected and no threshold was changed
+in production. Earlier #153 all-range, reverse-sort and multi-sample evidence remains
+dated history, not a newly repeated #155 physical/sort drill.
 
 Physical labels remain S0-S3 -> 252:4-7 and S4-S7 -> 252:0-3. Real addresses,
 serial identity, command/topology targets and action gates are unchanged. Health uses
 Healthy / Attention / Critical / Unknown; raw firmware codes stay diagnostic. Unknown
 health is counted; unknown health and modes are neutral. An unrecognized firmware drive
-state remains Attention. Fault counters, status colours and numeric error badges are retained; their
-fault/recovery cases run against isolated snapshots, never induced production faults.
+state remains Attention. Fault reasons, severity colours and table/detail counters remain. #154 removes the
+redundant bare error-count badge on backplane tiles and the duplicate Error Trend
+sparkline; Error Counter History remains. Health assessment, raw diagnostic values,
+notification eligibility and action gates are unchanged. Fault/recovery tests use
+isolated snapshots, never induced production faults.
 
 The MegaRAID exporter uses loopback **8092**, not 8091 (another service). Fresh grades
 were optimal (0) for 1 controller / 8 PD / 1 VD. Exporter availability and the app's own
@@ -148,7 +159,7 @@ Independent availability/freshness monitoring remains unverified. [Delivery cont
 
 ## Recovery after SSH disconnect or repeated activation
 
-The installed #153 release used [versioned deployment](VERSIONED_DEPLOYMENT.md):
+The installed #155 release used [versioned deployment](VERSIONED_DEPLOYMENT.md):
 detached systemd execution and a durable root-owned receipt under
 `/var/lib/megaraid-dashboard-deploy/FULL_COMMIT_SHA.json`. It finished `verified`;
 the exact private backup/context is recorded in recovery material. Check status before
@@ -157,7 +168,7 @@ repeating a request. `queued` is not success. Do not restore live DB history aft
 ```bash
 systemctl show megaraid-dashboard.service -pActiveState -pSubState -pWorkingDirectory -pMainPID
 curl --fail --silent --show-error http://127.0.0.1:8090/healthz
-python3 /usr/local/sbin/megaraid-dashboard-deploy.py status --commit 211dfb269b6e662da57e6432a59212a328071904
+python3 /usr/local/sbin/megaraid-dashboard-deploy.py status --commit 8da1a9369342212767c49af190e2e513aae988d7
 ```
 
 Guarded managed application rollback is available from its private context; no actual
@@ -168,11 +179,15 @@ do not execute an old staged release or bypass a baseline refusal.
 
 ## Remaining work, in order
 
-Shared health vocabulary (#150), design audit A1-A5 and the #152 regressions are
-closed by accepted #153. Capacity semantics and broad cosmetic renaming remain deferred
-under [the design contract](DESIGN_CONSISTENCY.md); they are not transfer blockers. The project
-documentation PR #147 and knowledge-vault PR #4 carry the updated handoff; publication
-is owner-authorized, and review/CI/merge and final handoff acceptance remain separate.
+Shared health vocabulary, A1-A5, #153 lifecycle/Observed findings, #154 presentation
+simplification and the two #155 findings are closed by the accepted current release.
+Capacity semantics and broad cosmetic renaming remain optional, under [design rules](DESIGN_CONSISTENCY.md).
+The earlier documentation PR [#147](https://github.com/AlexBomber12/megaraid-dashboard/pull/147)
+and [knowledge-vault #4](https://github.com/AlexBomber12/knowledge-vault/pull/4) were both
+merged on 2026-11-08; they are no longer pending work. This follow-up reconciles #154-155.
+Local Obsidian update, publication/merge of this follow-up and cross-device sync remain
+separate results. Final handoff requires evidence or an explicit owner-accepted deferral
+for the following two operational gaps, then owner acceptance.
 
 1. Inspect existing independent app/Collector monitoring; add only missing incident-only coverage.
 2. Verify recurring backups, retention/off-host storage and a separate-copy restore.
@@ -185,6 +200,7 @@ observer or automatic update. Deployment backup is not recurring recovery proof.
 
 ## Documentation map
 
+- [Release #155 acceptance](RELEASE_155_ACCEPTANCE.md).
 - [Design consistency and regression checks](DESIGN_CONSISTENCY.md).
 - [Critical scenario audit](CRITICAL_SCENARIOS_AUDIT.md), [drive-health contract](DRIVE_HEALTH.md).
 - [Roadmap](roadmap.md), [maintenance handoff](MAINTENANCE_HANDOFF.md).

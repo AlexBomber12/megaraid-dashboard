@@ -117,14 +117,14 @@ further hardware configuration. A command response cannot replace observation.
 
 | Scenario | Software evidence | Real SERVER evidence / remaining acceptance |
 | --- | --- | --- |
-| Views, charts, Observed and normal Collector refresh | Browser/API regressions | #153 managed activation, real range swaps and automatic/manual Observed passed on 2026-11-08; see CURRENT_STATE.md |
+| Views, charts, Observed and normal Collector refresh | Browser/API regressions | #155 managed activation, drawn charts/ranges, filtered Events polling and automatic/manual Observed passed on 2026-11-08; older #153 multi-sample/range/sort checks remain dated; see CURRENT_STATE.md |
 | Telegram transport | Delivery contract and fake incidents | One neutral test received by owner; no fault induced |
-| Buzzer Disable -> sample `Disable` -> Enable | Full fake UI/API/wrapper/SQL round trip shipped in #146; retained through #153 | Real Disable -> On -> Disable and success/observed-change events confirmed by normal samples on 2026-11-06; initial Disabled restored after the test; later owner-selected Enabled confirmed by the 2026-11-06 18:13 UTC normal sample, maintenance closed; Silence/acoustic effect unverified |
+| Buzzer Disable -> sample `Disable` -> Enable | Full fake UI/API/wrapper/SQL round trip shipped in #146; retained through #155 | Real Disable -> On -> Disable and success/observed-change events confirmed by normal samples on 2026-11-06; initial Disabled restored after the test; later owner-selected Enabled confirmed by the 2026-11-06 18:13 UTC normal sample, maintenance closed; Silence/acoustic effect unverified |
 | Locate Start -> visible identification -> Stop | Exact commands, identity and persisted audits checked in software | Activity mode verified On; owner confirmed all eight LEDs on 2026-11-06 |
 | Patrol and CC status/schedules | Saved/live response parsing and browser scenarios | Natural operation observed; no start/stop drill on healthy array |
 | Maintenance, expiry and refusals | Persisted-window and late-revocation tests | Required for the approved one-property operation |
 | Replacement, UGood, spin down, spare and foreign operations | Fake-hardware success/refusal/recovery scenarios | No destructive physical drill; not hardware-certified |
-| Versioned install and rollback | Isolated filesystem, permissions and failure tests | Historical #141 adopted; managed updates through #153 verified; real rollback not drilled |
+| Versioned install and rollback | Isolated filesystem, permissions and failure tests | Historical #141 adopted; managed updates through #155 verified; real rollback not drilled |
 
 These are separate acceptance boundaries. Keep unresolved physical behavior visible
 in release notes and handoff; do not describe the dashboard as all buttons fully

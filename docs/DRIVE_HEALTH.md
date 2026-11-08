@@ -15,9 +15,10 @@ existing assessment rules. Missing temperature alone does not imply drive failur
 Online is an operational controller state, not a health verdict: an online drive
 with SMART/predictive faults remains Critical. Healthy replaces Optimal in displayed
 assessment badges. Internal severity keys, metrics and raw states are unchanged.
-Raw controller states remain under **Controller details** on drive and VD details;
-they are omitted from drive tiles/list rows. Reported BBU/CacheVault state remains
-in Controller details. Healthy spare/unconfigured drives keep an explicit **Role**
+Since #154, raw drive state is a visible **Firmware State** field and VD state
+is an inline technical value in RAID Configuration; drive tiles/list rows omit it.
+Reported CacheVault state remains a technical field. One-value Controller details
+disclosures are removed. Healthy spare/unconfigured drives keep an explicit **Role**
 label, not another competing health grade. Health-column sorting uses the displayed
 assessment; physical S ordering and real-address action targets are preserved.
 
@@ -74,6 +75,17 @@ overflow. #152 shares neutral Unknown presentation/counts and normal-temperature
 unrecognized firmware drive states remain Attention. #153 closes the subsequent
 chart-swap/Drive Observed findings. Fault colours, numeric badges and recovery cases
 passed in isolated snapshots at 1440/1024/390 px; healthy RAID was not faulted.
-Latest release checks are 3416 default tests (one existing skip), 100% statement/branch
+Historical #153 release checks were 3416 default tests (one existing skip), 100% statement/branch
 coverage, 515 safety and 305 Chromium cases. These extend, not replace, the historical
 incident and physical-acceptance limits above. [Current evidence](CURRENT_STATE.md).
+
+## Current presentation and acceptance through #155
+
+#154 replaces duplicate disclosures with visible technical fields, quiet collection
+health text and one Not Reported list per technical card. The aggregate health counts,
+fault reasons, table/detail fault counters and Error Counter History remain. The bare
+per-tile number and duplicate sparkline are removed; health/detection/notification
+semantics are unchanged. #155 fixes filtered Events navigation and threshold-label
+overlap, with 3430 default tests (one existing skip), 100% statement/branch coverage,
+515 safety and 315 Chromium. [Current acceptance](RELEASE_155_ACCEPTANCE.md) separates
+isolated fault/arrival/extreme-threshold cases from normal read-only production checks.

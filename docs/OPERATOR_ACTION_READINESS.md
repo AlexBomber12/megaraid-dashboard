@@ -15,8 +15,8 @@ confirmation, cancellation and wizard progression are included.
 Historical audit boundary: no production deployment or controller mutation was
 performed during the audit itself, and the healthy array was not a test fixture.
 The withdrawn pre-audit helper must not be reused. The audit fixes subsequently
-shipped in #134 (`25c2b74`) and remain in the deployed `211dfb2` (#153) release.
-See [CURRENT_STATE.md](CURRENT_STATE.md) for accepted #153 on 2026-11-08; historical action/hardware evidence below retains its original scope.
+shipped in #134 (`25c2b74`) and remain in the deployed `8da1a93` (#155) release.
+See [CURRENT_STATE.md](CURRENT_STATE.md) for accepted #155 on 2026-11-08; historical action/hardware evidence below retains its original scope.
 The test counts below belong to the audit revision, not the current release.
 
 ## Findings and fixes

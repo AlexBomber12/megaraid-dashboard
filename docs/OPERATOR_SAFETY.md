@@ -1,6 +1,6 @@
 > Final production procedure: [STORCLI_FULL_ROLLOUT.md](STORCLI_FULL_ROLLOUT.md).
 
-> Deployment checkpoint: the audited safety fixes are included in SERVER's `211dfb2` (#153).
+> Deployment checkpoint: the audited safety fixes are included in SERVER's `8da1a93` (#155).
 > [CURRENT_STATE.md](CURRENT_STATE.md) separates software proof, production reads and
 > physical effects that remain untested. Full capability never authorizes a test on
 > the healthy RAID; all state/identity/approval gates below remain in force.
@@ -10,6 +10,11 @@
 > [OPERATOR_ACTION_READINESS.md](OPERATOR_ACTION_READINESS.md).
 
 # Operator control coverage and safety contract
+
+The following source-relocation/disclosure inventory is historical evidence from
+#150-152; #154 replaces one-value disclosures with visible technical fields and
+collapses inapplicable drive actions. Current controls are catalogued in
+[operator-controls.json](operator-controls.json); gates remain unchanged.
 
 The design-consistency follow-up moves the existing read-only Overview-to-Drives link
 from `partials/drive_grid.html` into `partials/_health.html`. The reviewed source inventory

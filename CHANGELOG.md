@@ -1,5 +1,33 @@
 # Changelog
 
+## Production checkpoint — 2026-11-08 (#154-155)
+
+Installed `8da1a9369342212767c49af190e2e513aae988d7` (#155), from #153 / `211dfb2`,
+including #154 / `970d16b`. Fresh current-head review without findings and all three
+green CI jobs preceded activation. Managed verification: 14:04:55 UTC (15:04:55
+Europe/Rome); normal Collector, preserved settings/policy/configuration and healthy
+1 controller / 8 PD / 1 VD. Documentation follow-up saw two normal completions and
+no new process warning/error events or traceback.
+
+- #154 simplifies duplicate health/technical/action rows and Events labels/counts.
+  Bare per-tile error badges and duplicate sparkline are removed; fault reasons,
+  table/detail counters and Error Counter History remain. Command gates unchanged.
+- #155 independently updates global category navigation for excluded arrivals while
+  preserving filtered cursors/queries and quiet DOM nodes. Measured threshold text
+  stays spaced inside the plot at both edges. Isolated browser regressions cover
+  category/severity/combined/empty cases and close thresholds at 1440/390 px.
+- #155 checks: 3430 default (one existing skip), 100% statement/branch coverage,
+  515 safety and 315 Chromium; 60 focused checks. #154: 3411/515/305 respectively.
+- Production graphs/ranges, Events filters/quiet poll and automatic Drive Observed
+  13:55:10 -> 14:04:50 UTC passed; manual refresh read the same latest saved sample.
+  No production event injection, threshold change, forced poll or controller write.
+- Docs #147 and knowledge-vault #4 were merged on 2026-11-08. Independent monitoring
+  and recurring/off-host backup plus separate-copy restore remain unverified transfer
+  gates, or need explicit owner-accepted deferral. [Acceptance](docs/RELEASE_155_ACCEPTANCE.md).
+
+The following release checkpoints retain their original dated evidence and pending
+items; current status is above and in [CURRENT_STATE](docs/CURRENT_STATE.md).
+
 ## Production checkpoint — 2026-11-08 (#151-153)
 
 Installed `211dfb269b6e662da57e6432a59212a328071904` (#153), from `76ebf1f` (#152),
