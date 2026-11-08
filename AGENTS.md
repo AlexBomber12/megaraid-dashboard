@@ -11,6 +11,12 @@ Build a sustainable, maintainable replacement for MSM that survives kernel and O
 - For pipeline-orchestrator daemon-driven PRs: see Branch naming section below for `pr-XXX-slug` and `micro-YYYYMMDD-slug` patterns.
 - CI must be green before merge.
 - Approving reviews are not required because this is a solo repo.
+- The prohibition on automated `@codex review` comments applies only to work dispatched
+  by Pipeline Orchestrator, where the daemon owns repeat review requests. In human-directed
+  interactive work, Codex may request a review after a push when a fresh review is required
+  and none is already running for that head. Automatic current-head review may be used
+  without an extra comment. This does not waive green CI, current-head review when requested,
+  or the check for unresolved findings.
 
 # Code Style
 
@@ -148,7 +154,7 @@ A Codex Review is **valid** for merge when all of the following are true:
 
 The daemon waits for `@codex review` mention to be posted by the coder after every push. If Codex review is stale (posted before the most recent push), the daemon reposts the mention. If Codex never responds within the configured timeout window, the daemon escalates to HUNG state.
 
-A coder must NEVER post `@codex review` from their own automation; the daemon handles that. The coder posts the mention exactly once when they first open the PR via `gh pr create`.
+For Pipeline Orchestrator daemon-driven runs only, a coder must NEVER post repeated `@codex review` requests from their own automation; the daemon handles those requests. The coder posts the mention exactly once when they first open the PR via `gh pr create`. Human-directed interactive review requests follow the project Workflow Rules above.
 <!-- pipeline-orchestrator: managed END codex_review_gate -->
 
 <!-- pipeline-orchestrator: managed BEGIN escalate_protocol -->
