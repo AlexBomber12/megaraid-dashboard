@@ -160,6 +160,7 @@ class MainPageViewModel:
     system_health: SystemHealthViewModel
     updated_at: datetime
     auto_refresh_seconds: int
+    observed_at: datetime | None = None
 
 
 class _SchedulerJob(Protocol):
@@ -211,6 +212,7 @@ def load_main_page_view_model(
             now=now,
         ),
         updated_at=now if snapshot is None else snapshot.captured_at,
+        observed_at=None if snapshot is None else snapshot.captured_at,
         auto_refresh_seconds=getattr(
             settings,
             "auto_refresh_seconds",
@@ -874,7 +876,7 @@ def _drive_temperature_badge(
     )
     if temp_status == "unknown":
         return "unknown"
-    if row_state in {"critical", "warning"}:
+    if temp_status == "optimal" and row_state in {"critical", "warning"}:
         return "neutral"
     return temp_status
 

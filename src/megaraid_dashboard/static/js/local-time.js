@@ -57,14 +57,15 @@
     });
     const day = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" });
     const year = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+    const theme = window.chartTheme.palette();
     return {
       title: {
         display: true,
         text: "Local time · " + Intl.DateTimeFormat().resolvedOptions().timeZone,
-        color: "#9aa5b1",
+        color: theme.muted,
       },
       ticks: {
-        color: "#9aa5b1",
+        color: theme.muted,
         maxRotation: 0,
         minRotation: 0,
         autoSkip: true,

@@ -7,7 +7,7 @@
     <div class="health-card__summary">
       <span class="text-label">Health</span>
       <strong class="health-card__state status-text--{{ view_model.health.state_severity }}">{{ view_model.health.state_severity | health_label }}</strong>
-      {% if view_model.health.health_label == 'Ready' %}<p class="drive-role">Role: Unconfigured</p>{% elif view_model.health.health_label == 'Hot spare' %}<p class="drive-role">Role: Hot spare</p>{% endif %}
+      {% from "partials/_health.html" import drive_role %}{{ drive_role(view_model.health.health_label) }}
       <p>{{ 'No reported faults.' if view_model.health.state_severity == 'optimal' else view_model.health.summary_text }}</p>
       <details class="drive-controller-details"><summary>Controller details</summary><span class="drive-health-raw">Controller state: {{ view_model.health.state }}</span></details>
       {% if view_model.health.state_subtitle %}<p class="muted">{{ view_model.health.state_subtitle }}</p>{% endif %}

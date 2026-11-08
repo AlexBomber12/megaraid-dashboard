@@ -38,7 +38,7 @@
               </svg>
               {{ drive.row_state | health_label }}
             </span>
-            {% if drive.health_label == 'Ready' %}<span class="drive-role">Role: Unconfigured</span>{% elif drive.health_label == 'Hot spare' %}<span class="drive-role">Role: Hot spare</span>{% endif %}
+            {% from "partials/_health.html" import drive_role %}{{ drive_role(drive.health_label) }}
             {% if drive.health_reason %}<span class="drive-health-reason">{{ drive.health_reason }}</span>{% endif %}
           </td>
           <td

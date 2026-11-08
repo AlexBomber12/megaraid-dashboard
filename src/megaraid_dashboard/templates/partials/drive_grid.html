@@ -1,18 +1,11 @@
+{% from "partials/_health.html" import drive_summary, drive_role %}
 {% set tiles = view_model.drive_grid.tiles %}
-{% set critical_count = tiles | selectattr("tile_severity", "equalto", "critical") | list | length %}
-{% set warning_count = tiles | selectattr("tile_severity", "equalto", "warning") | list | length %}
-{% set optimal_count = tiles | selectattr("tile_severity", "equalto", "optimal") | list | length %}
 {% set root_path = request.scope.get("root_path", "") if request is defined else "" %}
 {% set drives_url = request.url_for("drives").path if request is defined else "/drives" %}
 <section class="drive-grid-section-v2" aria-labelledby="drive-backplane-heading">
   <div class="section-heading">
     <h2 id="drive-backplane-heading">Drive Backplane</h2>
-    <div class="summary-chips">
-      {% if critical_count %}<span class="status-badge status-badge--critical">{{ critical_count }} Critical</span>{% endif %}
-      {% if warning_count %}<span class="status-badge status-badge--warning">{{ warning_count }} Attention</span>{% endif %}
-      {% if optimal_count %}<span class="status-badge status-badge--optimal">{{ optimal_count }} Healthy</span>{% endif %}
-      <a href="{{ drives_url }}">{{ tiles | length }} Drives →</a>
-    </div>
+    {{ drive_summary(tiles, 'tile_severity', drives_url) }}
   </div>
 
   <div class="drive-grid-v2">
@@ -25,7 +18,7 @@
         <span class="drive-tile-v2__slot"><span class="visually-hidden">Slot </span>{{ tile.slot_label }}</span>
         <span class="drive-address">{{ tile.enclosure_id }}:{{ tile.slot_id }}</span>
         <strong class="drive-health-label status-text--{{ tile.tile_severity }}">{{ tile.tile_severity | health_label }}</strong>
-        {% if tile.health_label == 'Ready' %}<span class="drive-role">Role: Unconfigured</span>{% elif tile.health_label == 'Hot spare' %}<span class="drive-role">Role: Hot spare</span>{% endif %}
+        {{ drive_role(tile.health_label) }}
         {% if tile.health_reason %}<span class="drive-health-reason">{{ tile.health_reason }}</span>{% endif %}
         <span class="drive-tile-v2__temp status-text--{{ tile.temperature_state }}">
           {% if tile.temperature_celsius is not none %}{{ tile.temperature_celsius | celsius }}{% else %}Temp unknown{% endif %}

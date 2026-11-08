@@ -57,7 +57,7 @@ def test_main_page_refresh_returns_swap_safe_partial(sample_snapshot: StorcliSna
     assert '<div class="controller-state">Critical</div>' in response.text
     assert "Drive temperature is critical." in response.text
     assert "Updated:" not in response.text
-    assert "data-local-time hidden" not in response.text
+    assert 'datetime="2026-04-25T12:00:00Z" data-local-time hidden' in response.text
     assert response.text.count('class="drive-tile-v2 ') == 8
     assert (
         '<section class="activity-v2" aria-labelledby="recent-activity-heading">' in response.text

@@ -11,6 +11,14 @@
 
 # Operator control coverage and safety contract
 
+The design-consistency follow-up moves the existing read-only Overview-to-Drives link
+from `partials/drive_grid.html` into `partials/_health.html`. The reviewed source inventory
+changes only that identical `<a href="{{ drives_url }}">` declaration's location; no button,
+form, mutation route, command or action gate changes. `tests/e2e/test_design_consistency.py`
+checks the summary link's real navigation and zero fake-controller calls. The common-summary
+unit test also checks the forwarded-prefix URL. Do not regenerate the inventory for any
+other difference without reviewing its user scenario and existing safety matrix.
+
 The health-vocabulary follow-up adds four read-only Controller details disclosures:
 drive firmware state, VD firmware state, reported BBU state and CacheVault state.
 The backplane link tooltip uses the shared health label; destinations are unchanged.

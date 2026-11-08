@@ -30,11 +30,14 @@
     "<input class=\"input action-gate__reason\" type=\"text\" name=\"reason\" maxlength=\"200\" required placeholder=\"Reason, e.g. Replace drive 252:3\" aria-label=\"Maintenance reason\">",
     "<button type=\"submit\" class=\"button button--warning\">"
   ],
+  "src/megaraid_dashboard/templates/partials/_health.html": [
+    "<a href=\"{{ drives_url }}\">"
+  ],
   "src/megaraid_dashboard/templates/partials/activity_timeline_v2.html": [
     "<a href=\"{{ request.url_for('events').path }}\">"
   ],
   "src/megaraid_dashboard/templates/partials/backplane_diagram.html": [
-    "<a class=\"backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}\" data-physical-slot=\"{{ slot.slot_label }}\" href=\"{{ slot.detail_url }}\" title=\"Slot {{ slot.slot_label }} · {{ severity_class | health_label }}\" {% if slot.is_this %}aria-current=\"page\"{% endif %} >"
+    "<a class=\"backplane-slot backplane-slot--{{ severity_class }}{% if slot.is_this %} backplane-slot--this{% endif %}\" data-physical-slot=\"{{ slot.slot_label }}\" href=\"{{ slot.detail_url }}\" title=\"Slot {{ slot.slot_label }} \u00b7 {{ severity_class | health_label }}\" {% if slot.is_this %}aria-current=\"page\"{% endif %} >"
   ],
   "src/megaraid_dashboard/templates/partials/controller_detail/buzzer_control.html": [
     "<summary aria-label=\"About Alarm Buzzer\">",
@@ -121,7 +124,6 @@
     "<button class=\"range-tabs__button{% if range_days == 30 %} range-tabs__button--active{% endif %}\" type=\"button\" role=\"tab\" aria-selected=\"{{ 'true' if range_days == 30 else 'false' }}\" hx-get=\"{{ request.url_for('drive_charts', enclosure_id=view_model.position.enclosure, slot_id=view_model.position.slot).path }}\" hx-vals='{\"range_days\": {{ range_days }}, \"serial_number\": {{ view_model.identity.serial_number | tojson }}, \"captured_at\": {{ view_model.updated_at.isoformat() | tojson }}}' hx-target=\"#chart-area\" hx-swap=\"outerHTML\" >"
   ],
   "src/megaraid_dashboard/templates/partials/drive_grid.html": [
-    "<a href=\"{{ drives_url }}\">",
     "<a class=\"drive-tile-v2 drive-tile-v2--{{ tile.tile_severity }}\" data-physical-slot=\"{{ tile.slot_label }}\" href=\"{{ root_path }}{{ tile.detail_url }}\" >"
   ],
   "src/megaraid_dashboard/templates/partials/events_data.html": [

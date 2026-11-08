@@ -34,9 +34,9 @@
         </nav>
       </div>
       <p>
-        <span class="mono">{{ view_model.identity.model }}</span>
+        <span>{{ view_model.identity.model }}</span>
         &middot; SN <span class="mono">{{ view_model.identity.serial_number }}</span>
-        &middot; Snapshot
+        &middot; Observed
         <noscript>{{ view_model.updated_at | iso_utc }} UTC</noscript>
         <time datetime="{{ view_model.updated_at | iso_utc }}" data-local-time hidden>{{ view_model.updated_at | iso_utc }} UTC</time>
       </p>

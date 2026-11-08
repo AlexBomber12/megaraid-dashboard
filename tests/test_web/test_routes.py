@@ -387,15 +387,11 @@ def test_operator_pages_render_local_time_markup(
         response = client.get(path)
 
     assert response.status_code == 200
-    if path == "/":
-        assert re.search(r'<time datetime="[^"]+" data-local-time hidden>', response.text) is None
-        assert re.search(r"<noscript>[^<]+ UTC</noscript>", response.text) is None
-    else:
-        assert re.search(
-            r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
-            response.text,
-        )
-        assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
+    assert re.search(
+        r'<time datetime="2026-04-25T12:[0-9]{2}:00Z" data-local-time hidden>',
+        response.text,
+    )
+    assert re.search(r"<noscript>2026-04-25T12:[0-9]{2}:00Z UTC</noscript>", response.text)
     assert "data-local-time-clock" not in response.text
     assert "data-live-status" in response.text
 
@@ -466,7 +462,7 @@ def test_drives_route_renders_sortable_data_table(sample_snapshot: StorcliSnapsh
     assert '<span class="status-badge status-badge--critical">1 Critical</span>' in response.text
     assert '<span class="status-badge status-badge--warning">5 Attention</span>' in response.text
     assert '<span class="status-badge status-badge--optimal">2 Healthy</span>' in response.text
-    assert '<span class="muted">of 8</span>' in response.text
+    assert '<span class="muted">8 Drives</span>' in response.text
     assert 'title="Current 61°C / Warning 55°C / Critical 60°C"' in response.text
 
 
@@ -502,7 +498,7 @@ def test_drive_detail_renders_attributes_and_chart_area(
 
     assert response.status_code == 200
     assert '<span aria-current="page">S0 · Slot 252:4</span>' in response.text
-    assert '<span class="mono">WDC WD30EFRX-68EUZN0</span>' in response.text
+    assert "<span>WDC WD30EFRX-68EUZN0</span>" in response.text
     assert "WD-WM00000005" in response.text
     assert 'id="chart-area"' in response.text
     assert "/static/vendor/chart.min.js" in response.text

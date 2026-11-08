@@ -1,8 +1,9 @@
 <div id="chart-area" class="chart-area" data-range-days="{{ view_model.active_range_days }}">
-  <section class="card chart-card" aria-labelledby="temperature-history-heading">
-    <div class="section-heading">
+  <section class="section" aria-labelledby="temperature-history-heading">
+    <div class="section-heading" data-drive-chart-heading>
       <h2 id="temperature-history-heading">Temperature History</h2>
     </div>
+    <div class="card chart-card">
     <canvas class="chart-canvas-v2" id="temperature-history-chart"></canvas>
     <script id="temperature-history-data" type="application/json">{{ view_model.temperature_chart | tojson }}</script>
     <noscript>
@@ -33,12 +34,14 @@
         <p class="chart-empty">No temperature samples in this range.</p>
       {% endif %}
     </noscript>
+    </div>
   </section>
 
-  <section class="card chart-card" aria-labelledby="error-history-heading">
+  <section class="section" aria-labelledby="error-history-heading">
     <div class="section-heading">
       <h2 id="error-history-heading">Error Counter History</h2>
     </div>
+    <div class="card chart-card">
     <canvas class="chart-canvas-v2" id="error-history-chart"></canvas>
     <script id="error-history-data" type="application/json">{{ view_model.error_chart | tojson }}</script>
     <noscript>
@@ -69,6 +72,7 @@
         <p class="chart-empty">No error counter samples in this range.</p>
       {% endif %}
     </noscript>
+    </div>
   </section>
 
   <script>
@@ -94,8 +98,8 @@
           const context = chart.ctx;
           context.save();
           context.setLineDash([4, 4]);
-          context.strokeStyle = "rgba(246, 248, 251, 0.38)";
-          context.fillStyle = "rgba(246, 248, 251, 0.72)";
+          context.strokeStyle = window.chartTheme.palette().markerLine;
+          context.fillStyle = window.chartTheme.palette().markerText;
           context.font = "12px system-ui, sans-serif";
           markers.forEach((marker) => {
             const index = Number(marker.pointIndex);
@@ -128,45 +132,6 @@
         });
       }
 
-      function hasAnnotationPlugin() {
-        return Boolean(
-          window.Chart.registry
-          && window.Chart.registry.plugins
-          && window.Chart.registry.plugins.get
-          && window.Chart.registry.plugins.get("annotation")
-        );
-      }
-
-      function thresholdAnnotationOptions(payload) {
-        if (!hasAnnotationPlugin()) {
-          return {};
-        }
-        return {
-          annotation: {
-            annotations: {
-              tempWarning: {
-                type: "line",
-                yMin: payload.thresholds.warning,
-                yMax: payload.thresholds.warning,
-                borderColor: "#f0b44d",
-                borderDash: [6, 6],
-                borderWidth: 1,
-                label: { content: "Warning", display: true },
-              },
-              tempCritical: {
-                type: "line",
-                yMin: payload.thresholds.critical,
-                yMax: payload.thresholds.critical,
-                borderColor: "#ff5c6c",
-                borderDash: [6, 6],
-                borderWidth: 1,
-                label: { content: "Critical", display: true },
-              },
-            },
-          },
-        };
-      }
-
       function destroyChartsIn(container) {
         if (!window.Chart) {
           return;
@@ -182,32 +147,31 @@
       function renderTemperatureChart() {
         const canvas = chartArea.querySelector("#temperature-history-chart");
         const payload = readPayload("#temperature-history-data");
-        const annotationOptions = thresholdAnnotationOptions(payload);
-        const thresholdDatasets = annotationOptions.annotation ? [] : payload.thresholdDatasets;
+        const theme = window.chartTheme.palette();
         new window.Chart(canvas, {
           type: "line",
           data: {
             labels: payload.labels,
-            datasets: [...payload.datasets, ...thresholdDatasets],
+            datasets: window.chartTheme.datasets(payload.datasets),
           },
-          plugins: [replacementLinePlugin],
+          plugins: [replacementLinePlugin, window.chartTheme.thresholdPlugin],
           options: {
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: "index", intersect: false },
             plugins: {
-              legend: { labels: { color: "#f6f8fb" } },
+              legend: window.chartTheme.legend(payload.datasets),
               tooltip: window.localTime.chartTooltip(payload.labels),
               driveReplacementLines: { markers: payload.replacementMarkers },
-              ...annotationOptions,
+              temperatureThresholds: window.chartTheme.thresholds(payload.thresholds.warning, payload.thresholds.critical),
             },
             scales: {
               x: window.localTime.chartAxis(payload.labels, Number(chartArea.dataset.rangeDays) * 24),
               y: {
                 min: payload.yMin,
                 max: payload.yMax,
-                ticks: { color: "#9aa5b1" },
-                grid: { color: "rgba(154, 165, 177, 0.15)" },
+                ticks: { color: theme.muted },
+                grid: { color: theme.grid },
               },
             },
           },
@@ -217,11 +181,12 @@
       function renderErrorChart() {
         const canvas = chartArea.querySelector("#error-history-chart");
         const payload = readPayload("#error-history-data");
+        const theme = window.chartTheme.palette();
         new window.Chart(canvas, {
           type: "line",
           data: {
             labels: payload.labels,
-            datasets: payload.datasets,
+            datasets: window.chartTheme.datasets(payload.datasets),
           },
           plugins: [replacementLinePlugin],
           options: {
@@ -229,7 +194,7 @@
             maintainAspectRatio: false,
             interaction: { mode: "index", intersect: false },
             plugins: {
-              legend: { labels: { color: "#f6f8fb" } },
+              legend: window.chartTheme.legend(payload.datasets),
               tooltip: window.localTime.chartTooltip(payload.labels),
               driveReplacementLines: { markers: payload.replacementMarkers },
             },
@@ -237,8 +202,8 @@
               x: window.localTime.chartAxis(payload.labels, Number(chartArea.dataset.rangeDays) * 24),
               y: {
                 beginAtZero: true,
-                ticks: { color: "#9aa5b1", precision: 0 },
-                grid: { color: "rgba(154, 165, 177, 0.15)" },
+                ticks: { color: theme.muted, precision: 0 },
+                grid: { color: theme.grid },
               },
             },
           },
@@ -257,8 +222,13 @@
         renderErrorChart();
       }
 
+      const rangeTabs = document.querySelector('[data-drive-detail-section="temperature-chart"] > .range-tabs')
+        || document.querySelector('[data-drive-detail-section="temperature-chart"] .range-tabs');
+      const heading = chartArea.querySelector('[data-drive-chart-heading]');
+      if (rangeTabs && heading) heading.append(rangeTabs);
       syncRangeTabs();
       chartArea.addEventListener("htmx:beforeSwap", () => {
+        if (rangeTabs) chartArea.parentElement.insertBefore(rangeTabs, chartArea);
         destroyChartsIn(chartArea);
       });
       if (document.readyState === "loading") {
