@@ -669,10 +669,7 @@ def test_drive_charts_embed_round_trippable_json_and_threshold_datasets(
     scripts = _json_scripts(response.text)
     temperature_payload = scripts["temperature-history-data"]
     assert temperature_payload["thresholds"] == {"warning": 55, "critical": 60}
-    assert [dataset["label"] for dataset in temperature_payload["thresholdDatasets"]] == [
-        "Warning Threshold",
-        "Critical Threshold",
-    ]
+    assert "thresholdDatasets" not in temperature_payload
     assert len(temperature_payload["labels"]) == len(temperature_payload["datasets"][0]["data"])
     assert "error-history-data" in scripts
 

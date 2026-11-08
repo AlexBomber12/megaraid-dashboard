@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
@@ -145,6 +146,7 @@ def test_drive_detail_v2_precomputed_urls_include_forwarded_prefix(
         sample_snapshot,
         slot_id=4,
         headers={"X-Forwarded-Prefix": "/raid"},
+        drive_state="UGood",
     )
 
     assert response.status_code == 200
@@ -154,7 +156,7 @@ def test_drive_detail_v2_precomputed_urls_include_forwarded_prefix(
     assert 'action="/raid/drives/252:4/actions/hotspare"' in response.text
 
 
-def test_drive_detail_v2_health_snapshot_actions_and_sparkline(
+def test_drive_detail_v2_health_snapshot_and_actions(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
     html = _drive_detail_response(sample_snapshot, slot_id=4).text
@@ -164,7 +166,10 @@ def test_drive_detail_v2_health_snapshot_actions_and_sparkline(
     assert _button_by_text_attrs(parsed, "start")["hx-post"] == "/drives/252:4/locate/start"
     assert _button_by_text_attrs(parsed, "stop")["hx-post"] == "/drives/252:4/locate/stop"
     assert 'class="action-row drive-actions"' in html
-    assert parsed.sparkline_current_count == "0"
+    # Error counters live in the Error Counter History chart; no sparkline repeats them.
+    assert parsed.sparkline_current_count is None
+    assert "data-firmware-state>" in html
+    assert "<summary>Controller details</summary>" not in html
 
 
 def test_drive_detail_v2_position_and_chart(sample_snapshot: StorcliSnapshot) -> None:
@@ -181,17 +186,22 @@ def test_drive_detail_v2_position_and_chart(sample_snapshot: StorcliSnapshot) ->
 def test_drive_detail_v2_identity_connection_and_action_counts(
     sample_snapshot: StorcliSnapshot,
 ) -> None:
-    parsed = _parse(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    html = _drive_detail_response(sample_snapshot, slot_id=4).text
+    parsed = _parse(html)
     advanced_buttons = [
         button
         for button in parsed.buttons
         if button.get("type") == "submit" and button.get("class", "").startswith("button")
     ]
 
-    assert parsed.id_fields == 9
-    assert parsed.conn_fields == 8
-    assert len(advanced_buttons) == 3
-    assert "Mark Bad" not in _button_texts(_drive_detail_response(sample_snapshot, slot_id=4).text)
+    # Every field is either shown or named once under "Not Reported".
+    assert len(_detail_labels(html, "identity")) == 9
+    assert len(_detail_labels(html, "connection")) == 8
+    # An online member accepts none of the unconfigured-drive actions: one row names them.
+    assert advanced_buttons == []
+    assert "data-unavailable-actions" in html
+    assert "Unconfigured Good, Spin Down, Hot Spare." in html
+    assert "Mark Bad" not in _button_texts(html)
 
 
 def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
@@ -200,7 +210,7 @@ def test_drive_detail_v2_hot_spare_posts_current_drive_dg(
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
-        _set_drive_dg(test_app, slot_id=4, dg_id=3)
+        _set_drive_dg(test_app, slot_id=4, dg_id=3, state="UGood")
 
         response = client.get("/drives/252/4")
 
@@ -245,11 +255,21 @@ def _drive_detail_response(
     *,
     slot_id: int,
     headers: dict[str, str] | None = None,
+    drive_state: str | None = None,
 ) -> Any:
     test_app = create_app()
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
         _insert_app_snapshot(test_app, sample_snapshot)
+        if drive_state is not None:
+            _set_drive_dg(test_app, slot_id=slot_id, dg_id=None, state=drive_state)
         return client.get(f"/drives/252/{slot_id}", headers=headers)
+
+
+def _detail_labels(html: str, section: str) -> list[str]:
+    part = html.split(f'data-drive-detail-section="{section}"')[1].split("</section>")[0]
+    shown = [label for label in re.findall(r"<dt>([^<]+)</dt>", part) if label != "Not Reported"]
+    missing = re.search(r"data-not-reported><dt>Not Reported</dt><dd>([^<]*)</dd>", part)
+    return shown + (missing.group(1).split(", ") if missing else [])
 
 
 def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) -> None:
@@ -261,7 +281,9 @@ def _insert_app_snapshot(test_app: FastAPI, sample_snapshot: StorcliSnapshot) ->
         session.commit()
 
 
-def _set_drive_dg(test_app: FastAPI, *, slot_id: int, dg_id: int) -> None:
+def _set_drive_dg(
+    test_app: FastAPI, *, slot_id: int, dg_id: int | None, state: str | None = None
+) -> None:
     session_factory = test_app.state.session_factory
     with session_factory() as session:
         assert isinstance(session_factory, sessionmaker)
@@ -269,7 +291,10 @@ def _set_drive_dg(test_app: FastAPI, *, slot_id: int, dg_id: int) -> None:
         drive = session.scalars(
             select(PhysicalDriveSnapshot).where(PhysicalDriveSnapshot.slot_id == slot_id)
         ).one()
-        drive.disk_group_id = dg_id
+        if dg_id is not None:
+            drive.disk_group_id = dg_id
+        if state is not None:
+            drive.state = state
         session.commit()
 
 

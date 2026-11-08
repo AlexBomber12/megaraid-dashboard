@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol
@@ -18,7 +18,6 @@ from megaraid_dashboard.db.models import (
     CacheVaultSnapshot,
     ControllerSnapshot,
     Event,
-    VirtualDriveSnapshot,
 )
 from megaraid_dashboard.services.controller_health import assess_controller_components
 from megaraid_dashboard.services.drive_actions import (
@@ -55,7 +54,6 @@ class ControllerHealthSnapshot:
     summary_text: str
     roc_temperature_celsius: int | None
     cv_capacitance_percent: int | None
-    bbu_status: str
     memory_ecc_errors_total: int
     errors_24h: int
     uptime_text: str
@@ -128,7 +126,6 @@ class HardwareIdentity:
     memory_size_text: str
     fw_cache_size_text: str
     pending_images_count: int
-    alarm_buzzer_text: str
 
 
 @dataclass(frozen=True)
@@ -262,7 +259,6 @@ def _build_health_snapshot(
             summary_text="Waiting for first controller snapshot.",
             roc_temperature_celsius=None,
             cv_capacitance_percent=None,
-            bbu_status="Unknown",
             memory_ecc_errors_total=0,
             errors_24h=_count_recent_warning_and_critical_events(session, now=now),
             uptime_text=_format_uptime(now - app_start_time),
@@ -284,7 +280,6 @@ def _build_health_snapshot(
         cv_capacitance_percent=(
             None if snapshot.cachevault is None else snapshot.cachevault.capacitance_percent
         ),
-        bbu_status=_bbu_status(snapshot),
         memory_ecc_errors_total=_memory_ecc_errors_total(snapshot.raw_json),
         errors_24h=_count_recent_warning_and_critical_events(session, now=now),
         uptime_text=_format_uptime(now - app_start_time),
@@ -413,9 +408,6 @@ def _build_hardware_identity(
             default_unit="MB",
         ),
         pending_images_count=_pending_images_count(raw_json),
-        alarm_buzzer_text=(
-            _first_raw_text(raw_json, "Alarm") or _snapshot_text(snapshot, "alarm_state")
-        ),
     )
 
 
@@ -488,34 +480,21 @@ def _page_subtitle(snapshot: ControllerSnapshot | None) -> str:
 
 
 def _health_summary(snapshot: ControllerSnapshot, *, health: str, settings: Settings) -> str:
+    """Lead with the cause. The grade is shown above; optimal VD states live in their table."""
     online = sum(1 for drive in snapshot.physical_drives if drive.state == "Onln")
     total = len(snapshot.physical_drives)
-    raid = _dominant_raid_level(snapshot.virtual_drives)
+    drives = f"{online}/{total} drives online."
     if health == "optimal":
-        return f"All systems nominal. {online}/{total} drives online. {raid} healthy."
-    reasons = " ".join(assess_controller_components(snapshot, settings=settings).reasons)
-    states = (
-        ", ".join(f"VD {drive.vd_id}: {drive.state}" for drive in snapshot.virtual_drives)
-        or "No virtual drives reported"
+        return drives
+    causes = list(assess_controller_components(snapshot, settings=settings).reasons)
+    causes.extend(
+        f"VD {drive.vd_id}: {drive.state}."
+        for drive in sorted(snapshot.virtual_drives, key=lambda item: item.vd_id)
+        if virtual_drive_state_severity(drive.state) != "info"
     )
-    prefix = "Controller requires attention."
-    if reasons:
-        prefix += f" {reasons}"
-    return f"{prefix} {online}/{total} drives online. {raid} virtual-drive state: {states}."
-
-
-def _dominant_raid_level(virtual_drives: Sequence[VirtualDriveSnapshot]) -> str:
-    if not virtual_drives:
-        return "RAID unknown"
-    return sorted(virtual_drives, key=lambda virtual_drive: virtual_drive.vd_id)[0].raid_level
-
-
-def _bbu_status(snapshot: ControllerSnapshot) -> str:
-    if snapshot.cachevault is not None and snapshot.cv_present:
-        return snapshot.cachevault.state
-    if not snapshot.bbu_present:
-        return "N/A"
-    return "Unknown"
+    if not snapshot.virtual_drives:
+        causes.append("No virtual drives reported.")
+    return " ".join([*causes, drives])
 
 
 def _memory_ecc_errors_total(raw_json: Mapping[str, Any] | None) -> int:
@@ -550,9 +529,13 @@ def _build_rebuild_operation_card(snapshot: ControllerSnapshot) -> LiveOperation
 def _patrol_read_card(
     status: PatrolReadStatus, *, now: datetime, interval_hours: int | None = None
 ) -> LiveOperationCard:
+    # The schedule line already states the interval unless automatic scheduling is off.
+    scheduling_off = status.mode.strip().lower() in {"manual", "disabled"}
     return LiveOperationCard(
         name="Patrol Read",
-        mode_text=_mode_text(status.mode, interval_hours=interval_hours),
+        mode_text=_mode_text(
+            status.mode, interval_hours=interval_hours if scheduling_off else None
+        ),
         status_text=_operation_status_text(status),
         progress_percent=status.progress_percent if status.is_running else None,
         progress_eta_text=None if not status.is_running else "ETA unknown",

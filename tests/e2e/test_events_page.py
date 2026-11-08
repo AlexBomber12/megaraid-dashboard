@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
@@ -9,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from megaraid_dashboard.db import Event, get_engine, get_sessionmaker
+from megaraid_dashboard.services.events import category_label
 
 
 def test_events_page_renders_with_authenticated_user(
@@ -91,7 +93,7 @@ def test_operator_actions_preserve_filters_records_pagination_and_polling(
         assert response.request.redirected_from.url == f"{live_server}/audit"
     else:
         page.goto(f"{live_server}/events")
-        page.get_by_role("link", name="Operator actions", exact=True).click()
+        page.get_by_role("link", name="Operator Actions", exact=True).click()
 
     nav = page.get_by_role("navigation", name="Primary navigation")
     expect(nav.get_by_role("link", name="Events", exact=True)).to_have_count(1)
@@ -101,7 +103,7 @@ def test_operator_actions_preserve_filters_records_pagination_and_polling(
     )
     expect(page).to_have_title("Events - MegaRAID Dashboard")
     expect(page.get_by_role("heading", name="Events", exact=True)).to_be_visible()
-    quick_filter = page.get_by_role("link", name="Operator actions", exact=True)
+    quick_filter = page.get_by_role("link", name="Operator Actions", exact=True)
     expect(quick_filter).to_have_attribute("aria-pressed", "true")
     assert parse_qs(urlsplit(page.url).query) == {"category": list(OPERATOR_CATEGORIES)}
     page.get_by_role("link", name="Warning", exact=True).click()
@@ -109,7 +111,7 @@ def test_operator_actions_preserve_filters_records_pagination_and_polling(
     expected_filters = {"category": list(OPERATOR_CATEGORIES), "severity": ["warning"]}
     assert parse_qs(urlsplit(filter_url).query) == expected_filters
     # Category toggles remain usable alongside the preset and severity filter.
-    page.get_by_role("link", name="pd state", exact=True).click()
+    page.get_by_role("link", name=re.compile(r"^Drive State \d+$")).click()
     expect(quick_filter).to_have_attribute("aria-pressed", "false")
     expect(page.locator("#events-list")).to_contain_text("Unrelated drive event")
     quick_filter.click()
@@ -136,10 +138,18 @@ def test_operator_actions_preserve_filters_records_pagination_and_polling(
     expect(page.locator("#events-list")).not_to_contain_text("Unrelated drive event")
     expect(page.locator("#events-list")).not_to_contain_text("Info action")
 
+    new_category = OPERATOR_CATEGORIES[57 % len(OPERATOR_CATEGORIES)]
+    counted_chip = page.locator("#events-filters .filter-chip:has(.filter-chip__count)").filter(
+        has_text=category_label(new_category)
+    )
+    count_before = int(counted_chip.locator(".filter-chip__count").inner_text())
     _add_events(snapshot_with_drives, start=57, count=1)
     # Exercise the actual HTMX every-30s poll without a wall-clock sleep.
     with page.expect_response(lambda r: "/partials/events?" in r.url and "since=" in r.url) as poll:
         page.clock.fast_forward(30_000)
+    # The poll also replaces the filters: counts stay current and the preset stays pressed.
+    expect(counted_chip.locator(".filter-chip__count")).to_have_text(str(count_before + 1))
+    expect(quick_filter).to_have_attribute("aria-pressed", "true")
     query = parse_qs(urlsplit(poll.value.url).query)
     for key, values in expected_filters.items():
         assert query[key] == values
@@ -150,9 +160,9 @@ def test_operator_actions_preserve_filters_records_pagination_and_polling(
     assert page.url == filter_url
     expect(page.get_by_role("heading", name="Events", exact=True)).to_be_visible()
 
-    page.get_by_role("link", name="All events", exact=True).click()
+    page.get_by_role("link", name="All Events", exact=True).click()
     assert page.url == f"{live_server}/events"
-    expect(page.get_by_role("link", name="All events", exact=True)).to_have_attribute(
+    expect(page.get_by_role("link", name="All Events", exact=True)).to_have_attribute(
         "aria-pressed", "true"
     )
     expect(quick_filter).to_have_attribute("aria-pressed", "false")
@@ -179,11 +189,11 @@ def test_empty_operator_filter_poll_keeps_events_title_and_reset(
     expect(page.locator("[data-event-id]")).to_have_count(2)
     expect(page.get_by_role("heading", name="Events", exact=True)).to_be_visible()
     expect(page).to_have_title("Events - MegaRAID Dashboard")
-    expect(page.get_by_role("link", name="Operator actions", exact=True)).to_have_attribute(
+    expect(page.get_by_role("link", name="Operator Actions", exact=True)).to_have_attribute(
         "aria-pressed", "true"
     )
     expect(page.locator("#events-list")).not_to_contain_text("Unrelated drive event")
     assert page.url == filter_url
-    page.get_by_role("link", name="All events", exact=True).click()
+    page.get_by_role("link", name="All Events", exact=True).click()
     expect(page.locator("[data-event-id]")).to_have_count(3)
     expect(page.locator("#events-list")).to_contain_text("Unrelated drive event")

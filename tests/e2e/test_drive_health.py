@@ -101,10 +101,7 @@ def test_fault_health_and_recovery_across_all_views(
         health = page.locator("[data-drive-detail-section='health-snapshot']")
         expect(health.locator(".health-card")).to_have_class(f"health-card health-card--{severity}")
         expect(health.locator(".health-card__state")).to_have_text(label)
-        expect(health.locator(".drive-health-raw")).not_to_be_visible()
-        health.get_by_text("Controller details", exact=True).click()
-        expect(health.locator(".drive-health-raw")).to_be_visible()
-        expect(health.locator(".drive-health-raw")).to_contain_text(state.upper())
+        expect(health.locator("[data-firmware-state]")).to_have_text(state.upper())
         if reason:
             expect(health).to_contain_text(reason)
         expect(page.locator('.backplane-slot[data-physical-slot="S0"]')).to_have_class(

@@ -86,26 +86,25 @@ def test_events_cursor_iso_property() -> None:
 
 
 @pytest.mark.parametrize(
-    ("severity", "label", "icon"),
+    ("severity", "label"),
     [
-        ("info", "Info", "check-circle"),
-        ("warning", "Warning", "alert-triangle"),
-        ("critical", "Critical", "x-circle"),
-        ("other", "Other", "circle"),
+        ("info", "Info"),
+        ("warning", "Warning"),
+        ("critical", "Critical"),
+        ("other", "Other"),
     ],
 )
-def test_event_row_severity_label_and_icon(severity: str, label: str, icon: str) -> None:
+def test_event_row_severity_label(severity: str, label: str) -> None:
     row = EventRow(
         id=1,
         occurred_at=datetime(2026, 5, 15, tzinfo=UTC),
         severity=severity,
-        severity_status="optimal",
+        severity_status="info",
         category="cv",
         subject="x",
         summary="y",
     )
     assert row.severity_label == label
-    assert row.severity_icon == icon
 
 
 def test_view_models_latest_event_id(session: Session) -> None:

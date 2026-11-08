@@ -580,9 +580,6 @@ select.input { padding-right: var(--space-8); }
 }
 .health-card__detail { color: var(--color-muted); font-size: var(--fs-sm); }
 
-.error-sparkline { display: block; width: 100%; max-width: 480px; height: 36px; }
-.error-sparkline polyline { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.sparkline-copy { display: block; margin-top: var(--space-1); color: var(--color-muted); font-size: var(--fs-xs); font-weight: var(--fw-label); }
 
 /* ---------- Overview: controller card ---------- */
 
@@ -669,22 +666,6 @@ select.input { padding-right: var(--space-8); }
 .drive-tile-v2__state,
 .drive-tile-v2__temp { font-size: var(--fs-xs); font-weight: var(--fw-strong); overflow-wrap: break-word; }
 
-.drive-error-badge-v2 {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  min-height: 20px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--color-critical);
-  color: var(--on-critical);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-heavy);
-}
-
 .backplane-diagram { display: grid; grid-template-columns: repeat(8, 80px); grid-template-rows: auto; min-width: 0; overflow-x: auto; padding: var(--space-1); gap: var(--space-2); }
 .backplane-slot {
   display: grid;
@@ -708,7 +689,6 @@ select.input { padding-right: var(--space-8); }
 .backplane-diagram--compact .backplane-slot { width: 80px; min-height: 44px; font-size: var(--fs-xs); }
 .drive-address { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--color-muted-strong); }
 .drive-health-label { font-size: var(--fs-sm); line-height: 1.25; }
-.drive-health-raw { color: var(--color-muted-strong); font-family: var(--font-mono); font-size: var(--fs-xs); }
 .drive-health-reason { display: block; font-size: var(--fs-xs); line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
 .physical-slot-label { margin-right: var(--space-2); font-weight: var(--fw-strong); }
 .drive-grid-v2 > [data-physical-slot="S0"], .backplane-diagram > [data-physical-slot="S0"] { grid-column: 1; grid-row: 1; }
@@ -837,8 +817,6 @@ th[aria-sort="ascending"] .sort-button::after { content: "↑"; opacity: 1; }
 th[aria-sort="descending"] .sort-button { color: var(--color-accent); }
 th[aria-sort="descending"] .sort-button::after { content: "↓"; opacity: 1; }
 
-.temperature-inline { display: inline-flex; align-items: center; gap: var(--space-1); }
-.temperature-inline__dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: currentColor; }
 
 /* ---------- Controller sections ---------- */
 
@@ -1109,7 +1087,10 @@ th[aria-sort="descending"] .sort-button::after { content: "↓"; opacity: 1; }
 .action-row__name { min-width: 0; }
 .action-row__name h3 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-strong); }
 .action-help { margin-top: 2px; color: var(--color-muted-strong); font-size: var(--fs-sm); }
-.action-help summary { width: fit-content; cursor: pointer; }
+.action-help summary { display: inline-flex; width: fit-content; cursor: pointer; list-style: none; color: var(--color-muted); }
+.action-help summary::-webkit-details-marker { display: none; }
+.action-help summary:hover,
+.action-help[open] summary { color: var(--color-accent); }
 .action-help p { margin: var(--space-1) 0 0; }
 .action-row__now > .status-badge { justify-self: start; }
 .action-row__feedback { color: var(--color-accent); }
@@ -1295,19 +1276,36 @@ th[aria-sort="descending"] .sort-button::after { content: "↓"; opacity: 1; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .drive-role { display: block; font-size: var(--fs-md); }
-.drive-controller-details { font-size: var(--fs-md); }
 
 /* Shared assessment grammar: normal measurements stay neutral, faults retain their severity. */
 .controller-card .metric-label { text-transform: none; letter-spacing: normal; }
 .drive-tile-v2__temp.status-text--optimal,
 .health-metrics dd.status-text--optimal,
 .temperature-inline { font-variant-numeric: tabular-nums; }
+/* Quiet norm: in collections (tiles, table rows) Healthy is calm text; the stripe and the
+   summary chip carry the green. Single summary states (controller, Health Snapshot) stay green. */
+.drive-tile-v2 .drive-health-label.status-text--optimal { color: var(--color-muted-strong); }
+.data-table .status-badge--optimal { border-color: var(--color-border); color: var(--color-muted-strong); }
+.data-table .status-badge--optimal .status-badge__icon { color: var(--color-optimal); }
 .drive-tile-v2__temp.status-text--optimal,
 .health-metrics dd.status-text--optimal { color: var(--color-text); }
-.drive-tile-v2--warning .drive-error-badge-v2 { background: var(--color-warning); color: var(--on-warning); }
 .controller-card--warning { border-color: var(--line-warning); border-left-color: var(--color-warning); }
 .controller-card--critical { border-color: var(--line-critical); border-left-color: var(--color-critical); }
 
 .chart-section { display: grid; gap: var(--space-3); min-width: 0; }
 .controller-observed { font-size: var(--fs-xs); }
 .data-table [data-label="Temp"].status-text--optimal { color: var(--color-text); }
+
+/* Event importance is an icon and a word; pills are reserved for health grades. */
+.event-severity { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-xs); font-weight: var(--fw-strong); letter-spacing: var(--tracking-label); text-transform: uppercase; white-space: nowrap; }
+.event-severity__icon { width: 14px; height: 14px; flex: 0 0 auto; }
+.event-severity--info { color: var(--color-info); }
+.event-severity--warning { color: var(--color-warning); }
+.event-severity--critical { color: var(--color-critical); }
+.event-severity--unknown { color: var(--color-unknown); }
+.filter-chip__count { margin-left: var(--space-1); color: var(--color-muted); font-variant-numeric: tabular-nums; }
+
+/* Detail cards name unreported fields once instead of repeating "Unknown". */
+.kv-grid__missing dd { color: var(--color-muted); font-weight: 400; }
+.raw-state { color: var(--color-muted); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.action-panel__note { margin: 0; padding: var(--space-2) var(--space-4); border-top: 1px solid var(--color-border-soft); color: var(--color-muted-strong); font-size: var(--fs-sm); }

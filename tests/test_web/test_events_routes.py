@@ -304,13 +304,28 @@ def test_events_category_filter_chips_use_persisted_category_keys() -> None:
     )
 
     with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        empty = client.get("/events")
+        for index, category in enumerate((*expected_categories, "pd")):
+            _insert_app_event(
+                test_app,
+                occurred_at=datetime(2026, 4, 25, 12, index, tzinfo=UTC),
+                category=category,
+            )
         response = client.get("/events")
+        selected = client.get("/events?category=foreign_config_detected")
 
+    # Chips appear only for categories that have events; query values stay stored keys.
+    assert 'class="filter-chips__label">Category<' not in empty.text
     assert response.status_code == 200
     for category in expected_categories:
         assert f'href="/events?category={category}"' in response.text
     for legacy_category in ("vd", "pd", "cachevault", "physical_drive"):
         assert f'href="/events?category={legacy_category}"' not in response.text
+    assert ">Drive State <" in response.text
+    assert "controller_alarm_setting_changed</" not in response.text
+    # A selected category stays offered even without events, so it can be cleared.
+    assert ">Foreign Configuration</a>" in selected.text
+    assert "filter-chip--active" in selected.text
 
 
 def test_events_since_poll_returns_oob_newer_events_only() -> None:
@@ -333,6 +348,34 @@ def test_events_since_poll_returns_oob_newer_events_only() -> None:
     assert "new-event" in response.text
     assert "old-event" not in response.text
     assert 'id="events-poller"' in response.text
+
+
+def test_events_since_poll_refreshes_filters_for_a_new_category() -> None:
+    test_app = create_app()
+    base_time = datetime(2026, 4, 25, 12, 0, tzinfo=UTC)
+    with TestClient(test_app, headers=TEST_AUTH_HEADER) as client:
+        first = _insert_app_event(test_app, occurred_at=base_time, category="pd_state")
+        quiet = client.get(
+            "/events", params={"since": str(first.id)}, headers={"HX-Request": "true"}
+        )
+        _insert_app_event(
+            test_app, occurred_at=base_time + timedelta(minutes=1), category="smart_alert"
+        )
+        _insert_app_event(
+            test_app, occurred_at=base_time + timedelta(minutes=2), category="pd_state"
+        )
+        polled = client.get(
+            "/events", params={"since": str(first.id)}, headers={"HX-Request": "true"}
+        )
+
+    # Nothing new: the filters stay as rendered.
+    assert 'id="events-filters"' not in quiet.text
+    # New events: the filters are replaced so the new category and counts are current.
+    assert '<nav id="events-filters" class="filter-chips"' in polled.text
+    assert 'data-filter-state hx-swap-oob="outerHTML"' in polled.text
+    assert 'href="/events?category=smart_alert"' in polled.text
+    assert '>SMART Alert <span class="filter-chip__count">1</span></a>' in polled.text
+    assert '>Drive State <span class="filter-chip__count">2</span></a>' in polled.text
 
 
 def test_events_since_poll_replaces_empty_state_when_first_events_arrive() -> None:
@@ -411,10 +454,12 @@ def test_events_page_formats_time_and_severity_badges() -> None:
     assert 'datetime="2026-04-25T12:00:00Z" data-local-time hidden' in response.text
     assert "<noscript>2026-04-25T12:00:00Z UTC</noscript>" in response.text
     assert "2026-04-25T12:00:00Z UTC" in response.text
-    assert "status-badge--optimal" in response.text
-    assert "status-badge--warning" in response.text
-    assert "status-badge--critical" in response.text
-    assert "status-badge--unknown" in response.text
+    # Event importance is an icon and a word; Info is never the Healthy green.
+    assert "event-severity--info" in response.text
+    assert "event-severity--warning" in response.text
+    assert "event-severity--critical" in response.text
+    assert "event-severity--unknown" in response.text
+    assert "status-badge--optimal" not in response.text
     assert "Info" in response.text
     assert "Warning" in response.text
     assert "Critical" in response.text

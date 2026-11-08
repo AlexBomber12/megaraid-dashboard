@@ -19,7 +19,7 @@
         {{ sort_th("media_errors", "Media Errors", numeric=true) }}
         {{ sort_th("other_errors", "Other Errors", numeric=true) }}
         {{ sort_th("predictive", "Predictive", numeric=true) }}
-        <th scope="col">SMART alert</th>
+        <th scope="col">SMART Alert</th>
       </tr>
     </thead>
     <tbody>
@@ -47,16 +47,13 @@
             data-sort-value="{{ drive.temperature_sort }}"
             {% if drive.temperature_tooltip %}title="{{ drive.temperature_tooltip }}"{% endif %}
           >
-            <span class="temperature-inline">
-              <span class="temperature-inline__dot" aria-hidden="true"></span>
-              {{ drive.temperature }}
-            </span>
+            <span class="temperature-inline">{{ drive.temperature }}</span>
           </td>
           <td class="numeric" data-label="Size" data-sort-value="{{ drive.size_bytes }}">{{ drive.size }}</td>
           {{ count_cell(drive.media_errors, "Media Errors") }}
           {{ count_cell(drive.other_errors, "Other Errors") }}
           {{ count_cell(drive.predictive_failures, "Predictive", "critical") }}
-          <td class="smart--{{ drive.smart_severity }}" data-label="SMART alert">{{ drive.smart_label }}</td>
+          <td class="smart--{{ drive.smart_severity }}" data-label="SMART Alert">{{ drive.smart_label }}</td>
         </tr>
       {% else %}
         <tr><td class="data-table__empty" colspan="10">No physical drives in the latest snapshot.</td></tr>

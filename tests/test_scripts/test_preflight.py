@@ -216,8 +216,11 @@ def _copy_preflight_project(tmp_path: Path) -> Path:
 def _install_stub_venv(project: Path) -> None:
     bin_dir = project / ".venv" / "bin"
     bin_dir.mkdir(parents=True)
-    python_link = bin_dir / "python"
-    python_link.symlink_to(sys.executable)
+    # A wrapper, not a symlink: a symlinked venv interpreter outside its venv loses its
+    # site-packages, so the probe would fail whenever the suite itself runs from a venv.
+    python_stub = bin_dir / "python"
+    python_stub.write_text(f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    python_stub.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
     alembic = bin_dir / "alembic"
     alembic.write_text(
         '#!/usr/bin/env bash\nset -euo pipefail\necho "stub alembic $*"\n',

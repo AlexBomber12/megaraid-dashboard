@@ -30,9 +30,10 @@ def test_controller_detail_sections_and_roc_chart(
     ):
         expect(authenticated_page.locator(f"[data-controller-section='{section}']")).to_be_visible()
 
-    expect(
-        authenticated_page.locator("[data-controller-section='hardware-identity'] dl > div")
-    ).to_have_count(18)
+    # Model, serial and buzzer live in the header and Actions; unreported fields share one row.
+    hardware = authenticated_page.locator("[data-controller-section='hardware-identity']")
+    expect(hardware.locator("dl > div")).to_have_count(15)
+    expect(hardware.locator("[data-not-reported]")).to_contain_text("Rework Date")
 
     login_and_navigate(authenticated_page, f"{live_server}/controller")
     with authenticated_page.expect_response(

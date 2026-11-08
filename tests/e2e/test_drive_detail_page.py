@@ -142,7 +142,9 @@ def test_drive_detail_navigation_charts_actions_and_replace(
     authenticated_page.get_by_label("Previous drive").click()
     authenticated_page.wait_for_url("**/drives/252:0", wait_until="load")
 
-    expect(authenticated_page.locator("svg.error-sparkline")).to_be_visible()
+    # The Error Counter History chart is the one error view; no sparkline repeats it.
+    expect(authenticated_page.locator("svg.error-sparkline")).to_have_count(0)
+    expect(authenticated_page.locator("#error-history-chart")).to_have_count(1)
     backplane_slots = authenticated_page.locator(".backplane-diagram .backplane-slot")
     expect(backplane_slots).to_have_count(8)
     expect(backplane_slots.filter(has_text="S4")).to_have_attribute("aria-current", "page")

@@ -23,7 +23,7 @@
             <td data-label="Name">{{ row.name }}</td>
             <td data-label="RAID">{{ row.raid_level }}</td>
             <td class="numeric" data-label="Size">{{ row.size_text }}</td>
-            <td data-label="Health"><span class="status-badge status-badge--{{ row.state_severity }}">{{ row.state_severity | health_label }}</span><details><summary>Controller details</summary><span class="drive-health-raw">Controller state: {{ row.state }}</span></details></td>
+            <td data-label="Health"><span class="status-badge status-badge--{{ row.state_severity }}">{{ row.state_severity | health_label }}</span> <span class="raw-state" title="Reported virtual-drive state">{{ row.state }}</span></td>
             <td data-label="Access">{{ row.access }}</td>
             <td data-label="Cache">{{ row.cache_policy }}</td>
             <td class="numeric" data-label="Strip">{{ row.strip_size_text }}</td>

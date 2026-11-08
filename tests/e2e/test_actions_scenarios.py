@@ -107,7 +107,7 @@ def test_overview_and_controller_agree_on_observed_operation(
     elif state == "stopped":
         expect(ops).to_contain_text("No active operations")
     else:
-        expect(ops).to_contain_text("Operation status unknown")
+        expect(ops).to_contain_text("Operations not reported")
     page.get_by_role("navigation", name="Primary navigation").get_by_role(
         "link", name="Controller"
     ).click()

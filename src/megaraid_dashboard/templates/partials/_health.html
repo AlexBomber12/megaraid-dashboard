@@ -19,3 +19,33 @@
 {% macro drive_role(label) -%}
   {% if label == 'Ready' %}<span class="drive-role">Role: Unconfigured</span>{% elif label == 'Hot spare' %}<span class="drive-role">Role: Hot spare</span>{% endif %}
 {%- endmacro %}
+
+{#
+  Technical detail cards (Identity, Connection, Hardware Identity, CacheVault): a value the
+  controller did not report is not a row. Their labels are named once, so nothing is hidden.
+  fields: [(label, value, dd_class)].
+#}
+{% macro detail_fields(fields, card=true) -%}
+  {%- set missing = [] -%}
+  <dl class="{% if card %}card {% endif %}kv-grid">
+    {%- for label, value, dd_class in fields -%}
+      {%- if (value | string | trim | lower) in ('', 'unknown', 'n/a', 'none') -%}
+        {%- set _ = missing.append(label) -%}
+      {%- else %}
+    <div><dt>{{ label }}</dt><dd{% if dd_class %} class="{{ dd_class }}"{% endif %}>{{ value }}</dd></div>
+      {%- endif -%}
+    {%- endfor %}
+    {%- if missing %}
+    <div class="kv-grid__wide kv-grid__missing" data-not-reported><dt>Not Reported</dt><dd>{{ missing | join(', ') }}</dd></div>
+    {%- endif %}
+  </dl>
+{%- endmacro %}
+
+{#
+  Event importance (Info / Warning / Critical) is not a health grade, so it is an icon and a
+  word, never a status pill. Pills stay reserved for Healthy / Attention / Critical / Unknown.
+#}
+{% macro event_severity(severity, icons) -%}
+  {%- set icon = {'info': 'info', 'warning': 'alert-triangle', 'critical': 'x-circle'}.get(severity, 'help-circle') -%}
+  <span class="event-severity event-severity--{{ severity if severity in ('info', 'warning', 'critical') else 'unknown' }}"><svg class="event-severity__icon" aria-hidden="true"><use href="{{ icons }}#icon-{{ icon }}"/></svg>{{ severity | capitalize }}</span>
+{%- endmacro %}

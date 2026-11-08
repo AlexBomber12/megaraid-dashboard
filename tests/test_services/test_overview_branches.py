@@ -16,7 +16,6 @@ from megaraid_dashboard.db.models import (
 )
 from megaraid_dashboard.services.overview import (
     _drive_state_badge,
-    _drive_temperature_badge,
     _empty_next_run_text,
     _event_severity_to_status,
     _physical_drive_aggregate_status,
@@ -169,22 +168,6 @@ def test_drive_state_badge_resets_unknown_temperature_to_optimal() -> None:
     badge = _drive_state_badge(drive, temp_warning=55, temp_critical=60)
 
     assert badge == "optimal"
-
-
-# --- Line 988: _drive_temperature_badge returns "unknown" for missing temp ---
-
-
-def test_drive_temperature_badge_returns_unknown_for_missing_temperature() -> None:
-    drive = _make_pd(temperature_celsius=None)
-
-    badge = _drive_temperature_badge(
-        drive,
-        temp_warning=55,
-        temp_critical=60,
-        row_state="optimal",
-    )
-
-    assert badge == "unknown"
 
 
 # --- _virtual_drive_controller_health_status critical and fallback ------------

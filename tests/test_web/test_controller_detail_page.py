@@ -67,16 +67,14 @@ def test_controller_detail_page_renders_expected_sections() -> None:
     assert "SN SV00000001." in html
     assert '<div class="health-card health-card--critical">' in html
     assert '<strong class="health-card__state status-text--critical">Critical</strong>' in html
-    health_summary = (
-        "Controller requires attention. CacheVault is not detected. 0/0 drives online. "
-        "RAID unknown virtual-drive state: No virtual drives reported."
-    )
+    health_summary = "CacheVault is not detected. No virtual drives reported. 0/0 drives online."
     assert f'<span class="health-card__detail">{health_summary}</span>' in html
     assert ">Health Snapshot</h2>" in html
+    assert "Reported BBU state" not in html
+    assert "<summary>Controller details</summary>" not in html
     for label in (
         "RoC Temp",
         "CacheVault",
-        "Reported BBU state",
         "Mem ECC Errors",
         "Errors (24h)",
         "Uptime",

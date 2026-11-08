@@ -46,7 +46,6 @@ def test_controller_detail_smoke_populates_all_sections(
     assert view_model.health.state == "OPTIMAL"
     assert view_model.health.roc_temperature_celsius == 70
     assert view_model.health.cv_capacitance_percent == 89
-    assert view_model.health.bbu_status == "Optimal"
     assert view_model.health.memory_ecc_errors_total == 0
     assert view_model.health.uptime_text.endswith(("m 23s", "m 22s"))
     assert view_model.cachevault is not None
@@ -185,7 +184,14 @@ def test_patrol_schedule_status_requires_observed_mode(
         assert view.scheduled_tasks[0].schedule_text == "Automatic scheduling disabled."
     if mode is not None:
         card = next(card for card in view.live_operations if card.name == "Patrol Read")
-        assert ("Interval" in card.mode_text) is (interval is not None)
+        in_mode = "Interval" in card.mode_text
+        in_schedule = "Every" in view.scheduled_tasks[0].schedule_text
+        if interval is None:
+            assert not in_mode
+        else:
+            # A reported interval is stated once: in the mode text only when scheduling is off.
+            assert in_mode is (enabled is False)
+            assert in_mode != in_schedule
 
 
 def test_scheduled_tasks_include_patrol_read_next_run(
@@ -422,14 +428,12 @@ def test_missing_cachevault_escalates_controller_temperature_warning(
     health = _load(session, tmp_path).health
 
     assert health.state == "CRITICAL"
-    assert health.summary_text.startswith("Controller requires attention.")
-    assert "CacheVault is not detected." in health.summary_text
-    assert health.bbu_status == "N/A"
+    assert health.summary_text.startswith("CacheVault is not detected.")
+    assert "requires attention" not in health.summary_text
 
 
 def test_private_mapping_helpers_cover_fallbacks() -> None:
     now = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
-    assert controller_detail_module._dominant_raid_level([]) == "RAID unknown"
     assert controller_detail_module._memory_ecc_errors_total(None) == 0
     assert controller_detail_module._format_uptime(timedelta(seconds=12)) == "12s"
     assert controller_detail_module._format_bytes(999) == "999 B"

@@ -43,7 +43,7 @@ def test_neutral_chart_series_and_shared_thresholds_follow_css_tokens(
         assert result["tempColour"] == result["theme"]["accent"]
         assert result["thresholds"] == [result["theme"]["warning"], result["theme"]["critical"]]
         assert result["errorColours"] == [
-            result["theme"][key] for key in ("accent", "info", "muted")
+            result["theme"][key] for key in ("accent", "mutedStrong", "muted")
         ]
         assert result["errorLegend"] is True
     assert errors == []

@@ -1,6 +1,13 @@
 {% from "partials/_actions.html" import row_note with context %}
 {# Rows of the Controller Actions panel. Process: Start | Stop. Setting: mode switch, current value pressed. #}
+{% set icons = request.url_for('static', path='icons.svg').path %}
+{% set state_unknown_note = "State unknown, so Start and Stop are unavailable. Refresh operation status." %}
+{% set unknown_operations = view_model.live_operations | selectattr("start_url") | rejectattr("can_start") | rejectattr("can_stop") | map(attribute="name") | list %}
 <div class="action-panel__rows" data-controller-section="live-operations">
+  {# The same reason on several rows is said once, above them. #}
+  {% if unknown_operations | length > 1 %}
+    <p class="action-panel__note" data-operations-state-note>{{ unknown_operations | join(' and ') }}: state unknown, so Start and Stop are unavailable. Refresh operation status.</p>
+  {% endif %}
   {% for operation in view_model.live_operations %}
     {% set operation_mode_text = operation.mode_text | lower %}
     {% set current_operation_mode = operation_mode_text.split(' ')[0] %}
@@ -22,7 +29,7 @@
     {% endif %}
     {# Idle → Stop disabled, running → Start disabled: normal, needs no text. #}
     {% if operation.start_url and not operation.can_start and not operation.can_stop %}
-      {% set _ = notes.append("State unknown, so Start and Stop are unavailable. Refresh operation status.") %}
+      {% if unknown_operations | length == 1 %}{% set _ = notes.append(state_unknown_note) %}{% endif %}
     {% elif show_mode_controls and not operation.can_change_mode %}
       {% set _ = notes.append("Mode changes need a known state. Refresh operation status.") %}
     {% endif %}
@@ -31,7 +38,7 @@
         <h3>{{ operation.name }}</h3>
         {% if operation.detail_text %}
         <details class="action-help" id="operation-help-{{ operation.name | lower | replace(' ', '-') }}">
-          <summary aria-label="About {{ operation.name }}">ⓘ</summary>
+          <summary aria-label="About {{ operation.name }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#icon-info"/></svg></summary>
           <p>{{ 'Checks virtual-drive consistency.' if operation.name == 'Consistency Check' else 'Scans physical drives for unreadable sectors.' }} {{ operation.detail_text }}</p>
           {% if operation.name == 'Patrol Read' %}
           <p>The schedule date is reported by the controller and may be in the past. It does not confirm the next actual start or when the current run began.</p>

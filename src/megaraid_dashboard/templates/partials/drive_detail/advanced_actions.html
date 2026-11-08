@@ -2,7 +2,9 @@
 {% set drive_dg_id = approved_disk_group | string if approved_disk_group is not none else view_model.position.disk_group_id | string if view_model.position.disk_group_id is not none else "-" %}
 {% set slot_ref = view_model.position.enclosure ~ ":" ~ view_model.position.slot %}
 {% set panel_actions = view_model.advanced_actions | rejectattr("label", "equalto", "Mark as UBad") | list %}
-{% set safe_actions = panel_actions | rejectattr("is_destructive") | list %}
+{# An action the drive's current state can never accept is not a row: it is named once below. #}
+{% set safe_actions = panel_actions | rejectattr("is_destructive") | selectattr("is_enabled") | list %}
+{% set unavailable_actions = panel_actions | rejectattr("is_destructive") | rejectattr("is_enabled") | list %}
 {% set destructive_actions = panel_actions | selectattr("is_destructive") | list %}
 {# Row name, what it does, button verb. Unknown labels fall back to the label itself. #}
 {% set action_copy = {
@@ -55,6 +57,14 @@
 {# Rows of the Drive Actions panel: routine first, then everything that changes array state. #}
 <div class="action-panel__rows" data-drive-detail-section="advanced-actions">
   {% for action in safe_actions %}{{ action_row(action) }}{% endfor %}
+  {% if unavailable_actions %}
+    <div class="action-row" data-unavailable-actions>
+      <div class="action-row__name"><h3>Other Actions</h3></div>
+      <div class="action-row__now">
+        <span>Not available in {{ view_model.health.state }} state: {% for action in unavailable_actions %}{{ action_copy.get(action.label, [action.label])[0] }}{% if not loop.last %}, {% endif %}{% endfor %}.</span>
+      </div>
+    </div>
+  {% endif %}
   {# Replace Drive (replace_destructive.html) always follows, so the group label is always shown. #}
   <div class="action-panel__group">Changes Array State{% if destructive_mode_reason %}<span>{{ destructive_mode_reason }}</span>{% endif %}</div>
   {% for action in destructive_actions %}{{ action_row(action) }}{% endfor %}

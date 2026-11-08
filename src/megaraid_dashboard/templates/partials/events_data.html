@@ -1,15 +1,17 @@
+{% from "partials/_health.html" import event_severity %}
+{% set icons = request.url_for('static', path='icons.svg').path %}
 {% macro events_query_separator(path) -%}
   {%- if "?" in path -%}&{%- else -%}?{%- endif -%}
 {%- endmacro %}
 
-{% macro event_items(events) -%}
+{% macro event_items(events, icons) -%}
   {% for event in events %}
     <li class="timeline__item events-timeline__item" id="event-{{ event.id }}" data-event-id="{{ event.id }}">
       <div class="timeline__body">
         <div class="events-timeline__meta">
-          <span class="status-badge status-badge--{{ event.severity_status }}">{{ event.severity_label }}</span>
-          <span class="timeline__category">{{ event.category }}</span>
-          <span class="events-timeline__subject">{{ event.subject }}</span>
+          {{ event_severity(event.severity, icons) }}
+          <span class="timeline__category" data-category="{{ event.category }}">{{ event.category_label }}</span>
+          {% if event.show_subject %}<span class="events-timeline__subject">{{ event.subject }}</span>{% endif %}
         </div>
         <span class="timeline__message">
           {{ event.summary | slot_link | safe }}
@@ -51,14 +53,54 @@
   ></div>
 {%- endmacro %}
 
+{# Filters carry live counts, so the polling response refreshes them with new events. #}
+{% macro filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips, swap_oob=false) -%}
+<nav id="events-filters" class="filter-chips" aria-label="Event filters" data-filter-state{% if swap_oob %} hx-swap-oob="outerHTML"{% endif %}>
+    <div class="filter-chips__group" aria-label="Quick filters">
+      {% for chip in quick_filter_chips %}
+        <a
+          class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+          href="{{ chip.href }}"
+          aria-pressed="{{ 'true' if chip.active else 'false' }}"
+        >{{ chip.label }}</a>
+      {% endfor %}
+    </div>
+    <div class="filter-chips__group">
+      <span class="filter-chips__label">Severity</span>
+      {% for chip in severity_filter_chips %}
+        <a
+          class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+          href="{{ chip.href }}"
+          aria-pressed="{{ 'true' if chip.active else 'false' }}"
+        >{{ chip.label }}</a>
+      {% endfor %}
+    </div>
+    {% if category_filter_chips %}
+    <div class="filter-chips__group">
+      <span class="filter-chips__label">Category</span>
+      {% for chip in category_filter_chips %}
+        <a
+          class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
+          href="{{ chip.href }}"
+          aria-pressed="{{ 'true' if chip.active else 'false' }}"
+        >{{ chip.label }}{% if chip.count %} <span class="filter-chip__count">{{ chip.count }}</span>{% endif %}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+</nav>
+{%- endmacro %}
+
 {% if render_events_since_oob | default(false) %}
   <ol id="events-list" hx-swap-oob="afterbegin:#events-list">
-    {{ event_items(view_model.events) }}
+    {{ event_items(view_model.events, icons) }}
   </ol>
   {{ events_poller(events_poll_since | default(view_model.latest_event_id), swap_oob=true) }}
+  {% if view_model.events %}
+    {{ filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips, swap_oob=true) }}
+  {% endif %}
 {% elif render_events_page_items | default(false) %}
   {% if view_model.events %}
-    {{ event_items(view_model.events) }}
+    {{ event_items(view_model.events, icons) }}
   {% endif %}
   {{ load_more_button(view_model.next_cursor, swap_oob=true) }}
 {% else %}
@@ -73,7 +115,7 @@
         <p>
           {{ view_model.controller_label }}
           {% if view_model.latest_captured_at is not none %}
-            &middot; Snapshot
+            &middot; Observed
             <noscript>{{ view_model.latest_captured_at | iso_utc }} UTC</noscript>
             <time datetime="{{ view_model.latest_captured_at | iso_utc }}" data-local-time hidden>{{ view_model.latest_captured_at | iso_utc }} UTC</time>
           {% endif %}
@@ -81,42 +123,12 @@
       {% endif %}
     </section>
 
-    <nav class="filter-chips" aria-label="Event filters" data-filter-state>
-      <div class="filter-chips__group" aria-label="Quick filters">
-        {% for chip in quick_filter_chips %}
-          <a
-            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
-            href="{{ chip.href }}"
-            aria-pressed="{{ 'true' if chip.active else 'false' }}"
-          >{{ chip.label }}</a>
-        {% endfor %}
-      </div>
-      <div class="filter-chips__group">
-        <span class="filter-chips__label">Severity</span>
-        {% for chip in severity_filter_chips %}
-          <a
-            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
-            href="{{ chip.href }}"
-            aria-pressed="{{ 'true' if chip.active else 'false' }}"
-          >{{ chip.label }}</a>
-        {% endfor %}
-      </div>
-      <div class="filter-chips__group">
-        <span class="filter-chips__label">Category</span>
-        {% for chip in category_filter_chips %}
-          <a
-            class="filter-chip{% if chip.active %} filter-chip--active{% endif %}"
-            href="{{ chip.href }}"
-            aria-pressed="{{ 'true' if chip.active else 'false' }}"
-          >{{ chip.label }}</a>
-        {% endfor %}
-      </div>
-    </nav>
+    {{ filter_nav(quick_filter_chips, severity_filter_chips, category_filter_chips) }}
 
     {% if view_model.events %}
       <section class="timeline events-timeline" aria-label="Events timeline">
         <ol id="events-list" class="timeline__list">
-          {{ event_items(view_model.events) }}
+          {{ event_items(view_model.events, icons) }}
         </ol>
       </section>
     {% else %}

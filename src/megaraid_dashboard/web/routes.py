@@ -118,6 +118,8 @@ from megaraid_dashboard.services.events import (
     EVENTS_PAGE_SIZE,
     EventsFragmentViewModel,
     EventsPageViewModel,
+    category_label,
+    count_events_by_category,
     load_events_fragment,
     load_events_page,
 )
@@ -345,6 +347,7 @@ class FilterChip:
     value: str
     active: bool
     href: str
+    count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -4470,6 +4473,8 @@ def _events_filter_context(
     categories: tuple[str, ...],
     severities: tuple[str, ...],
 ) -> dict[str, object]:
+    with _session(request) as session:
+        category_counts = count_events_by_category(session)
     return {
         "event_filter_state": _events_query_path(
             request=request,
@@ -4485,7 +4490,7 @@ def _events_filter_context(
         ),
         "quick_filter_chips": (
             FilterChip(
-                label="All events",
+                label="All Events",
                 value="all",
                 active=not categories and not severities,
                 href=_events_query_path(
@@ -4496,7 +4501,7 @@ def _events_filter_context(
                 ),
             ),
             FilterChip(
-                label="Operator actions",
+                label="Operator Actions",
                 value="operator_actions",
                 active=set(categories) == set(_OPERATOR_ACTION_CATEGORIES),
                 href=_events_query_path(
@@ -4518,16 +4523,19 @@ def _events_filter_context(
             )
             for severity in _EVENT_SEVERITY_FILTERS
         ),
+        # Only categories that have events (or are selected) are offered as filters.
         "category_filter_chips": tuple(
             _filter_chip(
                 request=request,
-                label=category.replace("_", " "),
+                label=category_label(category),
                 value=category,
                 filter_name="category",
                 categories=categories,
                 severities=severities,
+                count=category_counts.get(category, 0),
             )
             for category in _EVENT_CATEGORY_FILTERS
+            if category_counts.get(category, 0) or category in categories
         ),
     }
 
@@ -4540,6 +4548,7 @@ def _filter_chip(
     filter_name: Literal["category", "severity"],
     categories: tuple[str, ...],
     severities: tuple[str, ...],
+    count: int | None = None,
 ) -> FilterChip:
     updated_categories = categories
     updated_severities = severities
@@ -4559,6 +4568,7 @@ def _filter_chip(
             categories=updated_categories,
             severities=updated_severities,
         ),
+        count=count,
     )
 
 
@@ -4811,40 +4821,9 @@ def _temperature_chart_data(
             "warning": warning_celsius,
             "critical": critical_celsius,
         },
-        "thresholdDatasets": (
-            _threshold_dataset(
-                "Warning Threshold",
-                warning_celsius,
-                "rgba(240, 180, 77, 0.52)",
-                len(labels),
-            ),
-            _threshold_dataset(
-                "Critical Threshold",
-                critical_celsius,
-                "rgba(255, 92, 108, 0.52)",
-                len(labels),
-            ),
-        ),
         "replacementMarkers": replacement_markers,
         "yMin": 20,
         "yMax": max(70, ceil(max_temperature + 5), warning_celsius + 5, critical_celsius + 5),
-    }
-
-
-def _threshold_dataset(
-    label: str,
-    value: int,
-    color: str,
-    point_count: int,
-) -> dict[str, Any]:
-    return {
-        "label": label,
-        "data": tuple(value for _ in range(point_count)),
-        "borderDash": (6, 6),
-        "borderWidth": 1,
-        "pointRadius": 0,
-        "spanGaps": True,
-        "tension": 0,
     }
 
 

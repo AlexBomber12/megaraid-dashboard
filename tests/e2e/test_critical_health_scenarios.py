@@ -30,12 +30,12 @@ def test_controller_raw_states_are_read_only_details(
     page.goto(f"{live_server}/controller")
     health = page.locator('[data-controller-section="health-snapshot"]')
     expect(health.locator(".health-card__state")).to_have_text("Healthy")
-    for section in ("health-snapshot", "cachevault", "raid-config"):
-        disclosure = page.locator(f'[data-controller-section="{section}"] details').first
-        expect(disclosure).not_to_have_attribute("open", "")
-        disclosure.get_by_text("Controller details", exact=True).click()
-        expect(disclosure).to_have_attribute("open", "")
-        expect(disclosure).to_contain_text("state")
+    # Raw firmware states are visible values, not one-value disclosures.
+    expect(page.get_by_text("Controller details", exact=True)).to_have_count(0)
+    expect(page.locator('[data-controller-section="raid-config"] .raw-state')).to_have_text("Optl")
+    cachevault = page.locator('[data-controller-section="cachevault"]')
+    expect(cachevault).to_contain_text("Reported State")
+    expect(cachevault).to_contain_text("Optimal")
     expect(page.locator('[data-controller-section="raid-config"] .status-badge')).to_have_text(
         "Healthy"
     )
@@ -52,7 +52,7 @@ def test_controller_raw_states_are_read_only_details(
         ("cv-low", "Attention", "CacheVault capacitance is below the warning threshold."),
         ("roc-warning", "Attention", "Controller temperature is elevated."),
         ("roc-critical", "Critical", "Controller temperature is critical."),
-        ("custom-thresholds", "Healthy", "All systems nominal."),
+        ("custom-thresholds", "Healthy", "8/8 drives online."),
         ("empty-inventory", "Critical", "No virtual drives reported"),
         ("vd-hyphen", "Critical", "VD 0: Partially-Degraded"),
     ],
@@ -128,6 +128,6 @@ def test_component_fault_is_visible_and_recovers_on_all_summaries(
         )
     page.get_by_role("button", name="Refresh now").click()
     expect(health.locator(".health-card__state")).to_have_text("Healthy")
-    expect(health.locator(".health-card__detail")).to_contain_text("All systems nominal.")
+    expect(health.locator(".health-card__detail")).to_contain_text("8/8 drives online.")
     page.get_by_role("link", name="Overview", exact=True).first.click()
     expect(page.locator(".controller-state")).to_have_text("Healthy")

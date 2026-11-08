@@ -1,3 +1,5 @@
+{% from "partials/_health.html" import event_severity %}
+{% set icons = request.url_for('static', path='icons.svg').path %}
 <section class="activity-v2" aria-labelledby="recent-activity-heading">
   <div class="section-heading">
     <h2 id="recent-activity-heading">Recent Activity</h2>
@@ -8,7 +10,7 @@
     <ol class="activity-list-v2">
       {% for event in view_model.recent_activity %}
         <li class="activity-item-v2">
-          <span class="status-badge status-badge--{{ event.severity }}">{{ event.severity }}</span>
+          {{ event_severity(event.severity, icons) }}
           <span class="activity-item-v2__summary">{{ event.message | slot_link | safe }}</span>
           <time class="activity-item-v2__age" datetime="{{ event.occurred_at | iso_utc }}" title="{{ event.occurred_at | iso_utc }} UTC">{{ event.age_text }}</time>
         </li>
