@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from megaraid_dashboard.db.dao import get_maintenance_state, maintenance_writes_enabled
 from megaraid_dashboard.services.action_capabilities import action_disabled_reason
+from megaraid_dashboard.services.display_format import celsius
 from megaraid_dashboard.services.drive_actions import (
     ConsistencyCheckMode,
     PatrolReadMode,
@@ -168,12 +169,6 @@ def iso_utc(value: datetime | None) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("iso_utc requires a timezone-aware datetime")
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def celsius(value: int | None) -> str:
-    if value is None:
-        return "N/A"
-    return f"{value}\u00b0C"
 
 
 def bytes_iec(value: int | None) -> str:

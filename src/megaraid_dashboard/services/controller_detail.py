@@ -213,7 +213,7 @@ def load_controller_detail_view_model(
     raw_json = {} if snapshot is None or snapshot.raw_json is None else snapshot.raw_json
     return ControllerDetailViewModel(
         page_title="Controller",
-        page_subtitle=_page_subtitle(snapshot, now=now),
+        page_subtitle=_page_subtitle(snapshot),
         health=_build_health_snapshot(
             session,
             snapshot=snapshot,
@@ -481,11 +481,10 @@ def _build_foreign_config_state(raw_json: Mapping[str, Any]) -> ForeignConfigSta
     )
 
 
-def _page_subtitle(snapshot: ControllerSnapshot | None, *, now: datetime) -> str:
+def _page_subtitle(snapshot: ControllerSnapshot | None) -> str:
     if snapshot is None:
         return "Waiting for first controller snapshot."
-    captured_at = _require_aware_utc(snapshot.captured_at)
-    return f"SN {snapshot.serial_number}. Observed {captured_at.strftime('%B %-d, %Y %H:%M UTC')}."
+    return f"SN {snapshot.serial_number}."
 
 
 def _health_summary(snapshot: ControllerSnapshot, *, health: str, settings: Settings) -> str:
